@@ -24,6 +24,7 @@ A Figma-like visual editor for designing Terminal UI applications. Drag-and-drop
 - **Save / Load** — `.tui` JSON format via native OS file picker (Chrome/Edge) or browser download (Firefox/Safari)
 - **Multi-Framework Export** — Generate code for Ink, BubbleTea, Blessed, Textual, OpenTUI, Tview
 - **Command Palette** — `Cmd/Ctrl+P` for quick component creation, theme switching, and dark/light mode toggle
+- **Gradient Backgrounds** — Add linear gradients to any element background with angle control and N color stops; rendered as discrete character-cell bands matching real ANSI terminal output
 - **Settings** — Accent color presets, dark/light mode toggle, and default download folder
 
 ## Quick Start
