@@ -2,6 +2,11 @@
 
 All notable changes to TUIStudio are documented here.
 
+## [0.3.0] - 2026-02-20
+
+### Added
+- **Multi-select in Layers panel** — Shift-click components in the layer tree to build a multi-selection for batch operations.
+
 ## [0.2.0] - 2026-02-19
 
 ### Added
