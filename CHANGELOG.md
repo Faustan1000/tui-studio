@@ -12,6 +12,7 @@ All notable changes to TUIStudio are documented here.
 
 ### Removed
 - **"Add to Box"** context menu item (was a duplicate of "Group into Box").
+- **Landing page** — removed from the desktop app (not relevant in a native context).
 
 ## [0.2.0] - 2026-02-19
 
