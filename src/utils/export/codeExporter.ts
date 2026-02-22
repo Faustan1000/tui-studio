@@ -77,9 +77,7 @@ function generateInkNode(node: ComponentNode, indent: number): string {
     case 'Screen':
     case 'Box':
     case 'Grid':
-    case 'Modal':
-    case 'Popover':
-    case 'Tooltip': {
+    case 'Modal': {
       const props = inkBoxProps(node);
       const children = node.children.map(c => generateInkNode(c, indent + 1)).join('');
       return children

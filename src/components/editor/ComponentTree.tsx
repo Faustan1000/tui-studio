@@ -27,8 +27,6 @@ import {
   FolderTree,
   Navigation,
   PanelTop,
-  MessageSquare,
-  Info,
   AlertTriangle,
 } from 'lucide-react';
 import { useComponentStore, useSelectionStore } from '../../stores';
@@ -262,10 +260,7 @@ export function getComponentIcon(type: ComponentType) {
     // Overlay
     case 'Modal':
       return <PanelTop {...iconProps} />;
-    case 'Popover':
-      return <MessageSquare {...iconProps} />;
-    case 'Tooltip':
-      return <Info {...iconProps} />;
+
 
     default:
       return <Square {...iconProps} />;

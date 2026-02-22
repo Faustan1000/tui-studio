@@ -510,44 +510,6 @@ export const COMPONENT_LIBRARY: Record<ComponentType, ComponentDefinition> = {
     },
   },
 
-  Popover: {
-    type: 'Popover',
-    name: 'Popover',
-    description: 'Popover overlay',
-    icon: 'MessageSquare',
-    category: 'overlay',
-    defaultProps: {},
-    defaultLayout: {
-      type: 'flexbox',
-      direction: 'column',
-      padding: 1,
-    },
-    defaultStyle: {
-      color: 'white',
-      border: true,
-      borderStyle: 'rounded',
-      borderColor: 'white',
-    },
-  },
-
-  Tooltip: {
-    type: 'Tooltip',
-    name: 'Tooltip',
-    description: 'Tooltip',
-    icon: 'Info',
-    category: 'overlay',
-    defaultProps: {
-      content: 'Tooltip text',
-    },
-    defaultLayout: {
-      type: 'none',
-      padding: { top: 0, right: 1, bottom: 0, left: 1 },
-    },
-    defaultStyle: {
-      backgroundColor: 'brightBlack',
-      color: 'white',
-    },
-  },
 };
 
 // Get components by category
@@ -574,7 +536,6 @@ export function canHaveChildren(type: import('../types').ComponentType): boolean
     'Box',
     'Grid',
     'Modal',
-    'Popover',
     'Tabs',
     'Menu',
     'List',

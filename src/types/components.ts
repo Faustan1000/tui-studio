@@ -26,9 +26,7 @@ export type ComponentType =
   | 'Tabs'
   | 'Breadcrumb'
   // Overlay
-  | 'Modal'
-  | 'Popover'
-  | 'Tooltip';
+  | 'Modal';
 
 export interface ComponentNode {
   id: string;

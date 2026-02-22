@@ -119,8 +119,6 @@ const COMPONENT_GROUPS: ComponentGroup[] = [
     icon: Layers,
     items: [
       { type: 'Modal', label: 'Modal', hotkey: 'O' },
-      { type: 'Popover', label: 'Popover', hotkey: 'V' },
-      { type: 'Tooltip', label: 'Tooltip', hotkey: 'H' },
     ],
   },
 ];
