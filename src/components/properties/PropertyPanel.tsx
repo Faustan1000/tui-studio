@@ -797,6 +797,11 @@ function TableEditor({
     const newRows = rows.map(r => [...r, '']);
     onChange(newCols, newRows);
   };
+  const insertColumnAfter = (ci: number) => {
+    const newCols = [...columns.slice(0, ci + 1), `Col ${columns.length + 1}`, ...columns.slice(ci + 1)];
+    const newRows = rows.map(r => [...r.slice(0, ci + 1), '', ...r.slice(ci + 1)]);
+    onChange(newCols, newRows);
+  };
   const removeColumn = (ci: number) => {
     if (columns.length <= 1) return;
     const newCols = columns.filter((_, i) => i !== ci);
@@ -826,12 +831,22 @@ function TableEditor({
       {/* Column headers */}
       <div className="flex items-center gap-1 mb-0.5">
         <span className="text-[9px] text-muted-foreground uppercase tracking-wide flex-1">Columns</span>
-        <button onClick={addColumn} className="text-[10px] px-1.5 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary rounded">+ Col</button>
       </div>
       <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr) 20px` }}>
         {columns.map((col, ci) => (
           <input key={ci} value={col} onChange={e => updateColumn(ci, e.target.value)}
             className={inputCls + ' font-semibold'} placeholder={`Col ${ci + 1}`} />
+        ))}
+        <div />
+        {columns.map((_, ci) => (
+          <div key={ci} className="flex items-center justify-center gap-0.5">
+            <button onClick={() => insertColumnAfter(ci)}
+              className="text-[9px] px-1 py-0.5 text-primary hover:bg-primary/10 rounded leading-none">+</button>
+            <button onClick={() => removeColumn(ci)} disabled={columns.length <= 1}
+              className="flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30">
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
         ))}
         <div />
       </div>
