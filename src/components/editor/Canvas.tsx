@@ -993,10 +993,10 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           pointerEvents: node.locked ? 'none' : 'auto',
           ...borderStyleProps,
           display: node.hidden ? 'none' : 'flex',
-          alignItems: ['Tabs'].includes(node.type) ? 'flex-start' : 'center',
+          alignItems: ['Tabs', 'Breadcrumb'].includes(node.type) ? 'flex-start' : 'center',
           justifyContent: node.type === 'Text'
             ? ((node.props.align === 'right') ? 'flex-end' : (node.props.align === 'center') ? 'center' : 'flex-start')
-            : ['Checkbox', 'Radio', 'Menu', 'Tabs'].includes(node.type) ? 'flex-start' : 'center',
+            : ['Checkbox', 'Radio', 'Menu', 'Tabs', 'Breadcrumb'].includes(node.type) ? 'flex-start' : 'center',
           padding: node.layout.padding !== undefined
             ? `${node.layout.padding * cellHeight * zoom}px ${node.layout.padding * cellWidth * zoom}px`
             : undefined,

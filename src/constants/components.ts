@@ -468,9 +468,9 @@ export const COMPONENT_LIBRARY: Record<ComponentType, ComponentDefinition> = {
     category: 'navigation',
     defaultProps: {
       items: [
-        { label: 'Home', icon: '⌂' },
-        { label: 'Documents', icon: '📁' },
-        { label: 'File', icon: '📄' },
+        { label: 'Home', icon: '' },
+        { label: 'Documents', icon: '' },
+        { label: 'File', icon: '' },
       ],
       separator: ' / ',
     },

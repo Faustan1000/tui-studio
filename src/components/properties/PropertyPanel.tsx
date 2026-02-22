@@ -1,6 +1,7 @@
 // Compact Figma-style property panel with collapsible sections
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronRight, ChevronDown, Trash2, Copy, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { useSelectionStore, useComponentStore } from '../../stores';
 import { LayoutEditor } from './LayoutEditor';
@@ -263,18 +264,37 @@ const GLYPHS: { name: string; chars: string[] }[] = [
 function GlyphPicker({ onInsert }: { onInsert: (glyph: string) => void }) {
   const [open, setOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(0);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (!open) return;
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    const close = (e: MouseEvent) => {
+      if (!buttonRef.current?.closest('[data-glyph-picker]')?.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div data-glyph-picker>
       <button
-        onClick={() => setOpen(!open)}
+        ref={buttonRef}
+        onClick={() => setOpen(o => !o)}
         className="px-1.5 py-0.5 text-[10px] bg-input border border-border/50 rounded hover:bg-accent transition-colors font-mono"
         title="Insert glyph"
       >
         Ω
       </button>
-      {open && (
-        <div className="absolute right-0 top-6 z-50 w-56 bg-popover border border-border rounded-lg">
+      {open && createPortal(
+        <div
+          className="fixed w-56 bg-popover border border-border rounded-lg shadow-lg"
+          style={{ top: pos.top, right: pos.right, zIndex: 9999 }}
+        >
           {/* Category tabs */}
           <div className="flex flex-wrap gap-0.5 p-1.5 border-b border-border/50">
             {GLYPHS.map((cat, i) => (
@@ -302,7 +322,8 @@ function GlyphPicker({ onInsert }: { onInsert: (glyph: string) => void }) {
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
