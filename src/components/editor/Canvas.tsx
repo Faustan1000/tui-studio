@@ -9,6 +9,7 @@ import { THEMES } from '../../stores/themeStore';
 import type { ComponentNode } from '../../types';
 import { interpolateGradientColor } from '../../utils/rendering/ansi';
 import { ComponentToolbar } from './ComponentToolbar';
+import { NumericInput } from '../properties/LayoutEditor';
 
 // ── Canvas size control ───────────────────────────────────────────────────────
 
@@ -43,24 +44,18 @@ function CanvasSizeControl() {
 
       {canvasStore.sizeMode === 'custom' ? (
         <>
-          <input
-            type="number"
-            min={10} max={200}
+          <NumericInput
             value={cols}
-            onChange={e => setCols(Number(e.target.value))}
-            onKeyDown={e => e.key === 'Enter' && handleApply()}
+            onChange={setCols}
+            min={10} max={200}
             className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none text-center"
-            title="Columns"
           />
           <span className="text-[10px] text-muted-foreground/60">×</span>
-          <input
-            type="number"
-            min={10} max={100}
+          <NumericInput
             value={rows}
-            onChange={e => setRows(Number(e.target.value))}
-            onKeyDown={e => e.key === 'Enter' && handleApply()}
+            onChange={setRows}
+            min={10} max={100}
             className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none text-center"
-            title="Rows"
           />
           <button
             onClick={handleApply}

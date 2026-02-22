@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, ChevronDown, Trash2, Copy, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { useSelectionStore, useComponentStore } from '../../stores';
-import { LayoutEditor } from './LayoutEditor';
+import { LayoutEditor, NumericInput } from './LayoutEditor';
 import { StyleEditor } from './StyleEditor';
 import { ColorPicker } from './ColorPicker';
 
@@ -139,12 +139,13 @@ function VisualProperties({ component }: { component: import('../../types').Comp
             <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">W</label>
             <input
               type="text"
-              value={component.props.width || 'auto'}
-              onChange={(e) =>
+              value={component.props.width ?? 'auto'}
+              onChange={(e) => {
+                const v = e.target.value;
                 componentStore.updateProps(component.id, {
-                  width: e.target.value === 'auto' ? 'auto' : Number(e.target.value) || 'auto'
-                })
-              }
+                  width: v === 'auto' || v === '' ? 'auto' : (isNaN(Number(v)) ? 'auto' : Number(v))
+                });
+              }}
               className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
             />
           </div>
@@ -152,12 +153,13 @@ function VisualProperties({ component }: { component: import('../../types').Comp
             <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">H</label>
             <input
               type="text"
-              value={component.props.height || 'auto'}
-              onChange={(e) =>
+              value={component.props.height ?? 'auto'}
+              onChange={(e) => {
+                const v = e.target.value;
                 componentStore.updateProps(component.id, {
-                  height: e.target.value === 'auto' ? 'auto' : Number(e.target.value) || 'auto'
-                })
-              }
+                  height: v === 'auto' || v === '' ? 'auto' : (isNaN(Number(v)) ? 'auto' : Number(v))
+                });
+              }}
               className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
             />
           </div>
@@ -537,23 +539,19 @@ function ComponentProps({ component }: { component: import('../../types').Compon
         <>
           <div>
             <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">Value</label>
-            <input
-              type="number"
-              value={(component.props.value as number) || 0}
-              onChange={(e) =>
-                componentStore.updateProps(component.id, { value: Number(e.target.value) })
-              }
+            <NumericInput
+              value={(component.props.value as number) ?? 0}
+              onChange={(v) => componentStore.updateProps(component.id, { value: v })}
+              min={0}
               className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
             />
           </div>
           <div>
             <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">Max</label>
-            <input
-              type="number"
-              value={(component.props.max as number) || 100}
-              onChange={(e) =>
-                componentStore.updateProps(component.id, { max: Number(e.target.value) })
-              }
+            <NumericInput
+              value={(component.props.max as number) ?? 100}
+              onChange={(v) => componentStore.updateProps(component.id, { max: v })}
+              min={1}
               className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
             />
           </div>
@@ -969,10 +967,10 @@ function ListItemsEditor({
       {items.length > 0 && (
         <div className="flex items-center gap-2">
           <label className="text-[9px] text-muted-foreground uppercase tracking-wide w-20">Selected</label>
-          <input
-            type="number" min={0} max={items.length - 1}
+          <NumericInput
             value={selectedIndex}
-            onChange={e => onChange(items, Math.max(0, Math.min(items.length - 1, Number(e.target.value))))}
+            onChange={v => onChange(items, Math.max(0, Math.min(items.length - 1, v)))}
+            min={0} max={items.length - 1}
             className={inputCls + ' w-14'}
           />
         </div>
@@ -1103,10 +1101,10 @@ function MenuItemsEditor({
       {items.length > 0 && (
         <div className="flex items-center gap-2">
           <label className="text-[9px] text-muted-foreground uppercase tracking-wide w-20">Selected</label>
-          <input
-            type="number" min={0} max={items.length - 1}
+          <NumericInput
             value={selectedIndex}
-            onChange={e => onChange(items, Math.max(0, Math.min(items.length - 1, Number(e.target.value))))}
+            onChange={v => onChange(items, Math.max(0, Math.min(items.length - 1, v)))}
+            min={0} max={items.length - 1}
             className={inputCls + ' w-14'}
           />
         </div>

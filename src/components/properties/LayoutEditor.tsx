@@ -1,10 +1,53 @@
 // Layout property editor
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Maximize2, LayoutGrid } from 'lucide-react';
 import { useComponentStore } from '../../stores';
 import type { ComponentNode } from '../../types';
 import { canHaveChildren } from '../../constants/components';
+
+// ─── Numeric input that allows clearing before typing a new value ─────────────
+
+export function NumericInput({
+  value, onChange, min, max, className,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  className?: string;
+}) {
+  const [text, setText] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  const clamp = (n: number) =>
+    Math.max(min ?? -Infinity, Math.min(max ?? Infinity, n));
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={text}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^0-9-]/g, '');
+        setText(raw);
+        const n = parseInt(raw, 10);
+        if (!isNaN(n)) onChange(clamp(n));
+      }}
+      onFocus={() => { setFocused(true); setText(String(value)); }}
+      onBlur={() => {
+        setFocused(false);
+        const n = parseInt(text, 10);
+        setText(String(isNaN(n) ? value : clamp(n)));
+      }}
+      className={className}
+    />
+  );
+}
 
 interface LayoutEditorProps {
   component: ComponentNode;
@@ -88,13 +131,7 @@ function EdgeEditor({
       {!individual ? (
         <div className="flex items-center gap-1">
           <Maximize2 size={12} className="text-muted-foreground flex-shrink-0" />
-          <input
-            type="number"
-            value={uniform}
-            onChange={(e) => setAll(parseInt(e.target.value) || 0)}
-            min={0}
-            className={input}
-          />
+          <NumericInput value={uniform} onChange={setAll} min={0} className={input} />
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-1">
@@ -103,10 +140,9 @@ function EdgeEditor({
               <span className="text-[10px] text-muted-foreground font-mono w-4 text-center" title={title}>
                 {icon}
               </span>
-              <input
-                type="number"
+              <NumericInput
                 value={getSide(value ?? 0, side)}
-                onChange={(e) => setSide(side, parseInt(e.target.value) || 0)}
+                onChange={(v) => setSide(side, v)}
                 min={0}
                 className={input}
               />
@@ -134,21 +170,11 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
       <div className="grid grid-cols-2 gap-1.5">
         <div>
           <label className={label}>X</label>
-          <input
-            type="number"
-            value={component.layout.x || 0}
-            onChange={(e) => upd({ x: parseInt(e.target.value) || 0 })}
-            className={input}
-          />
+          <NumericInput value={component.layout.x || 0} onChange={(v) => upd({ x: v })} className={input} />
         </div>
         <div>
           <label className={label}>Y</label>
-          <input
-            type="number"
-            value={component.layout.y || 0}
-            onChange={(e) => upd({ y: parseInt(e.target.value) || 0 })}
-            className={input}
-          />
+          <NumericInput value={component.layout.y || 0} onChange={(v) => upd({ y: v })} className={input} />
         </div>
       </div>
 
@@ -202,13 +228,7 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
                 </div>
                 <div>
                   <label className={label}>Gap</label>
-                  <input
-                    type="number"
-                    value={component.layout.gap || 0}
-                    onChange={(e) => upd({ gap: parseInt(e.target.value) || 0 })}
-                    min={0}
-                    className={input}
-                  />
+                  <NumericInput value={component.layout.gap || 0} onChange={(v) => upd({ gap: v })} min={0} className={input} />
                 </div>
               </div>
 
@@ -260,45 +280,21 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className={label}>Columns</label>
-                  <input
-                    type="number"
-                    value={component.layout.columns || 2}
-                    onChange={(e) => upd({ columns: parseInt(e.target.value) || 2 })}
-                    min={1}
-                    className={input}
-                  />
+                  <NumericInput value={component.layout.columns || 2} onChange={(v) => upd({ columns: v })} min={1} className={input} />
                 </div>
                 <div>
                   <label className={label}>Rows</label>
-                  <input
-                    type="number"
-                    value={component.layout.rows || 2}
-                    onChange={(e) => upd({ rows: parseInt(e.target.value) || 2 })}
-                    min={1}
-                    className={input}
-                  />
+                  <NumericInput value={component.layout.rows || 2} onChange={(v) => upd({ rows: v })} min={1} className={input} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className={label}>Col Gap</label>
-                  <input
-                    type="number"
-                    value={component.layout.columnGap || 0}
-                    onChange={(e) => upd({ columnGap: parseInt(e.target.value) || 0 })}
-                    min={0}
-                    className={input}
-                  />
+                  <NumericInput value={component.layout.columnGap || 0} onChange={(v) => upd({ columnGap: v })} min={0} className={input} />
                 </div>
                 <div>
                   <label className={label}>Row Gap</label>
-                  <input
-                    type="number"
-                    value={component.layout.rowGap || 0}
-                    onChange={(e) => upd({ rowGap: parseInt(e.target.value) || 0 })}
-                    min={0}
-                    className={input}
-                  />
+                  <NumericInput value={component.layout.rowGap || 0} onChange={(v) => upd({ rowGap: v })} min={0} className={input} />
                 </div>
               </div>
             </>
