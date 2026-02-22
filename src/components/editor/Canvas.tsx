@@ -580,42 +580,58 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           };
           const justify = (node.layout as any).justify as string | undefined;
           const align = (node.layout as any).align as string | undefined;
+          const hasBoxButtons = items.some((it: any) =>
+            typeof it !== 'string' && it.variant === 'button' && it.buttonStyle !== 'filled'
+          );
           return (
             <div
-              className="font-mono text-xs flex whitespace-pre w-full h-full"
+              className="font-mono text-xs flex w-full h-full"
               style={{
                 justifyContent: justifyMap[justify || ''] || 'flex-start',
-                alignItems: alignMap[align || ''] || 'center',
+                alignItems: hasBoxButtons ? 'flex-start' : (alignMap[align || ''] || 'center'),
               }}
             >
               {items.map((item, i) => {
                 const itemData = typeof item === 'string'
                   ? { label: item, icon: '', hotkey: '', separator: false, variant: 'label', buttonStyle: 'line' }
                   : { variant: 'label', buttonStyle: 'line', ...item };
-                const inner = (
-                  <>
-                    {itemData.icon ? `${itemData.icon} ` : ''}
-                    {itemData.label}
-                    {itemData.hotkey && <span className="text-muted-foreground">{` ${itemData.hotkey}`}</span>}
-                  </>
-                );
+                // Plain text for box sizing
+                const textStr = `${itemData.icon ? `${itemData.icon} ` : ''}${itemData.label}${itemData.hotkey ? ` ${itemData.hotkey}` : ''}`;
                 let content: React.ReactNode;
                 if (itemData.variant === 'button') {
                   if (itemData.buttonStyle === 'filled') {
-                    content = <span style={{ background: 'currentColor', color: 'var(--background, black)', padding: '0 3px', filter: 'invert(1)' }}>{inner}</span>;
+                    content = (
+                      <span style={{ background: 'currentColor', filter: 'invert(1)', padding: '0 3px' }}>
+                        {textStr}
+                      </span>
+                    );
                   } else {
-                    content = <>[ {inner} ]</>;
+                    // Proper box with corners
+                    const iw = textStr.length;
+                    content = (
+                      <div className="whitespace-pre leading-none">
+                        <div>{`╭${'─'.repeat(iw + 2)}╮`}</div>
+                        <div>{`│ ${textStr} │`}</div>
+                        <div>{`╰${'─'.repeat(iw + 2)}╯`}</div>
+                      </div>
+                    );
                   }
                 } else {
-                  content = inner;
+                  content = (
+                    <span className="whitespace-pre">
+                      {itemData.icon ? `${itemData.icon} ` : ''}
+                      {itemData.label}
+                      {itemData.hotkey && <span className="text-muted-foreground">{` ${itemData.hotkey}`}</span>}
+                    </span>
+                  );
                 }
                 return (
-                  <span key={i} className="flex-shrink-0 flex items-center">
+                  <span key={i} className="flex-shrink-0 flex items-start">
                     {content}
                     {i < items.length - 1 && (
                       itemData.separator
-                        ? <span className="text-muted-foreground">{gapStr}│{gapStr}</span>
-                        : <span>{gapStr}</span>
+                        ? <span className="text-muted-foreground whitespace-pre">{gapStr}│{gapStr}</span>
+                        : <span className="whitespace-pre">{gapStr}</span>
                     )}
                   </span>
                 );
