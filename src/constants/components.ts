@@ -490,7 +490,7 @@ export const COMPONENT_LIBRARY: Record<ComponentType, ComponentDefinition> = {
     name: 'Modal',
     description: 'Modal dialog',
     icon: 'SquareDashedBottomCode',
-    category: 'overlay',
+    category: 'layout',
     defaultProps: {
       title: 'Modal',
       width: 40,

@@ -7,7 +7,6 @@ import {
   Eye,
   Table2,
   Menu as MenuIcon,
-  Layers,
   ChevronDown,
   ChevronRight,
   Ellipsis,
@@ -67,6 +66,7 @@ const COMPONENT_GROUPS: ComponentGroup[] = [
       { type: 'Box', label: 'Box', hotkey: 'X' },
       { type: 'Grid', label: 'Grid', hotkey: 'G' },
       { type: 'Spacer', label: 'Spacer', hotkey: 'J' },
+      { type: 'Modal', label: 'Modal', hotkey: 'O' },
     ],
   },
   {
@@ -111,14 +111,6 @@ const COMPONENT_GROUPS: ComponentGroup[] = [
       { type: 'Menu', label: 'Menu', hotkey: 'M' },
       { type: 'Tabs', label: 'Tabs', hotkey: 'T' },
       { type: 'Breadcrumb', label: 'Breadcrumb', hotkey: 'C' },
-    ],
-  },
-  {
-    id: 'overlay',
-    name: 'Overlay',
-    icon: Layers,
-    items: [
-      { type: 'Modal', label: 'Modal', hotkey: 'O' },
     ],
   },
 ];
