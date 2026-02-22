@@ -538,6 +538,8 @@ export class LayoutEngine {
         const content = (node.props.content as string) || '';
         const contentHeight = content.split('\n').length;
         return node.style.border ? contentHeight + 2 : contentHeight;
+      case 'Breadcrumb':
+        return 1;
       default:
         return 3;
     }
