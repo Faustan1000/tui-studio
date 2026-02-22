@@ -93,7 +93,7 @@ export class LayoutEngine {
     }
 
     // Leaf components always use their intrinsic height unless explicitly overridden
-    const leafTypes = ['Button', 'TextInput', 'Checkbox', 'Radio', 'Toggle', 'Select', 'Spinner', 'ProgressBar', 'Text'];
+    const leafTypes = ['Button', 'TextInput', 'Checkbox', 'Radio', 'Toggle', 'Select', 'Spinner', 'ProgressBar', 'Text', 'Breadcrumb'];
     if (leafTypes.includes(node.type) && typeof node.props.height !== 'number') {
       height = this.calculateAutoHeight(node);
     }
