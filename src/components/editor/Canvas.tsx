@@ -580,9 +580,10 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           };
           const justify = (node.layout as any).justify as string | undefined;
           const align = (node.layout as any).align as string | undefined;
-          const hasBoxButtons = items.some((it: any) =>
-            typeof it !== 'string' && it.variant === 'button' && it.buttonStyle !== 'filled'
-          );
+          const hasBoxButtons = items.some((it: any) => {
+            const s = typeof it === 'string' ? 'plain' : (it.style || (it.variant === 'button' && it.buttonStyle !== 'filled' ? 'line' : 'plain'));
+            return s === 'line';
+          });
           return (
             <div
               className="font-mono text-xs flex w-full h-full"
@@ -592,37 +593,34 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
               }}
             >
               {items.map((item, i) => {
-                const itemData = typeof item === 'string'
-                  ? { label: item, icon: '', hotkey: '', separator: false, variant: 'label', buttonStyle: 'line' }
-                  : { variant: 'label', buttonStyle: 'line', ...item };
-                // Plain text for box sizing
+                const raw = typeof item === 'string' ? { label: item } : item;
+                // Resolve unified `style` field, migrating old variant/buttonStyle
+                const resolvedStyle: 'plain' | 'line' | 'filled' = raw.style
+                  ? raw.style
+                  : raw.variant === 'button'
+                    ? (raw.buttonStyle === 'filled' ? 'filled' : 'line')
+                    : 'plain';
+                const itemData = { icon: '', hotkey: '', separator: false, ...raw, style: resolvedStyle };
                 const textStr = `${itemData.icon ? `${itemData.icon} ` : ''}${itemData.label}${itemData.hotkey ? ` ${itemData.hotkey}` : ''}`;
                 let content: React.ReactNode;
                 const isSelected = i === selectedIndex;
-                if (itemData.variant === 'button') {
-                  if (itemData.buttonStyle === 'filled') {
-                    const bg = isSelected
-                      ? (itemData.selectedFillColor || getColor(itemData.selectedFillColor) || '#ffffff')
-                      : (itemData.fillColor || getColor(itemData.fillColor) || '#ffffff');
-                    const fg = isSelected
-                      ? (itemData.selectedFillTextColor || getColor(itemData.selectedFillTextColor) || '#000000')
-                      : (itemData.fillTextColor || getColor(itemData.fillTextColor) || '#000000');
-                    content = (
-                      <span style={{ background: bg, color: fg, padding: '0 3px' }}>
-                        {textStr}
-                      </span>
-                    );
-                  } else {
-                    // Proper box with corners
-                    const iw = textStr.length;
-                    content = (
-                      <div className="whitespace-pre leading-none">
-                        <div>{`╭${'─'.repeat(iw + 2)}╮`}</div>
-                        <div>{`│ ${textStr} │`}</div>
-                        <div>{`╰${'─'.repeat(iw + 2)}╯`}</div>
-                      </div>
-                    );
-                  }
+                if (resolvedStyle === 'filled') {
+                  const bg = getColor(isSelected ? itemData.selectedFillColor : itemData.fillColor) || (isSelected ? '#ffffff' : '#ffffff');
+                  const fg = getColor(isSelected ? itemData.selectedFillTextColor : itemData.fillTextColor) || '#000000';
+                  content = (
+                    <span style={{ background: bg, color: fg, padding: '0 3px' }}>
+                      {textStr}
+                    </span>
+                  );
+                } else if (resolvedStyle === 'line') {
+                  const iw = textStr.length;
+                  content = (
+                    <div className="whitespace-pre leading-none">
+                      <div>{`╭${'─'.repeat(iw + 2)}╮`}</div>
+                      <div>{`│ ${textStr} │`}</div>
+                      <div>{`╰${'─'.repeat(iw + 2)}╯`}</div>
+                    </div>
+                  );
                 } else {
                   content = (
                     <span className="whitespace-pre">
@@ -649,10 +647,12 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           return (
             <div className="font-mono text-xs">
               {items.map((item, i) => {
-                const itemData = typeof item === 'string'
-                  ? { label: item, icon: '', hotkey: '', separator: false, variant: 'button', buttonStyle: 'line' }
-                  : { variant: 'button', buttonStyle: 'line', ...item };
-                const isLabel = itemData.variant === 'label';
+                const raw2 = typeof item === 'string' ? { label: item } : item;
+                const resolvedStyle2: 'plain' | 'line' | 'filled' = raw2.style
+                  ? raw2.style
+                  : raw2.variant === 'button' ? (raw2.buttonStyle === 'filled' ? 'filled' : 'line') : 'plain';
+                const itemData = { icon: '', hotkey: '', separator: false, ...raw2, style: resolvedStyle2 };
+                const isLabel = resolvedStyle2 === 'plain';
                 const isSelected = !isLabel && i === selectedIndex;
                 return (
                   <div key={i}>

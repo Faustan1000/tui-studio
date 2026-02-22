@@ -989,16 +989,24 @@ function MenuItemsEditor({
   selectedIndex: number;
   onChange: (items: any[], selectedIndex: number) => void;
 }) {
-  const normalize = (item: any) =>
-    typeof item === 'string'
-      ? { label: item, icon: '', hotkey: '', separator: false, variant: 'label', buttonStyle: 'line' }
-      : { variant: 'label', buttonStyle: 'line', ...item };
+  // Migrate old variant+buttonStyle data to the unified `style` field
+  const normalize = (item: any) => {
+    const base = typeof item === 'string'
+      ? { label: item, icon: '', hotkey: '', separator: false }
+      : { icon: '', hotkey: '', separator: false, ...item };
+    if (!base.style) {
+      // migrate from old variant/buttonStyle fields
+      if (base.variant === 'button') base.style = base.buttonStyle === 'filled' ? 'filled' : 'line';
+      else base.style = 'plain';
+    }
+    return base;
+  };
 
   const updateItem = (i: number, patch: object) => {
     onChange(items.map((item, idx) => idx === i ? { ...normalize(item), ...patch } : item), selectedIndex);
   };
   const addItem = () => {
-    onChange([...items, { label: 'Item', icon: '', hotkey: '', separator: false, variant: 'label', buttonStyle: 'line' }], selectedIndex);
+    onChange([...items, { label: 'Item', icon: '', hotkey: '', separator: false, style: 'plain' }], selectedIndex);
   };
   const removeItem = (i: number) => {
     const next = items.filter((_, idx) => idx !== i);
@@ -1031,54 +1039,37 @@ function MenuItemsEditor({
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
-              {/* variant, button style, separator */}
+              {/* style + separator */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <div className="flex bg-input rounded overflow-hidden border border-border/50">
-                  {(['label', 'button'] as const).map(v => (
-                    <button key={v} onClick={() => updateItem(i, { variant: v })}
-                      className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.variant === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
-                      {v}
+                  {(['plain', 'line', 'filled'] as const).map(s => (
+                    <button key={s} onClick={() => updateItem(i, { style: s })}
+                      className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.style === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
+                      {s}
                     </button>
                   ))}
                 </div>
-                {d.variant === 'button' && (
-                  <div className="flex bg-input rounded overflow-hidden border border-border/50">
-                    {(['line', 'filled'] as const).map(s => (
-                      <button key={s} onClick={() => updateItem(i, { buttonStyle: s })}
-                        className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.buttonStyle === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {d.variant === 'button' && d.buttonStyle === 'filled' && (
-                  <div className="w-full space-y-1 pt-0.5">
-                    <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Normal</div>
-                    <div className="flex gap-1">
-                      <div className="flex-1">
-                        <ColorPicker label="Background" value={d.fillColor} onChange={c => updateItem(i, { fillColor: c })} />
-                      </div>
-                      <div className="flex-1">
-                        <ColorPicker label="Text" value={d.fillTextColor} onChange={c => updateItem(i, { fillTextColor: c })} />
-                      </div>
-                    </div>
-                    <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Selected</div>
-                    <div className="flex gap-1">
-                      <div className="flex-1">
-                        <ColorPicker label="Background" value={d.selectedFillColor} onChange={c => updateItem(i, { selectedFillColor: c })} />
-                      </div>
-                      <div className="flex-1">
-                        <ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => updateItem(i, { selectedFillTextColor: c })} />
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <button onClick={() => updateItem(i, { separator: !d.separator })}
                   className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${d.separator ? 'border-primary text-primary' : 'border-border/50 text-muted-foreground hover:border-border'}`}
                   title="Separator after this item">
                   ─┤
                 </button>
               </div>
+              {/* Fill colors — only for filled style */}
+              {d.style === 'filled' && (
+                <div className="space-y-1 pt-0.5">
+                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Normal</div>
+                  <div className="flex gap-1">
+                    <div className="flex-1"><ColorPicker label="Background" value={d.fillColor} onChange={c => updateItem(i, { fillColor: c })} /></div>
+                    <div className="flex-1"><ColorPicker label="Text" value={d.fillTextColor} onChange={c => updateItem(i, { fillTextColor: c })} /></div>
+                  </div>
+                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Selected</div>
+                  <div className="flex gap-1">
+                    <div className="flex-1"><ColorPicker label="Background" value={d.selectedFillColor} onChange={c => updateItem(i, { selectedFillColor: c })} /></div>
+                    <div className="flex-1"><ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => updateItem(i, { selectedFillTextColor: c })} /></div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
