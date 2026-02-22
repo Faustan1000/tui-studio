@@ -610,6 +610,15 @@ function ComponentProps({ component }: { component: import('../../types').Compon
         />
       )}
 
+      {/* Menu Properties */}
+      {component.type === 'Menu' && (
+        <MenuItemsEditor
+          items={(component.props.items as any[]) || []}
+          selectedIndex={(component.props.selectedIndex as number) || 0}
+          onChange={(items, selectedIndex) => componentStore.updateProps(component.id, { items, selectedIndex })}
+        />
+      )}
+
       {/* Breadcrumb Properties */}
       {component.type === 'Breadcrumb' && (
         <BreadcrumbEditor
@@ -950,6 +959,101 @@ function ListItemsEditor({
               <button onClick={() => removeItem(i)} className="text-muted-foreground hover:text-destructive flex-shrink-0">
                 <Trash2 className="w-3 h-3" />
               </button>
+            </div>
+          );
+        })}
+      </div>
+      {items.length > 0 && (
+        <div className="flex items-center gap-2">
+          <label className="text-[9px] text-muted-foreground uppercase tracking-wide w-20">Selected</label>
+          <input
+            type="number" min={0} max={items.length - 1}
+            value={selectedIndex}
+            onChange={e => onChange(items, Math.max(0, Math.min(items.length - 1, Number(e.target.value))))}
+            className={inputCls + ' w-14'}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Menu Items Editor
+function MenuItemsEditor({
+  items, selectedIndex, onChange,
+}: {
+  items: any[];
+  selectedIndex: number;
+  onChange: (items: any[], selectedIndex: number) => void;
+}) {
+  const normalize = (item: any) =>
+    typeof item === 'string'
+      ? { label: item, icon: '', hotkey: '', separator: false, variant: 'label', buttonStyle: 'line' }
+      : { variant: 'label', buttonStyle: 'line', ...item };
+
+  const updateItem = (i: number, patch: object) => {
+    onChange(items.map((item, idx) => idx === i ? { ...normalize(item), ...patch } : item), selectedIndex);
+  };
+  const addItem = () => {
+    onChange([...items, { label: 'Item', icon: '', hotkey: '', separator: false, variant: 'label', buttonStyle: 'line' }], selectedIndex);
+  };
+  const removeItem = (i: number) => {
+    const next = items.filter((_, idx) => idx !== i);
+    onChange(next, Math.min(selectedIndex, Math.max(0, next.length - 1)));
+  };
+
+  const inputCls = 'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1">
+        <span className="text-[9px] text-muted-foreground uppercase tracking-wide flex-1">Items</span>
+        <button onClick={addItem} className="text-[10px] px-1.5 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary rounded">+ Item</button>
+      </div>
+      <div className="space-y-1.5">
+        {items.map((item: any, i: number) => {
+          const d = normalize(item);
+          return (
+            <div key={i} className="p-1.5 bg-accent/30 rounded space-y-1">
+              {/* icon, label, hotkey, delete */}
+              <div className="flex items-center gap-1">
+                <input value={d.icon || ''} onChange={e => updateItem(i, { icon: e.target.value })}
+                  className={inputCls + ' w-8 text-center font-mono'} placeholder="⌂" />
+                <GlyphPicker onInsert={(g) => updateItem(i, { icon: g })} />
+                <input value={d.label || ''} onChange={e => updateItem(i, { label: e.target.value })}
+                  className={inputCls + ' flex-1 min-w-0'} placeholder="Label" />
+                <input value={d.hotkey || ''} onChange={e => updateItem(i, { hotkey: e.target.value })}
+                  className={inputCls + ' w-10 font-mono'} placeholder="^K" />
+                <button onClick={() => removeItem(i)} className="text-muted-foreground hover:text-destructive flex-shrink-0">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+              {/* variant, button style, separator */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex bg-input rounded overflow-hidden border border-border/50">
+                  {(['label', 'button'] as const).map(v => (
+                    <button key={v} onClick={() => updateItem(i, { variant: v })}
+                      className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.variant === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                {d.variant === 'button' && (
+                  <div className="flex bg-input rounded overflow-hidden border border-border/50">
+                    {(['line', 'filled'] as const).map(s => (
+                      <button key={s} onClick={() => updateItem(i, { buttonStyle: s })}
+                        className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.buttonStyle === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button onClick={() => updateItem(i, { separator: !d.separator })}
+                  className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${d.separator ? 'border-primary text-primary' : 'border-border/50 text-muted-foreground hover:border-border'}`}
+                  title="Separator after this item">
+                  ─┤
+                </button>
+              </div>
             </div>
           );
         })}

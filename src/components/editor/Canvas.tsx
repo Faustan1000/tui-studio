@@ -589,12 +589,29 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
               }}
             >
               {items.map((item, i) => {
-                const itemData = typeof item === 'string' ? { label: item, icon: '', hotkey: '', separator: false } : item;
-                return (
-                  <span key={i} className="flex-shrink-0">
-                    {itemData.icon && `${itemData.icon} `}
+                const itemData = typeof item === 'string'
+                  ? { label: item, icon: '', hotkey: '', separator: false, variant: 'label', buttonStyle: 'line' }
+                  : { variant: 'label', buttonStyle: 'line', ...item };
+                const inner = (
+                  <>
+                    {itemData.icon ? `${itemData.icon} ` : ''}
                     {itemData.label}
                     {itemData.hotkey && <span className="text-muted-foreground">{` ${itemData.hotkey}`}</span>}
+                  </>
+                );
+                let content: React.ReactNode;
+                if (itemData.variant === 'button') {
+                  if (itemData.buttonStyle === 'filled') {
+                    content = <span style={{ background: 'currentColor', color: 'var(--background, black)', padding: '0 3px', filter: 'invert(1)' }}>{inner}</span>;
+                  } else {
+                    content = <>[ {inner} ]</>;
+                  }
+                } else {
+                  content = inner;
+                }
+                return (
+                  <span key={i} className="flex-shrink-0 flex items-center">
+                    {content}
                     {i < items.length - 1 && (
                       itemData.separator
                         ? <span className="text-muted-foreground">{gapStr}│{gapStr}</span>
@@ -609,15 +626,18 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           return (
             <div className="font-mono text-xs">
               {items.map((item, i) => {
-                const itemData = typeof item === 'string' ? { label: item, icon: '', hotkey: '', separator: false } : item;
-                const isSelected = i === selectedIndex;
+                const itemData = typeof item === 'string'
+                  ? { label: item, icon: '', hotkey: '', separator: false, variant: 'button', buttonStyle: 'line' }
+                  : { variant: 'button', buttonStyle: 'line', ...item };
+                const isLabel = itemData.variant === 'label';
+                const isSelected = !isLabel && i === selectedIndex;
                 return (
                   <div key={i}>
-                    <div className={isSelected ? 'font-bold' : ''}>
-                      {isSelected ? '▶ ' : '  '}
+                    <div className={`${isSelected ? 'font-bold' : ''} ${isLabel ? 'text-muted-foreground text-[10px] uppercase tracking-wide' : ''}`}>
+                      {isLabel ? '  ' : (isSelected ? '▶ ' : '  ')}
                       {itemData.icon && `${itemData.icon} `}
                       {itemData.label}
-                      {itemData.hotkey && <span className="ml-auto float-right text-muted-foreground">{itemData.hotkey}</span>}
+                      {!isLabel && itemData.hotkey && <span className="ml-auto float-right text-muted-foreground">{itemData.hotkey}</span>}
                     </div>
                     {itemData.separator && i < items.length - 1 && (
                       <div className="text-muted-foreground">──────────────────</div>
