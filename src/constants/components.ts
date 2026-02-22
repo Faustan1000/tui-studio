@@ -416,6 +416,7 @@ export const COMPONENT_LIBRARY: Record<ComponentType, ComponentDefinition> = {
     icon: 'Menu',
     category: 'navigation',
     defaultProps: {
+      menuStyle: 'plain',
       items: [
         { label: 'Home', icon: '⌂', hotkey: '^H' },
         { label: 'Settings', icon: '⚙', hotkey: '^S' },

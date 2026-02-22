@@ -598,15 +598,17 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
                 </div>
               ))}
             </div>
-            {/* Bottom row: full-width CSS line + junction chars overlay */}
-            <div className="relative whitespace-pre" style={{ height: '1em' }}>
-              <div
-                className="absolute left-0 right-0"
-                style={{ top: '50%', height: '1px', backgroundColor: 'currentColor', transform: 'translateY(-50%)' }}
-              />
-              <div className="relative flex" style={{ justifyContent: flexJustify }}>
-                {tabBoxes.map((box, i) => <div key={i}>{box.bot}</div>)}
-              </div>
+            {/* Bottom row: border-top only in gap areas, not behind active tab */}
+            <div className="flex whitespace-pre items-center" style={{ height: '1em' }}>
+              {flexJustify !== 'flex-start' && (
+                <div style={{ flex: 1, height: 0, borderTop: '1px solid currentColor' }} />
+              )}
+              {tabBoxes.map((box, i) => (
+                <div key={i} style={{ flexShrink: 0 }}>{box.bot}</div>
+              ))}
+              {flexJustify !== 'flex-end' && (
+                <div style={{ flex: 1, height: 0, borderTop: '1px solid currentColor' }} />
+              )}
             </div>
           </div>
         );
@@ -614,6 +616,7 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
       case 'Menu': {
         const items = (node.props.items as any[]) || [];
         const selectedIndex = (node.props.selectedIndex as number) || 0;
+        const menuStyle: 'plain' | 'line' | 'filled' = (node.props.menuStyle as any) || 'plain';
         const isHorizontal = node.layout.type === 'flexbox' && node.layout.direction === 'row';
         if (isHorizontal) {
           const gap = typeof node.layout.gap === 'number' ? node.layout.gap : 0;
@@ -629,31 +632,21 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           };
           const justify = (node.layout as any).justify as string | undefined;
           const align = (node.layout as any).align as string | undefined;
-          const hasBoxButtons = items.some((it: any) => {
-            const s = typeof it === 'string' ? 'plain' : (it.style || (it.variant === 'button' && it.buttonStyle !== 'filled' ? 'line' : 'plain'));
-            return s === 'line';
-          });
           return (
             <div
               className="font-mono text-xs flex w-full h-full"
               style={{
                 justifyContent: justifyMap[justify || ''] || 'flex-start',
-                alignItems: hasBoxButtons ? 'flex-start' : (alignMap[align || ''] || 'center'),
+                alignItems: menuStyle === 'line' ? 'flex-start' : (alignMap[align || ''] || 'center'),
               }}
             >
               {items.map((item, i) => {
                 const raw = typeof item === 'string' ? { label: item } : item;
-                // Resolve unified `style` field, migrating old variant/buttonStyle
-                const resolvedStyle: 'plain' | 'line' | 'filled' = raw.style
-                  ? raw.style
-                  : raw.variant === 'button'
-                    ? (raw.buttonStyle === 'filled' ? 'filled' : 'line')
-                    : 'plain';
-                const itemData = { icon: '', hotkey: '', separator: false, ...raw, style: resolvedStyle };
+                const itemData = { icon: '', hotkey: '', separator: false, ...raw };
                 const textStr = `${itemData.icon ? `${itemData.icon} ` : ''}${itemData.label}${itemData.hotkey ? ` ${itemData.hotkey}` : ''}`;
                 let content: React.ReactNode;
                 const isSelected = i === selectedIndex;
-                if (resolvedStyle === 'filled') {
+                if (menuStyle === 'filled') {
                   const bg = getColor(isSelected ? itemData.selectedFillColor : itemData.fillColor) || (isSelected ? '#ffffff' : '#ffffff');
                   const fg = getColor(isSelected ? itemData.selectedFillTextColor : itemData.fillTextColor) || '#000000';
                   content = (
@@ -661,18 +654,20 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
                       {textStr}
                     </span>
                   );
-                } else if (resolvedStyle === 'line') {
+                } else if (menuStyle === 'line') {
                   const iw = textStr.length;
+                  const lineColor = getColor(isSelected ? itemData.selectedTextColor : itemData.textColor) || undefined;
                   content = (
-                    <div className="whitespace-pre leading-none">
+                    <div className="whitespace-pre leading-none" style={lineColor ? { color: lineColor } : undefined}>
                       <div>{`╭${'─'.repeat(iw + 2)}╮`}</div>
                       <div>{`│ ${textStr} │`}</div>
                       <div>{`╰${'─'.repeat(iw + 2)}╯`}</div>
                     </div>
                   );
                 } else {
+                  const plainColor = getColor(isSelected ? itemData.selectedTextColor : itemData.textColor) || undefined;
                   content = (
-                    <span className="whitespace-pre">
+                    <span className="whitespace-pre" style={plainColor ? { color: plainColor } : undefined}>
                       {itemData.icon ? `${itemData.icon} ` : ''}
                       {itemData.label}
                       {itemData.hotkey && <span className="text-muted-foreground">{` ${itemData.hotkey}`}</span>}
@@ -697,19 +692,19 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
             <div className="font-mono text-xs">
               {items.map((item, i) => {
                 const raw2 = typeof item === 'string' ? { label: item } : item;
-                const resolvedStyle2: 'plain' | 'line' | 'filled' = raw2.style
-                  ? raw2.style
-                  : raw2.variant === 'button' ? (raw2.buttonStyle === 'filled' ? 'filled' : 'line') : 'plain';
-                const itemData = { icon: '', hotkey: '', separator: false, ...raw2, style: resolvedStyle2 };
-                const isLabel = resolvedStyle2 === 'plain';
-                const isSelected = !isLabel && i === selectedIndex;
+                const itemData = { icon: '', hotkey: '', separator: false, ...raw2 };
+                const isSelected = i === selectedIndex;
+                const vertColor = getColor(isSelected ? itemData.selectedTextColor : itemData.textColor) || undefined;
                 return (
                   <div key={i}>
-                    <div className={`${isSelected ? 'font-bold' : ''} ${isLabel ? 'text-muted-foreground text-[10px] uppercase tracking-wide' : ''}`}>
-                      {isLabel ? '  ' : (isSelected ? '▶ ' : '  ')}
+                    <div
+                      className={isSelected ? 'font-bold' : ''}
+                      style={vertColor ? { color: vertColor } : undefined}
+                    >
+                      {isSelected ? '▶ ' : '  '}
                       {itemData.icon && `${itemData.icon} `}
                       {itemData.label}
-                      {!isLabel && itemData.hotkey && <span className="ml-auto float-right text-muted-foreground">{itemData.hotkey}</span>}
+                      {itemData.hotkey && <span className="ml-auto float-right text-muted-foreground">{itemData.hotkey}</span>}
                     </div>
                     {itemData.separator && i < items.length - 1 && (
                       <div className="text-muted-foreground">──────────────────</div>

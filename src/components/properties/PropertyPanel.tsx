@@ -616,7 +616,9 @@ function ComponentProps({ component }: { component: import('../../types').Compon
         <MenuItemsEditor
           items={(component.props.items as any[]) || []}
           selectedIndex={(component.props.selectedIndex as number) || 0}
+          menuStyle={((component.props.menuStyle as string) || 'plain') as 'plain' | 'line' | 'filled'}
           onChange={(items, selectedIndex) => componentStore.updateProps(component.id, { items, selectedIndex })}
+          onStyleChange={(style) => componentStore.updateProps(component.id, { menuStyle: style })}
         />
       )}
 
@@ -992,9 +994,10 @@ function normalizeMenuItem(item: any) {
 }
 
 function MenuItemRow({
-  item, onUpdate, onRemove,
+  item, menuStyle, onUpdate, onRemove,
 }: {
   item: any;
+  menuStyle: 'plain' | 'line' | 'filled';
   onUpdate: (patch: object) => void;
   onRemove: () => void;
 }) {
@@ -1017,61 +1020,62 @@ function MenuItemRow({
           <Trash2 className="w-3 h-3" />
         </button>
       </div>
-      {/* style + separator */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <div className="flex bg-input rounded overflow-hidden border border-border/50">
-          {(['plain', 'line', 'filled'] as const).map(s => (
-            <button key={s} onClick={() => onUpdate({ style: s })}
-              className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.style === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
-              {s}
-            </button>
-          ))}
-        </div>
+      {/* separator */}
+      <div className="flex items-center gap-1.5">
         <button onClick={() => onUpdate({ separator: !d.separator })}
           className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${d.separator ? 'border-primary text-primary' : 'border-border/50 text-muted-foreground hover:border-border'}`}
           title="Separator after this item">
-          ─┤
+          ─┤ separator
         </button>
       </div>
-      {/* Fill colors accordion — only for filled style */}
-      {d.style === 'filled' && (
-        <div className="pt-0.5">
-          <button
-            onClick={() => setColorsOpen(o => !o)}
-            className="flex items-center gap-1 w-full hover:bg-accent/50 rounded px-0.5 py-0.5 transition-colors"
-          >
-            {colorsOpen
-              ? <ChevronDown className="w-2.5 h-2.5 text-muted-foreground" />
-              : <ChevronRight className="w-2.5 h-2.5 text-muted-foreground" />
-            }
-            <span className="text-[9px] font-semibold">Colors</span>
-          </button>
-          {colorsOpen && (
-            <div className="space-y-1 pt-1 pl-0.5">
-              <ColorPicker label="Normal · Background" value={d.fillColor} onChange={c => onUpdate({ fillColor: c })} />
-              <ColorPicker label="Normal · Text" value={d.fillTextColor} onChange={c => onUpdate({ fillTextColor: c })} />
-              <ColorPicker label="Selected · Background" value={d.selectedFillColor} onChange={c => onUpdate({ selectedFillColor: c })} />
-              <ColorPicker label="Selected · Text" value={d.selectedFillTextColor} onChange={c => onUpdate({ selectedFillTextColor: c })} />
-            </div>
-          )}
-        </div>
-      )}
+      {/* Colors accordion */}
+      <div className="pt-0.5">
+        <button
+          onClick={() => setColorsOpen(o => !o)}
+          className="flex items-center gap-1 w-full hover:bg-accent/50 rounded px-0.5 py-0.5 transition-colors"
+        >
+          {colorsOpen
+            ? <ChevronDown className="w-2.5 h-2.5 text-muted-foreground" />
+            : <ChevronRight className="w-2.5 h-2.5 text-muted-foreground" />
+          }
+          <span className="text-[9px] font-semibold">Colors</span>
+        </button>
+        {colorsOpen && (
+          <div className="space-y-1 pt-1 pl-0.5">
+            {menuStyle === 'filled' ? (
+              <>
+                <ColorPicker label="Normal · Background" value={d.fillColor} onChange={c => onUpdate({ fillColor: c })} />
+                <ColorPicker label="Normal · Text" value={d.fillTextColor} onChange={c => onUpdate({ fillTextColor: c })} />
+                <ColorPicker label="Selected · Background" value={d.selectedFillColor} onChange={c => onUpdate({ selectedFillColor: c })} />
+                <ColorPicker label="Selected · Text" value={d.selectedFillTextColor} onChange={c => onUpdate({ selectedFillTextColor: c })} />
+              </>
+            ) : (
+              <>
+                <ColorPicker label="Normal · Text" value={d.textColor} onChange={c => onUpdate({ textColor: c })} />
+                <ColorPicker label="Selected · Text" value={d.selectedTextColor} onChange={c => onUpdate({ selectedTextColor: c })} />
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 function MenuItemsEditor({
-  items, selectedIndex, onChange,
+  items, selectedIndex, menuStyle, onChange, onStyleChange,
 }: {
   items: any[];
   selectedIndex: number;
+  menuStyle: 'plain' | 'line' | 'filled';
   onChange: (items: any[], selectedIndex: number) => void;
+  onStyleChange: (style: 'plain' | 'line' | 'filled') => void;
 }) {
   const updateItem = (i: number, patch: object) => {
     onChange(items.map((item, idx) => idx === i ? { ...normalizeMenuItem(item), ...patch } : item), selectedIndex);
   };
   const addItem = () => {
-    onChange([...items, { label: 'Item', icon: '', hotkey: '', separator: false, style: 'plain' }], selectedIndex);
+    onChange([...items, { label: 'Item', icon: '', hotkey: '', separator: false }], selectedIndex);
   };
   const removeItem = (i: number) => {
     const next = items.filter((_, idx) => idx !== i);
@@ -1082,6 +1086,18 @@ function MenuItemsEditor({
 
   return (
     <div className="space-y-2">
+      {/* Global style selector */}
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] text-muted-foreground uppercase tracking-wide flex-shrink-0">Style</span>
+        <div className="flex bg-input rounded overflow-hidden border border-border/50">
+          {(['plain', 'line', 'filled'] as const).map(s => (
+            <button key={s} onClick={() => onStyleChange(s)}
+              className={`px-1.5 py-0.5 text-[9px] transition-colors ${menuStyle === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="flex items-center gap-1">
         <span className="text-[9px] text-muted-foreground uppercase tracking-wide flex-1">Items</span>
         <button onClick={addItem} className="text-[10px] px-1.5 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary rounded">+ Item</button>
@@ -1091,6 +1107,7 @@ function MenuItemsEditor({
           <MenuItemRow
             key={i}
             item={item}
+            menuStyle={menuStyle}
             onUpdate={(patch) => updateItem(i, patch)}
             onRemove={() => removeItem(i)}
           />
