@@ -265,6 +265,7 @@ function GlyphPicker({ onInsert }: { onInsert: (glyph: string) => void }) {
   const [open, setOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, right: 0 });
 
   useEffect(() => {
@@ -272,9 +273,9 @@ function GlyphPicker({ onInsert }: { onInsert: (glyph: string) => void }) {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (rect) setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
     const close = (e: MouseEvent) => {
-      if (!buttonRef.current?.closest('[data-glyph-picker]')?.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const inTrigger = buttonRef.current?.closest('[data-glyph-picker]')?.contains(e.target as Node);
+      const inDropdown = dropdownRef.current?.contains(e.target as Node);
+      if (!inTrigger && !inDropdown) setOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
@@ -292,6 +293,7 @@ function GlyphPicker({ onInsert }: { onInsert: (glyph: string) => void }) {
       </button>
       {open && createPortal(
         <div
+          ref={dropdownRef}
           className="fixed w-56 bg-popover border border-border rounded-lg shadow-lg"
           style={{ top: pos.top, right: pos.right, zIndex: 9999 }}
         >
