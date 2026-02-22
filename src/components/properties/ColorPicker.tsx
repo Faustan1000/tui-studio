@@ -227,7 +227,7 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
       {isOpen && (
         <div
           className="absolute z-50 left-0 mt-1 bg-popover border border-border rounded-md flex flex-col"
-          style={{ top: '100%', width: activeTab === 'gradient' ? '280px' : '192px' }}
+          style={{ top: '100%', width: activeTab === 'gradient' ? '280px' : '240px' }}
           tabIndex={-1}
           onKeyDown={handlePopupKeyDown}
         >
@@ -245,7 +245,7 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
             ))}
           </div>
 
-          <div ref={listRef} className={activeTab === 'gradient' ? '' : 'overflow-y-auto max-h-72'}>
+          <div ref={listRef} className={activeTab === 'gradient' ? '' : 'overflow-y-auto max-h-72 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full'}>
             {/* None option (solid tabs only) */}
             {activeTab !== 'gradient' && (
               <button type="button" onClick={() => { onChange(''); setIsOpen(false); }}
@@ -470,7 +470,7 @@ function RGBSlider({
         className="flex-1 h-1" />
       <input type="number" min="0" max="255" value={current}
         onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 0 && v <= 255) handleChange(v); }}
-        className="w-10 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none" />
+        className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none" />
     </div>
   );
 }

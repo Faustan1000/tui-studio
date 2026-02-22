@@ -982,6 +982,88 @@ function ListItemsEditor({
 }
 
 // Menu Items Editor
+function normalizeMenuItem(item: any) {
+  const base = typeof item === 'string'
+    ? { label: item, icon: '', hotkey: '', separator: false }
+    : { icon: '', hotkey: '', separator: false, ...item };
+  if (!base.style) {
+    if (base.variant === 'button') base.style = base.buttonStyle === 'filled' ? 'filled' : 'line';
+    else base.style = 'plain';
+  }
+  return base;
+}
+
+function MenuItemRow({
+  item, onUpdate, onRemove,
+}: {
+  item: any;
+  onUpdate: (patch: object) => void;
+  onRemove: () => void;
+}) {
+  const [colorsOpen, setColorsOpen] = useState(false);
+  const d = normalizeMenuItem(item);
+  const inputCls = 'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+
+  return (
+    <div className="p-1.5 bg-accent/30 rounded space-y-1">
+      {/* icon, label, hotkey, delete */}
+      <div className="flex items-center gap-1">
+        <input value={d.icon || ''} onChange={e => onUpdate({ icon: e.target.value })}
+          className={inputCls + ' w-8 text-center font-mono'} placeholder="⌂" />
+        <GlyphPicker onInsert={(g) => onUpdate({ icon: g })} />
+        <input value={d.label || ''} onChange={e => onUpdate({ label: e.target.value })}
+          className={inputCls + ' flex-1 min-w-0'} placeholder="Label" />
+        <input value={d.hotkey || ''} onChange={e => onUpdate({ hotkey: e.target.value })}
+          className={inputCls + ' w-10 font-mono'} placeholder="^K" />
+        <button onClick={onRemove} className="text-muted-foreground hover:text-destructive flex-shrink-0">
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+      {/* style + separator */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex bg-input rounded overflow-hidden border border-border/50">
+          {(['plain', 'line', 'filled'] as const).map(s => (
+            <button key={s} onClick={() => onUpdate({ style: s })}
+              className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.style === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => onUpdate({ separator: !d.separator })}
+          className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${d.separator ? 'border-primary text-primary' : 'border-border/50 text-muted-foreground hover:border-border'}`}
+          title="Separator after this item">
+          ─┤
+        </button>
+      </div>
+      {/* Fill colors accordion — only for filled style */}
+      {d.style === 'filled' && (
+        <div className="pt-0.5">
+          <button
+            onClick={() => setColorsOpen(o => !o)}
+            className="flex items-center gap-1 w-full hover:bg-accent/50 rounded px-0.5 py-0.5 transition-colors"
+          >
+            {colorsOpen
+              ? <ChevronDown className="w-2.5 h-2.5 text-muted-foreground" />
+              : <ChevronRight className="w-2.5 h-2.5 text-muted-foreground" />
+            }
+            <span className="text-[9px] font-semibold">Colors</span>
+          </button>
+          {colorsOpen && (
+            <div className="space-y-1 pt-1 pl-0.5">
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Normal</div>
+              <ColorPicker label="Background" value={d.fillColor} onChange={c => onUpdate({ fillColor: c })} />
+              <ColorPicker label="Text" value={d.fillTextColor} onChange={c => onUpdate({ fillTextColor: c })} />
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wide pt-0.5">Selected</div>
+              <ColorPicker label="Background" value={d.selectedFillColor} onChange={c => onUpdate({ selectedFillColor: c })} />
+              <ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => onUpdate({ selectedFillTextColor: c })} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MenuItemsEditor({
   items, selectedIndex, onChange,
 }: {
@@ -989,21 +1071,8 @@ function MenuItemsEditor({
   selectedIndex: number;
   onChange: (items: any[], selectedIndex: number) => void;
 }) {
-  // Migrate old variant+buttonStyle data to the unified `style` field
-  const normalize = (item: any) => {
-    const base = typeof item === 'string'
-      ? { label: item, icon: '', hotkey: '', separator: false }
-      : { icon: '', hotkey: '', separator: false, ...item };
-    if (!base.style) {
-      // migrate from old variant/buttonStyle fields
-      if (base.variant === 'button') base.style = base.buttonStyle === 'filled' ? 'filled' : 'line';
-      else base.style = 'plain';
-    }
-    return base;
-  };
-
   const updateItem = (i: number, patch: object) => {
-    onChange(items.map((item, idx) => idx === i ? { ...normalize(item), ...patch } : item), selectedIndex);
+    onChange(items.map((item, idx) => idx === i ? { ...normalizeMenuItem(item), ...patch } : item), selectedIndex);
   };
   const addItem = () => {
     onChange([...items, { label: 'Item', icon: '', hotkey: '', separator: false, style: 'plain' }], selectedIndex);
@@ -1022,53 +1091,14 @@ function MenuItemsEditor({
         <button onClick={addItem} className="text-[10px] px-1.5 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary rounded">+ Item</button>
       </div>
       <div className="space-y-1.5">
-        {items.map((item: any, i: number) => {
-          const d = normalize(item);
-          return (
-            <div key={i} className="p-1.5 bg-accent/30 rounded space-y-1">
-              {/* icon, label, hotkey, delete */}
-              <div className="flex items-center gap-1">
-                <input value={d.icon || ''} onChange={e => updateItem(i, { icon: e.target.value })}
-                  className={inputCls + ' w-8 text-center font-mono'} placeholder="⌂" />
-                <GlyphPicker onInsert={(g) => updateItem(i, { icon: g })} />
-                <input value={d.label || ''} onChange={e => updateItem(i, { label: e.target.value })}
-                  className={inputCls + ' flex-1 min-w-0'} placeholder="Label" />
-                <input value={d.hotkey || ''} onChange={e => updateItem(i, { hotkey: e.target.value })}
-                  className={inputCls + ' w-10 font-mono'} placeholder="^K" />
-                <button onClick={() => removeItem(i)} className="text-muted-foreground hover:text-destructive flex-shrink-0">
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-              {/* style + separator */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <div className="flex bg-input rounded overflow-hidden border border-border/50">
-                  {(['plain', 'line', 'filled'] as const).map(s => (
-                    <button key={s} onClick={() => updateItem(i, { style: s })}
-                      className={`px-1.5 py-0.5 text-[9px] transition-colors ${d.style === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-                <button onClick={() => updateItem(i, { separator: !d.separator })}
-                  className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${d.separator ? 'border-primary text-primary' : 'border-border/50 text-muted-foreground hover:border-border'}`}
-                  title="Separator after this item">
-                  ─┤
-                </button>
-              </div>
-              {/* Fill colors — only for filled style */}
-              {d.style === 'filled' && (
-                <div className="space-y-1 pt-0.5">
-                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Normal</div>
-                  <ColorPicker label="Background" value={d.fillColor} onChange={c => updateItem(i, { fillColor: c })} />
-                  <ColorPicker label="Text" value={d.fillTextColor} onChange={c => updateItem(i, { fillTextColor: c })} />
-                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide pt-0.5">Selected</div>
-                  <ColorPicker label="Background" value={d.selectedFillColor} onChange={c => updateItem(i, { selectedFillColor: c })} />
-                  <ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => updateItem(i, { selectedFillTextColor: c })} />
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {items.map((item: any, i: number) => (
+          <MenuItemRow
+            key={i}
+            item={item}
+            onUpdate={(patch) => updateItem(i, patch)}
+            onRemove={() => removeItem(i)}
+          />
+        ))}
       </div>
       {items.length > 0 && (
         <div className="flex items-center gap-2">
