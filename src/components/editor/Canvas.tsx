@@ -377,6 +377,7 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
   };
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const [insertionIndex, setInsertionIndex] = useState<number | null>(null);
   const [resizing, setResizing] = useState<{
     direction: 'e' | 's' | 'se';
@@ -525,35 +526,39 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           const hotkey = typeof tab === 'object' && tab.hotkey ? ` ${tab.hotkey}` : '';
           return `${icon}${label}${status}${hotkey}`;
         });
-        const tabsGroupWidth = tabStrings.reduce((sum: number, t: string) => sum + t.length + 4, 0);
-        const componentWidth = layout.width;
         const justify = (node.layout as any).justify || 'start';
-        let leftOffset: number;
-        if (justify === 'center') {
-          leftOffset = Math.max(1, Math.floor((componentWidth - tabsGroupWidth) / 2));
-        } else if (justify === 'end') {
-          leftOffset = Math.max(1, componentWidth - tabsGroupWidth);
-        } else {
-          leftOffset = 1;
-        }
-        const rightOffset = Math.max(0, componentWidth - leftOffset - tabsGroupWidth);
-        let topRow = ' '.repeat(leftOffset);
-        let midRow = ' '.repeat(leftOffset);
-        let botRow = '─'.repeat(leftOffset);
-        tabStrings.forEach((text: string, i: number) => {
+        const flexJustify = justify === 'center' ? 'center' : justify === 'end' ? 'flex-end' : 'flex-start';
+        const tabBoxes = tabStrings.map((text, i) => {
           const innerWidth = text.length + 2;
-          topRow += `╭${'─'.repeat(innerWidth)}╮`;
-          midRow += `│ ${text} │`;
-          botRow += i === activeTab
-            ? `╯${' '.repeat(innerWidth)}╰`
-            : `┴${'─'.repeat(innerWidth)}┴`;
+          return {
+            top: `╭${'─'.repeat(innerWidth)}╮`,
+            mid: `│ ${text} │`,
+            bot: i === activeTab
+              ? `╯${' '.repeat(innerWidth)}╰`
+              : `┴${'─'.repeat(innerWidth)}┴`,
+          };
         });
-        botRow += '─'.repeat(rightOffset);
         return (
-          <div className="font-mono leading-none text-xs whitespace-pre">
-            <div>{topRow}</div>
-            <div>{midRow}</div>
-            <div>{botRow}</div>
+          <div className="font-mono leading-none text-xs w-full">
+            {/* Top + mid rows: CSS-aligned tab boxes */}
+            <div className="flex whitespace-pre" style={{ justifyContent: flexJustify }}>
+              {tabBoxes.map((box, i) => (
+                <div key={i}>
+                  <div>{box.top}</div>
+                  <div>{box.mid}</div>
+                </div>
+              ))}
+            </div>
+            {/* Bottom row: full-width CSS line + junction chars overlay */}
+            <div className="relative whitespace-pre" style={{ height: '1em' }}>
+              <div
+                className="absolute left-0 right-0"
+                style={{ top: '50%', height: '1px', backgroundColor: 'currentColor', transform: 'translateY(-50%)' }}
+              />
+              <div className="relative flex" style={{ justifyContent: flexJustify }}>
+                {tabBoxes.map((box, i) => <div key={i}>{box.bot}</div>)}
+              </div>
+            </div>
           </div>
         );
       }
@@ -960,14 +965,18 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onMouseOver={(e) => { e.stopPropagation(); if (node.id !== 'root') setIsHovered(true); }}
+        onMouseOut={(e) => { e.stopPropagation(); setIsHovered(false); }}
         className={`absolute transition-colors ${
           isDragging ? 'opacity-50 cursor-grabbing' : 'cursor-grab'
         } ${
           isSelected && node.id !== 'root'
             ? 'ring-2 ring-primary ring-offset-2'
-            : hasOverflow
-              ? 'ring-1 ring-red-500'
-              : ''
+            : isHovered && node.id !== 'root'
+              ? 'ring-1 ring-primary/50'
+              : hasOverflow
+                ? 'ring-1 ring-red-500'
+                : ''
         }`}
         style={{
           left: `${x}px`,
@@ -984,10 +993,10 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
           pointerEvents: node.locked ? 'none' : 'auto',
           ...borderStyleProps,
           display: node.hidden ? 'none' : 'flex',
-          alignItems: 'center',
+          alignItems: ['Tabs'].includes(node.type) ? 'flex-start' : 'center',
           justifyContent: node.type === 'Text'
             ? ((node.props.align === 'right') ? 'flex-end' : (node.props.align === 'center') ? 'center' : 'flex-start')
-            : ['Checkbox', 'Radio', 'Menu'].includes(node.type) ? 'flex-start' : 'center',
+            : ['Checkbox', 'Radio', 'Menu', 'Tabs'].includes(node.type) ? 'flex-start' : 'center',
           padding: node.layout.padding !== undefined
             ? `${node.layout.padding * cellHeight * zoom}px ${node.layout.padding * cellWidth * zoom}px`
             : undefined,
@@ -1015,8 +1024,8 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
         {renderComponent()}
 
 
-        {/* Resize handles - shown when selected, constrained by component type */}
-        {isSelected && node.id !== 'root' && !isDragging && getResizeHandles().map(dir => {
+        {/* Resize handles - shown when selected (full) or hovered (dimmed preview) */}
+        {(isSelected || isHovered) && node.id !== 'root' && !isDragging && getResizeHandles().map(dir => {
           const handlePositions: Record<string, React.CSSProperties> = {
             e:  { right: '-4px', top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize' },
             s:  { bottom: '-4px', left: '50%', transform: 'translateX(-50%)', cursor: 'ns-resize' },
@@ -1033,6 +1042,8 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
                 border: '2px solid white',
                 borderRadius: '2px',
                 zIndex: 50,
+                opacity: isSelected ? 1 : 0.35,
+                pointerEvents: isSelected ? 'auto' : 'none',
                 ...handlePositions[dir],
               }}
               onMouseDown={e => handleResizeStart(e, dir as 'e' | 's' | 'se')}
