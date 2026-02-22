@@ -10,6 +10,73 @@ import type { ComponentNode } from '../../types';
 import { interpolateGradientColor } from '../../utils/rendering/ansi';
 import { ComponentToolbar } from './ComponentToolbar';
 
+// ── Canvas size control ───────────────────────────────────────────────────────
+
+function CanvasSizeControl() {
+  const canvasStore = useCanvasStore();
+  const [cols, setCols] = useState(canvasStore.width);
+  const [rows, setRows] = useState(canvasStore.height);
+
+  // Sync local state when switching away from custom and back
+  useEffect(() => {
+    if (canvasStore.sizeMode !== 'custom') {
+      setCols(canvasStore.width);
+      setRows(canvasStore.height);
+    }
+  }, [canvasStore.sizeMode, canvasStore.width, canvasStore.height]);
+
+  const handleApply = () => {
+    canvasStore.setCanvasSize(cols, rows);
+  };
+
+  return (
+    <div className="absolute -bottom-8 left-0 flex items-center gap-2">
+      <select
+        value={canvasStore.sizeMode}
+        onChange={(e) => canvasStore.setSizeMode(e.target.value as any)}
+        className="px-2 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none"
+      >
+        <option value="default">Default (80×25)</option>
+        <option value="responsive">Responsive</option>
+        <option value="custom">Custom</option>
+      </select>
+
+      {canvasStore.sizeMode === 'custom' ? (
+        <>
+          <input
+            type="number"
+            min={10} max={200}
+            value={cols}
+            onChange={e => setCols(Number(e.target.value))}
+            onKeyDown={e => e.key === 'Enter' && handleApply()}
+            className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none text-center"
+            title="Columns"
+          />
+          <span className="text-[10px] text-muted-foreground/60">×</span>
+          <input
+            type="number"
+            min={10} max={100}
+            value={rows}
+            onChange={e => setRows(Number(e.target.value))}
+            onKeyDown={e => e.key === 'Enter' && handleApply()}
+            className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none text-center"
+            title="Rows"
+          />
+          <button
+            onClick={handleApply}
+            className="px-2 py-0.5 text-[11px] bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+          >
+            Apply
+          </button>
+        </>
+      ) : (
+        <span className="text-[10px] text-muted-foreground/60">
+          {canvasStore.width}×{canvasStore.height}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function Canvas() {
   // Subscribe to ENTIRE store to avoid stale state
@@ -298,20 +365,7 @@ export function Canvas() {
         </div>
 
         {/* Canvas Size Selector */}
-        <div className="absolute -bottom-8 left-0 flex items-center gap-2">
-          <select
-            value={canvasStore.sizeMode}
-            onChange={(e) => canvasStore.setSizeMode(e.target.value as any)}
-            className="px-2 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none"
-          >
-            <option value="default">Default (80×25)</option>
-            <option value="responsive">Responsive</option>
-          </select>
-
-          <span className="text-[10px] text-muted-foreground/60">
-            {canvasStore.width}×{canvasStore.height}
-          </span>
-        </div>
+        <CanvasSizeControl />
 
       </div>
     </div>

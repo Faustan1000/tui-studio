@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-export type CanvasSizeMode = 'default' | 'responsive';
+export type CanvasSizeMode = 'default' | 'responsive' | 'custom';
 
 interface CanvasState {
   // Dimensions (in terminal columns/rows)
@@ -56,8 +56,6 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     set(() => {
       if (mode === 'default') {
         return { sizeMode: mode, width: 80, height: 25 };
-      } else if (mode === 'responsive') {
-        return { sizeMode: mode };
       }
       return { sizeMode: mode };
     });
