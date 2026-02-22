@@ -1059,15 +1059,11 @@ function MenuItemsEditor({
               {d.style === 'filled' && (
                 <div className="space-y-1 pt-0.5">
                   <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Normal</div>
-                  <div className="flex gap-1">
-                    <div className="flex-1"><ColorPicker label="Background" value={d.fillColor} onChange={c => updateItem(i, { fillColor: c })} /></div>
-                    <div className="flex-1"><ColorPicker label="Text" value={d.fillTextColor} onChange={c => updateItem(i, { fillTextColor: c })} /></div>
-                  </div>
-                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Selected</div>
-                  <div className="flex gap-1">
-                    <div className="flex-1"><ColorPicker label="Background" value={d.selectedFillColor} onChange={c => updateItem(i, { selectedFillColor: c })} /></div>
-                    <div className="flex-1"><ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => updateItem(i, { selectedFillTextColor: c })} /></div>
-                  </div>
+                  <ColorPicker label="Background" value={d.fillColor} onChange={c => updateItem(i, { fillColor: c })} />
+                  <ColorPicker label="Text" value={d.fillTextColor} onChange={c => updateItem(i, { fillTextColor: c })} />
+                  <div className="text-[9px] text-muted-foreground uppercase tracking-wide pt-0.5">Selected</div>
+                  <ColorPicker label="Background" value={d.selectedFillColor} onChange={c => updateItem(i, { selectedFillColor: c })} />
+                  <ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => updateItem(i, { selectedFillTextColor: c })} />
                 </div>
               )}
             </div>
