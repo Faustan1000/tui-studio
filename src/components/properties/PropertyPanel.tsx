@@ -6,6 +6,7 @@ import { ChevronRight, ChevronDown, Trash2, Copy, AlignLeft, AlignCenter, AlignR
 import { useSelectionStore, useComponentStore } from '../../stores';
 import { LayoutEditor } from './LayoutEditor';
 import { StyleEditor } from './StyleEditor';
+import { ColorPicker } from './ColorPicker';
 
 // Collapsible Section Component
 function Section({
@@ -1048,6 +1049,28 @@ function MenuItemsEditor({
                         {s}
                       </button>
                     ))}
+                  </div>
+                )}
+                {d.variant === 'button' && d.buttonStyle === 'filled' && (
+                  <div className="w-full space-y-1 pt-0.5">
+                    <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Normal</div>
+                    <div className="flex gap-1">
+                      <div className="flex-1">
+                        <ColorPicker label="Background" value={d.fillColor} onChange={c => updateItem(i, { fillColor: c })} />
+                      </div>
+                      <div className="flex-1">
+                        <ColorPicker label="Text" value={d.fillTextColor} onChange={c => updateItem(i, { fillTextColor: c })} />
+                      </div>
+                    </div>
+                    <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Selected</div>
+                    <div className="flex gap-1">
+                      <div className="flex-1">
+                        <ColorPicker label="Background" value={d.selectedFillColor} onChange={c => updateItem(i, { selectedFillColor: c })} />
+                      </div>
+                      <div className="flex-1">
+                        <ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => updateItem(i, { selectedFillTextColor: c })} />
+                      </div>
+                    </div>
                   </div>
                 )}
                 <button onClick={() => updateItem(i, { separator: !d.separator })}

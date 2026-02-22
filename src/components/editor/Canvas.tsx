@@ -598,10 +598,17 @@ const ComponentRenderer = memo(function ComponentRenderer({ node, cellWidth, cel
                 // Plain text for box sizing
                 const textStr = `${itemData.icon ? `${itemData.icon} ` : ''}${itemData.label}${itemData.hotkey ? ` ${itemData.hotkey}` : ''}`;
                 let content: React.ReactNode;
+                const isSelected = i === selectedIndex;
                 if (itemData.variant === 'button') {
                   if (itemData.buttonStyle === 'filled') {
+                    const bg = isSelected
+                      ? (itemData.selectedFillColor || getColor(itemData.selectedFillColor) || '#ffffff')
+                      : (itemData.fillColor || getColor(itemData.fillColor) || '#ffffff');
+                    const fg = isSelected
+                      ? (itemData.selectedFillTextColor || getColor(itemData.selectedFillTextColor) || '#000000')
+                      : (itemData.fillTextColor || getColor(itemData.fillTextColor) || '#000000');
                     content = (
-                      <span style={{ background: 'currentColor', filter: 'invert(1)', padding: '0 3px' }}>
+                      <span style={{ background: bg, color: fg, padding: '0 3px' }}>
                         {textStr}
                       </span>
                     );
