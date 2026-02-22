@@ -2,6 +2,46 @@
 
 All notable changes to TUIStudio are documented here.
 
+## [0.3.6] - 2026-02-22
+
+### Added
+- **Menu global style** — Style (plain / line / filled) is now a single setting for the whole Menu component, not per-item. All items share the same visual style.
+- **Menu item colors for all styles** — Custom Normal and Selected text colors are now available for `plain` and `line` menu items, in addition to the existing background + text colors for `filled` items.
+- **Table column insert & delete** — Each column header in the Table editor now shows a `+` button (insert column after) and a trash button (delete column).
+
+### Fixed
+- **Tabs active tab bottom line** — The active tab no longer shows the horizontal separator line bleeding through its open bottom gap.
+
+---
+
+## [0.3.5] - 2026-02-21
+
+### Added
+- **Menu editor overhaul** — Full content editing for Menu items: label, icon (with glyph picker), hotkey, separator, and per-item style (plain / line / filled). Filled items support custom Normal and Selected background + text colors in a collapsible accordion.
+- **Custom canvas size** — New "Custom" option in the canvas size selector. Enter any columns × rows and click Apply.
+
+### Changed
+- **Modal moved to Layout group** — Modal is now listed under Layout in the component toolbar (Overlay group removed).
+- **Menu selected item** — Replaced the numeric index input with a dropdown showing item labels.
+- **Color labels** — Menu item color pickers use compact combined labels ("Normal · Background", "Normal · Text", etc.).
+
+### Fixed
+- **Number inputs** — Inputs no longer snap to `0` when cleared mid-edit. A new `NumericInput` component holds local string state while focused and only commits on blur.
+- **Breadcrumb height** — Default height is now 1 row instead of 3.
+
+### Removed
+- **Popover and Tooltip components** — Removed; not applicable to terminal UIs.
+- **Drop Shadow option** — Removed from all components (had no effect in terminal rendering).
+
+---
+
+## [0.3.4] - 2026-02-21
+
+### Changed
+- **macOS DMG installer** — Installer now uses `create-dmg` for a styled disk image with background art and proper icon layout.
+
+---
+
 ## [0.3.0] - 2026-02-20
 
 ### Added
