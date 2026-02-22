@@ -1048,12 +1048,10 @@ function MenuItemRow({
           </button>
           {colorsOpen && (
             <div className="space-y-1 pt-1 pl-0.5">
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Normal</div>
-              <ColorPicker label="Background" value={d.fillColor} onChange={c => onUpdate({ fillColor: c })} />
-              <ColorPicker label="Text" value={d.fillTextColor} onChange={c => onUpdate({ fillTextColor: c })} />
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wide pt-0.5">Selected</div>
-              <ColorPicker label="Background" value={d.selectedFillColor} onChange={c => onUpdate({ selectedFillColor: c })} />
-              <ColorPicker label="Text" value={d.selectedFillTextColor} onChange={c => onUpdate({ selectedFillTextColor: c })} />
+              <ColorPicker label="Normal · Background" value={d.fillColor} onChange={c => onUpdate({ fillColor: c })} />
+              <ColorPicker label="Normal · Text" value={d.fillTextColor} onChange={c => onUpdate({ fillTextColor: c })} />
+              <ColorPicker label="Selected · Background" value={d.selectedFillColor} onChange={c => onUpdate({ selectedFillColor: c })} />
+              <ColorPicker label="Selected · Text" value={d.selectedFillTextColor} onChange={c => onUpdate({ selectedFillTextColor: c })} />
             </div>
           )}
         </div>
@@ -1100,13 +1098,17 @@ function MenuItemsEditor({
       </div>
       {items.length > 0 && (
         <div className="flex items-center gap-2">
-          <label className="text-[9px] text-muted-foreground uppercase tracking-wide w-20">Selected</label>
-          <NumericInput
+          <label className="text-[9px] text-muted-foreground uppercase tracking-wide flex-shrink-0">Selected</label>
+          <select
             value={selectedIndex}
-            onChange={v => onChange(items, Math.max(0, Math.min(items.length - 1, v)))}
-            min={0} max={items.length - 1}
-            className={inputCls + ' w-14'}
-          />
+            onChange={e => onChange(items, Number(e.target.value))}
+            className={inputCls + ' flex-1 min-w-0'}
+          >
+            {items.map((item: any, i: number) => {
+              const d = normalizeMenuItem(item);
+              return <option key={i} value={i}>{d.label || `Item ${i + 1}`}</option>;
+            })}
+          </select>
         </div>
       )}
     </div>
