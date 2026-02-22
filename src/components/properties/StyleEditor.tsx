@@ -239,14 +239,6 @@ export function StyleEditor({ component }: StyleEditorProps) {
           />
         </div>
 
-        {/* Shadow */}
-        <label className="flex items-center gap-2 text-[11px] cursor-pointer">
-          <Checkbox
-            checked={component.style.shadow || false}
-            onChange={(v) => updateStyle({ shadow: v })}
-          />
-          Drop Shadow
-        </label>
       </Section>
     </div>
   );
