@@ -354,6 +354,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
         <div>
           <h2 className="text-base font-semibold">TUIStudio</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">Terminal UI Design Tool</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{__APP_VERSION__}</p>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
           A Figma-like visual editor for designing Terminal User Interface applications.
