@@ -1,15 +1,14 @@
-<img src="public/logo-tui-studio_dark.svg" alt="TUIStudio" width="64" />
+<img src="public/logo-tui-studio_light.svg" alt="TUIStudio" width="64" />
 
 # TUIStudio
 
 **Visual design tool for building Terminal User Interfaces**
 
 ![Status](https://img.shields.io/badge/status-alpha-orange)
-![License](https://img.shields.io/badge/license-MIT-blue)
 
 A Figma-like visual editor for designing Terminal UI applications. Drag-and-drop components onto a live canvas, edit properties visually, and export to multiple TUI frameworks.
+<img width="400" height="400" alt="Computer" src="https://github.com/user-attachments/assets/89fc6a4f-7034-49e3-9729-5355c276842f" />
 
-![TUIStudio](public/cube.png)
 
 ## Features
 
