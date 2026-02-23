@@ -14,14 +14,14 @@ Create a visual design tool that enables developers to build Terminal User Inter
 
 ### Key Differentiators from ASCII Motion
 
-| ASCII Motion | TUI Designer |
-|--------------|--------------|
-| Pixel/cell-based art | Component-based UI design |
-| Animation sequences | Interactive UI patterns |
-| Frame-by-frame editing | Layout & navigation design |
-| Static playback | User interaction simulation |
-| Character palette | Component library |
-| Export animations | Export working TUI apps |
+| ASCII Motion           | TUI Designer                |
+| ---------------------- | --------------------------- |
+| Pixel/cell-based art   | Component-based UI design   |
+| Animation sequences    | Interactive UI patterns     |
+| Frame-by-frame editing | Layout & navigation design  |
+| Static playback        | User interaction simulation |
+| Character palette      | Component library           |
+| Export animations      | Export working TUI apps     |
 
 ---
 
@@ -197,7 +197,7 @@ export interface StyleProps {
   borderLeft?: boolean;
 
   // Colors
-  color?: string;        // Text/foreground color
+  color?: string; // Text/foreground color
   backgroundColor?: string;
 
   // Text
@@ -212,7 +212,7 @@ export interface StyleProps {
 }
 
 export interface EventHandlers {
-  onFocus?: string;      // Function name to call
+  onFocus?: string; // Function name to call
   onBlur?: string;
   onClick?: string;
   onSubmit?: string;
@@ -244,7 +244,7 @@ export interface LayoutConstraints {
   maxWidth: number;
   minHeight: number;
   maxHeight: number;
-  canvasWidth: number;  // Terminal columns
+  canvasWidth: number; // Terminal columns
   canvasHeight: number; // Terminal rows
 }
 ```
@@ -256,11 +256,11 @@ export interface LayoutConstraints {
 
 interface CanvasState {
   // Dimensions
-  width: number;   // Terminal columns (default 80)
-  height: number;  // Terminal rows (default 24)
+  width: number; // Terminal columns (default 80)
+  height: number; // Terminal rows (default 24)
 
   // View
-  zoom: number;    // 1.0 = 100%
+  zoom: number; // 1.0 = 100%
   panX: number;
   panY: number;
 
@@ -488,7 +488,9 @@ export const COMPONENT_LIBRARY = {
 **Goal**: Set up development environment and base infrastructure
 
 **Tasks**:
+
 1. ✅ Initialize Vite + React + TypeScript project
+
    ```bash
    npm create vite@latest tui-designer -- --template react-ts
    cd tui-designer
@@ -496,6 +498,7 @@ export const COMPONENT_LIBRARY = {
    ```
 
 2. ✅ Install dependencies
+
    ```bash
    # Core
    npm install zustand react-router-dom
@@ -536,12 +539,14 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **1.1 Type Definitions** (`src/types/`)
+
 - [ ] Create `components.ts` with all component types
 - [ ] Create `layout.ts` with layout system types
 - [ ] Create `export.ts` with export format types
 - [ ] Create `theme.ts` with color/theme types
 
 **1.2 Zustand Stores** (`src/stores/`)
+
 - [ ] Implement `componentStore.ts`
   - Component tree CRUD operations
   - Undo/redo with history
@@ -559,11 +564,13 @@ export const COMPONENT_LIBRARY = {
   - ANSI/256/true color modes
 
 **1.3 Component Library** (`src/constants/`)
+
 - [ ] Define all component types with defaults
 - [ ] Create component categories (layout, input, display, etc.)
 - [ ] Add component icons and descriptions
 
 **1.4 Utilities** (`src/utils/`)
+
 - [ ] `idGenerator.ts` - Unique ID generation
 - [ ] `treeUtils.ts` - Tree manipulation helpers
 - [ ] `validation.ts` - Component validation rules
@@ -579,22 +586,25 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **2.1 Layout Structure** (`src/components/editor/`)
+
 - [ ] Create `EditorLayout.tsx` - Main 3-column layout
   ```tsx
   <EditorLayout>
-    <ComponentPalette />   {/* Left sidebar */}
-    <Canvas />             {/* Center canvas */}
-    <PropertyPanel />      {/* Right sidebar */}
+    <ComponentPalette /> {/* Left sidebar */}
+    <Canvas /> {/* Center canvas */}
+    <PropertyPanel /> {/* Right sidebar */}
   </EditorLayout>
   ```
 
 **2.2 Component Palette** (`src/components/palette/`)
+
 - [ ] `ComponentPalette.tsx` - Categorized component list
 - [ ] `ComponentItem.tsx` - Draggable component item
 - [ ] `CategorySection.tsx` - Collapsible categories
 - [ ] Implement drag source for components
 
 **2.3 Canvas** (`src/components/editor/`)
+
 - [ ] `Canvas.tsx` - Main canvas container
 - [ ] `CanvasGrid.tsx` - Grid background
 - [ ] `ComponentRenderer.tsx` - Renders component tree
@@ -604,6 +614,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Add pan controls (drag canvas)
 
 **2.4 Component Tree View** (`src/components/editor/`)
+
 - [ ] `ComponentTree.tsx` - Hierarchical tree view
 - [ ] `TreeNode.tsx` - Individual tree node
 - [ ] Expand/collapse nodes
@@ -611,6 +622,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Context menu (right-click)
 
 **2.5 Toolbar** (`src/components/editor/`)
+
 - [ ] `Toolbar.tsx` - Top toolbar
 - [ ] Undo/redo buttons
 - [ ] Canvas size selector
@@ -628,6 +640,7 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **3.1 Property Panel** (`src/components/editor/`)
+
 - [ ] `PropertyPanel.tsx` - Main property inspector
 - [ ] `PropertiesTab.tsx` - Component properties
 - [ ] `LayoutTab.tsx` - Layout settings
@@ -635,6 +648,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] `EventsTab.tsx` - Event handlers
 
 **3.2 Property Inputs** (`src/components/properties/`)
+
 - [ ] `TextInput.tsx` - String properties
 - [ ] `NumberInput.tsx` - Numeric properties
 - [ ] `SelectInput.tsx` - Enum properties
@@ -644,18 +658,21 @@ export const COMPONENT_LIBRARY = {
 - [ ] `DimensionInput.tsx` - Width/height with units
 
 **3.3 Layout Editor** (`src/components/properties/`)
+
 - [ ] Flexbox controls (direction, justify, align, gap)
 - [ ] Grid controls (columns, rows, gaps)
 - [ ] Padding/margin editor with visual representation
 - [ ] Position controls for absolute layout
 
 **3.4 Style Editor**
+
 - [ ] Border controls (style, color, sides)
 - [ ] Color controls (fg, bg)
 - [ ] Text style toggles (bold, italic, underline)
 - [ ] Effect controls (opacity, shadow)
 
 **3.5 Real-time Updates**
+
 - [ ] Debounced input updates
 - [ ] Instant visual feedback
 - [ ] Validation and error messages
@@ -671,6 +688,7 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **4.1 Layout Calculator** (`src/utils/layout/`)
+
 - [ ] `layoutEngine.ts` - Main layout computation
 - [ ] `flexboxLayout.ts` - Flexbox algorithm
 - [ ] `gridLayout.ts` - Grid algorithm
@@ -678,6 +696,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] `measureText.ts` - Text measurement for sizing
 
 **4.2 Constraint System**
+
 - [ ] Min/max width constraints
 - [ ] Min/max height constraints
 - [ ] Content-based sizing ('auto')
@@ -685,11 +704,13 @@ export const COMPONENT_LIBRARY = {
 - [ ] Aspect ratio constraints
 
 **4.3 Layout Cache**
+
 - [ ] Memoize layout calculations
 - [ ] Invalidate on component changes
 - [ ] Performance monitoring
 
 **4.4 Visual Debugging**
+
 - [ ] Layout box overlay (show computed boxes)
 - [ ] Spacing visualization (padding/margin)
 - [ ] Constraint violations warnings
@@ -705,24 +726,28 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **5.1 OpenTUI Integration** (`src/components/preview/`)
+
 - [ ] `LivePreview.tsx` - OpenTUI renderer container
 - [ ] `TuiRenderer.tsx` - Converts tree to OpenTUI components
 - [ ] Map component types to OpenTUI elements
 - [ ] Handle theme switching
 
 **5.2 Component Mapping** (`src/utils/preview/`)
+
 - [ ] `componentMapper.ts` - Maps design to OpenTUI JSX
 - [ ] Handle all component types
 - [ ] Apply styles correctly
 - [ ] Support nested components
 
 **5.3 Interaction Simulation**
+
 - [ ] Focus management (Tab navigation)
 - [ ] Keyboard input simulation
 - [ ] Click simulation (for buttons)
 - [ ] Form state management
 
 **5.4 Preview Controls** (`src/components/preview/`)
+
 - [ ] `PreviewToolbar.tsx` - Preview controls
 - [ ] Terminal size selector
 - [ ] Theme switcher (dark/light)
@@ -730,6 +755,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Refresh button
 
 **5.5 Split View**
+
 - [ ] Side-by-side: Design view + Live preview
 - [ ] Toggle preview visibility
 - [ ] Resizable split pane
@@ -745,12 +771,14 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **6.1 Export Store** (`src/stores/exportStore.ts`)
+
 - [ ] Export format selection
 - [ ] Format-specific settings
 - [ ] File naming
 - [ ] Export history
 
 **6.2 OpenTUI Generator** (`src/utils/codeGen/opentuiGen.ts`)
+
 - [ ] Generate component tree as JSX
 - [ ] Generate event handlers
 - [ ] Generate state management code
@@ -759,12 +787,14 @@ export const COMPONENT_LIBRARY = {
 - [ ] Add comments and documentation
 
 **6.3 Ink Generator** (`src/utils/codeGen/inkGen.ts`)
+
 - [ ] Map components to Ink components
 - [ ] Generate Ink-specific JSX
 - [ ] Handle Ink-specific props
 - [ ] Generate render call
 
 **6.4 BubbleTea Generator** (`src/utils/codeGen/bubbleteaGen.ts`)
+
 - [ ] Generate Go structs
 - [ ] Generate Update function
 - [ ] Generate View function
@@ -772,6 +802,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Handle Elm architecture
 
 **6.5 Export UI** (`src/components/export/`)
+
 - [ ] `ExportDialog.tsx` - Main export dialog
 - [ ] `OpenTuiExportDialog.tsx` - OpenTUI settings
 - [ ] `InkExportDialog.tsx` - Ink settings
@@ -781,6 +812,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Download file button
 
 **6.6 Code Formatting**
+
 - [ ] Integrate Prettier for formatting
 - [ ] Add syntax highlighting (Monaco)
 - [ ] Line numbers
@@ -797,11 +829,13 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **7.1 Template System** (`src/templates/`)
+
 - [ ] Define template structure
 - [ ] Create template metadata
 - [ ] Template categories
 
 **7.2 Built-in Templates**
+
 - [ ] Login form
 - [ ] Dashboard layout
 - [ ] Settings screen
@@ -812,12 +846,14 @@ export const COMPONENT_LIBRARY = {
 - [ ] Error pages
 
 **7.3 Template UI** (`src/components/templates/`)
+
 - [ ] `TemplateGallery.tsx` - Browse templates
 - [ ] `TemplatePreview.tsx` - Template preview
 - [ ] `NewFromTemplate.tsx` - Create from template
 - [ ] Search and filter
 
 **7.4 Example Projects** (`examples/`)
+
 - [ ] Todo list TUI
 - [ ] File browser TUI
 - [ ] Git client TUI
@@ -835,6 +871,7 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **8.1 Keyboard Shortcuts**
+
 - [ ] Implement keyboard shortcut system
 - [ ] Undo/redo (Cmd+Z / Cmd+Shift+Z)
 - [ ] Copy/paste (Cmd+C / Cmd+V)
@@ -845,28 +882,33 @@ export const COMPONENT_LIBRARY = {
 - [ ] Customizable shortcuts
 
 **8.2 Component Presets**
+
 - [ ] Save custom component configurations
 - [ ] Preset library per component type
 - [ ] Import/export presets
 
 **8.3 Theme System**
+
 - [ ] Create custom color themes
 - [ ] Theme presets (Dracula, Nord, Solarized, etc.)
 - [ ] Theme import/export
 - [ ] Apply theme to all components
 
 **8.4 Responsive Design**
+
 - [ ] Breakpoint system (80col, 120col, etc.)
 - [ ] Preview different terminal sizes
 - [ ] Responsive layout rules
 
 **8.5 Accessibility**
+
 - [ ] Screen reader support
 - [ ] Keyboard-only navigation
 - [ ] Focus indicators
 - [ ] ARIA labels
 
 **8.6 Project Management**
+
 - [ ] Save/load projects (.tui files)
 - [ ] Project metadata
 - [ ] Recent projects
@@ -874,6 +916,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Version history
 
 **8.7 Collaboration (Future)**
+
 - [ ] Export project as shareable link
 - [ ] Import from link
 - [ ] Component library sharing
@@ -891,6 +934,7 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **9.1 Layer Data Model** (`src/stores/layerStore.ts`)
+
 - [ ] Create Project/Page/Frame/Layer hierarchy
 - [ ] Implement layer CRUD operations
 - [ ] Add visibility/lock functionality
@@ -898,6 +942,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Layer search and filtering
 
 **9.2 Layer Panel UI** (`src/components/layers/`)
+
 - [ ] `LayerPanel.tsx` - Main layer sidebar
 - [ ] `LayerTree.tsx` - Hierarchical tree view
 - [ ] `LayerItem.tsx` - Individual layer with icons
@@ -907,12 +952,14 @@ export const COMPONENT_LIBRARY = {
 - [ ] Expand/collapse groups
 
 **9.3 Page Management**
+
 - [ ] `PageTabs.tsx` - Tab bar for switching pages
 - [ ] Add/delete/rename pages
 - [ ] Page context menu
 - [ ] Duplicate pages
 
 **9.4 Frame/Artboard System**
+
 - [ ] Multiple frames per page
 - [ ] Frame selector on canvas
 - [ ] Frame thumbnails
@@ -920,6 +967,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Frame presets (80x24, 120x40, etc.)
 
 **9.5 Layer Operations**
+
 - [ ] Show/hide layers (eye icon)
 - [ ] Lock/unlock layers (lock icon)
 - [ ] Rename layers (double-click)
@@ -941,6 +989,7 @@ export const COMPONENT_LIBRARY = {
 **Tasks**:
 
 **10.1 Component Library Data** (`src/stores/componentLibraryStore.ts`)
+
 - [ ] Create ComponentLibrary data model
 - [ ] Master component management
 - [ ] Component instance system
@@ -948,6 +997,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Propagation system
 
 **10.2 Component Panel UI** (`src/components/components/`)
+
 - [ ] `ComponentPanel.tsx` - Component library sidebar
 - [ ] `ComponentGrid.tsx` - Grid view of components
 - [ ] `ComponentItem.tsx` - Draggable component
@@ -957,6 +1007,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Category organization
 
 **10.3 Component Creation**
+
 - [ ] "Create Component" button/action
 - [ ] Component creation dialog
 - [ ] Define customizable props
@@ -965,6 +1016,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Add to library
 
 **10.4 Component Instances**
+
 - [ ] Drag component from library to canvas
 - [ ] Visual instance indicator (purple outline)
 - [ ] "Go to Master Component" button
@@ -974,6 +1026,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Detach instance action
 
 **10.5 Component Variants**
+
 - [ ] Define variant properties
 - [ ] Create variant presets (Primary, Secondary, etc.)
 - [ ] Variant switcher in property panel
@@ -981,6 +1034,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Visual variant preview
 
 **10.6 Master Component Editing**
+
 - [ ] Edit mode for master components
 - [ ] Update master component
 - [ ] Propagate changes to all instances
@@ -988,6 +1042,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Visual diff of changes
 
 **10.7 Component Library Management**
+
 - [ ] Export library to `.tuicomp` file
 - [ ] Import library from file
 - [ ] Merge libraries
@@ -996,6 +1051,7 @@ export const COMPONENT_LIBRARY = {
 - [ ] Find all instances
 
 **10.8 Publishing/Sharing**
+
 - [ ] Component library file format (.tuicomp)
 - [ ] Library metadata (name, author, version)
 - [ ] Library preview/thumbnail
@@ -1063,19 +1119,31 @@ export const COLOR_MODES = {
   ansi16: {
     name: 'ANSI 16 Colors',
     colors: [
-      'black', 'red', 'green', 'yellow',
-      'blue', 'magenta', 'cyan', 'white',
-      'brightBlack', 'brightRed', 'brightGreen', 'brightYellow',
-      'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite',
+      'black',
+      'red',
+      'green',
+      'yellow',
+      'blue',
+      'magenta',
+      'cyan',
+      'white',
+      'brightBlack',
+      'brightRed',
+      'brightGreen',
+      'brightYellow',
+      'brightBlue',
+      'brightMagenta',
+      'brightCyan',
+      'brightWhite',
     ],
   },
   ansi256: {
     name: 'ANSI 256 Colors',
-    colors: [] // 0-255
+    colors: [], // 0-255
   },
   trueColor: {
     name: 'True Color (24-bit)',
-    colors: [] // #RRGGBB
+    colors: [], // #RRGGBB
   },
 };
 ```
@@ -1099,18 +1167,21 @@ export const TERMINAL_SIZES = [
 ## 🧪 Testing Strategy
 
 ### Unit Tests
+
 - Component tree operations
 - Layout calculations
 - Code generation
 - Validation rules
 
 ### Integration Tests
+
 - Drag and drop
 - Property updates
 - Undo/redo
 - Export flow
 
 ### E2E Tests (Playwright)
+
 - Create new project
 - Add components
 - Edit properties
@@ -1175,6 +1246,7 @@ export const EXPORT_FORMATS = [
 ## 🚀 Launch Plan
 
 ### MVP Features (12 weeks - Core Editor)
+
 - ✅ Core editor with drag-and-drop
 - ✅ Property editing
 - ✅ Layout engine
@@ -1184,6 +1256,7 @@ export const EXPORT_FORMATS = [
 - ✅ Project save/load
 
 ### V1.1 Features (4 weeks - Layers & Components)
+
 - ✅ Figma-style layer organization
 - ✅ Pages and frames
 - ✅ Reusable component library
@@ -1192,6 +1265,7 @@ export const EXPORT_FORMATS = [
 - ✅ Library import/export
 
 ### Post-V1.1 (3-6 months)
+
 - Component library marketplace
 - Cloud storage & collaboration
 - Real-time co-editing
@@ -1201,6 +1275,7 @@ export const EXPORT_FORMATS = [
 - AI-powered layout suggestions
 
 ### Marketing
+
 - Landing page showcasing examples
 - Video tutorials
 - Documentation site
@@ -1213,16 +1288,19 @@ export const EXPORT_FORMATS = [
 ## 📊 Success Metrics
 
 ### Adoption
+
 - 1,000 projects created in first month
 - 100 GitHub stars in first week
 - Featured on Hacker News / Reddit
 
 ### Engagement
+
 - Average session duration: 20+ minutes
 - Components placed per session: 15+
 - Code exports per session: 3+
 
 ### Quality
+
 - < 5 bug reports per 100 users
 - 4.5+ star rating
 - 80%+ positive feedback
@@ -1232,12 +1310,14 @@ export const EXPORT_FORMATS = [
 ## 🔗 Resources
 
 ### Inspiration
+
 - [ASCII Motion](https://ascii-motion.app) - Animation editor
 - [Figma](https://figma.com) - Visual design tool
 - [Framer](https://framer.com) - Interactive design
 - [Builder.io](https://builder.io) - Visual dev tool
 
 ### TUI Frameworks
+
 - [OpenTUI](https://opentui.js.org/) - Modern React TUI
 - [Ink](https://github.com/vadimdemedes/ink) - React for CLIs
 - [BubbleTea](https://github.com/charmbracelet/bubbletea) - Go TUI framework
@@ -1245,6 +1325,7 @@ export const EXPORT_FORMATS = [
 - [Textual](https://github.com/Textualize/textual) - Python TUI framework
 
 ### Documentation
+
 - React DnD: https://react-dnd.github.io/react-dnd/
 - Zustand: https://github.com/pmndrs/zustand
 - Monaco Editor: https://microsoft.github.io/monaco-editor/
@@ -1254,6 +1335,7 @@ export const EXPORT_FORMATS = [
 ## 🎯 Next Actions
 
 **Immediate (This Week)**:
+
 1. [ ] Set up project repository
 2. [ ] Initialize Vite + React + TypeScript
 3. [ ] Install dependencies
@@ -1261,12 +1343,14 @@ export const EXPORT_FORMATS = [
 5. [ ] Set up Shadcn/ui
 
 **Week 2**:
+
 1. [ ] Define all TypeScript types
 2. [ ] Implement Zustand stores
 3. [ ] Create component library definitions
 4. [ ] Build basic tree operations
 
 **Week 3**:
+
 1. [ ] Build main editor layout
 2. [ ] Implement component palette
 3. [ ] Create canvas with grid

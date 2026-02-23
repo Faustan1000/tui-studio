@@ -3,7 +3,17 @@
 import { create } from 'zustand';
 
 type ColorMode = 'ansi16' | 'ansi256' | 'trueColor';
-type ThemeName = 'default' | 'solarized-dark' | 'solarized-light' | 'dracula' | 'nord' | 'monokai' | 'gruvbox' | 'tokyo-night' | 'nightfox' | 'sonokai';
+type ThemeName =
+  | 'default'
+  | 'solarized-dark'
+  | 'solarized-light'
+  | 'dracula'
+  | 'nord'
+  | 'monokai'
+  | 'gruvbox'
+  | 'tokyo-night'
+  | 'nightfox'
+  | 'sonokai';
 
 interface AnsiColors {
   black: string;
@@ -238,11 +248,8 @@ export const THEME_NAMES: { value: ThemeName; label: string }[] = [
   { value: 'sonokai', label: 'Sonokai' },
 ];
 
-const defaultAnsiColors = THEMES.default;
-
-const savedDarkMode = typeof window !== 'undefined'
-  ? localStorage.getItem('settings-dark-mode') !== 'false'
-  : true;
+const savedDarkMode =
+  typeof window !== 'undefined' ? localStorage.getItem('settings-dark-mode') !== 'false' : true;
 
 export const useThemeStore = create<ThemeState>((set) => ({
   // Initial state

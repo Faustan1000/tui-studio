@@ -390,11 +390,9 @@ export const COMPONENT_LIBRARY: Record<ComponentType, ComponentDefinition> = {
               label: 'Child 2',
               icon: '📁',
               expanded: false,
-              children: [
-                { label: 'Nested 1', icon: '📄', children: [] },
-              ]
+              children: [{ label: 'Nested 1', icon: '📄', children: [] }],
             },
-          ]
+          ],
         },
         { label: 'Root 2', icon: '📁', expanded: false, children: [] },
       ],
@@ -510,7 +508,6 @@ export const COMPONENT_LIBRARY: Record<ComponentType, ComponentDefinition> = {
       backgroundColor: 'black',
     },
   },
-
 };
 
 // Get components by category
@@ -532,15 +529,6 @@ export const CATEGORIES: Array<{ id: ComponentDefinition['category']; name: stri
 
 // Helper to check if a component type can have children
 export function canHaveChildren(type: import('../types').ComponentType): boolean {
-  const containerTypes = [
-    'Screen',
-    'Box',
-    'Grid',
-    'Modal',
-    'Tabs',
-    'Menu',
-    'List',
-    'Tree',
-  ];
+  const containerTypes = ['Screen', 'Box', 'Grid', 'Modal', 'Tabs', 'Menu', 'List', 'Tree'];
   return containerTypes.includes(type);
 }

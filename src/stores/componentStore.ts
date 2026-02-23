@@ -22,7 +22,10 @@ interface ComponentState {
   updateComponent: (id: string, updates: Partial<ComponentNode>) => void;
   moveComponent: (id: string, newParentId: string, index?: number) => void;
   duplicateComponent: (id: string) => string | null;
-  groupComponents: (ids: string[], boxData: Omit<ComponentNode, 'id' | 'children'>) => string | null;
+  groupComponents: (
+    ids: string[],
+    boxData: Omit<ComponentNode, 'id' | 'children'>
+  ) => string | null;
   ungroupComponents: (ids: string[]) => string[];
 
   // Actions - Properties
@@ -236,19 +239,19 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
     const newRoot = cloneNode(root);
 
     // All ids must share the same parent
-    const parents = ids.map(id => findParentNode(newRoot, id));
+    const parents = ids.map((id) => findParentNode(newRoot, id));
     const parentId = parents[0]?.id;
-    if (!parentId || parents.some(p => p?.id !== parentId)) return null;
+    if (!parentId || parents.some((p) => p?.id !== parentId)) return null;
 
     const parent = findNodeById(newRoot, parentId)!;
 
     // Insert Box at the earliest position of the selected nodes
-    const indices = ids.map(id => parent.children.findIndex(c => c.id === id));
+    const indices = ids.map((id) => parent.children.findIndex((c) => c.id === id));
     const insertIndex = Math.min(...indices);
 
     // Extract selected nodes in document order
-    const ordered = parent.children.filter(c => ids.includes(c.id));
-    parent.children = parent.children.filter(c => !ids.includes(c.id));
+    const ordered = parent.children.filter((c) => ids.includes(c.id));
+    parent.children = parent.children.filter((c) => !ids.includes(c.id));
 
     const newBox: ComponentNode = { ...boxData, id: generateComponentId(), children: ordered };
     parent.children.splice(insertIndex, 0, newBox);
@@ -271,8 +274,8 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
       const parent = findParentNode(newRoot, id);
       if (!node || !parent) continue;
 
-      const index = parent.children.findIndex(c => c.id === id);
-      allChildIds.push(...node.children.map(c => c.id));
+      const index = parent.children.findIndex((c) => c.id === id);
+      allChildIds.push(...node.children.map((c) => c.id));
       parent.children.splice(index, 1, ...node.children);
     }
 

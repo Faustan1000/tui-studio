@@ -97,11 +97,11 @@ export function renderBox(
   config: BorderConfig = { style: 'single' }
 ): string[] {
   // Per-side styles fall back to the global style
-  const globalStyle  = BORDER_STYLES[config.style]       || BORDER_STYLES.single;
-  const topSty    = BORDER_STYLES[config.topStyle    ?? config.style] || globalStyle;
+  const globalStyle = BORDER_STYLES[config.style] || BORDER_STYLES.single;
+  const topSty = BORDER_STYLES[config.topStyle ?? config.style] || globalStyle;
   const bottomSty = BORDER_STYLES[config.bottomStyle ?? config.style] || globalStyle;
-  const leftSty   = BORDER_STYLES[config.leftStyle   ?? config.style] || globalStyle;
-  const rightSty  = BORDER_STYLES[config.rightStyle  ?? config.style] || globalStyle;
+  const leftSty = BORDER_STYLES[config.leftStyle ?? config.style] || globalStyle;
+  const rightSty = BORDER_STYLES[config.rightStyle ?? config.style] || globalStyle;
 
   const lines: string[] = [];
 
@@ -116,9 +116,9 @@ export function renderBox(
 
   // Top border
   if (showTop) {
-    const topLeft  = showLeft  ? (showCorners ? globalStyle.topLeft  : topSty.top) : '';
+    const topLeft = showLeft ? (showCorners ? globalStyle.topLeft : topSty.top) : '';
     const topRight = showRight ? (showCorners ? globalStyle.topRight : topSty.top) : '';
-    const topLine  = topSty.top.repeat(innerWidth);
+    const topLine = topSty.top.repeat(innerWidth);
     lines.push(topLeft + topLine + topRight);
   }
 
@@ -126,16 +126,16 @@ export function renderBox(
   for (let i = 0; i < contentHeight; i++) {
     const contentLine = content[i] || '';
     const paddedContent = contentLine.padEnd(innerWidth, ' ').slice(0, innerWidth);
-    const left  = showLeft  ? leftSty.left   : '';
+    const left = showLeft ? leftSty.left : '';
     const right = showRight ? rightSty.right : '';
     lines.push(left + paddedContent + right);
   }
 
   // Bottom border
   if (showBottom) {
-    const bottomLeft  = showLeft  ? (showCorners ? globalStyle.bottomLeft  : bottomSty.bottom) : '';
+    const bottomLeft = showLeft ? (showCorners ? globalStyle.bottomLeft : bottomSty.bottom) : '';
     const bottomRight = showRight ? (showCorners ? globalStyle.bottomRight : bottomSty.bottom) : '';
-    const bottomLine  = bottomSty.bottom.repeat(innerWidth);
+    const bottomLine = bottomSty.bottom.repeat(innerWidth);
     lines.push(bottomLeft + bottomLine + bottomRight);
   }
 

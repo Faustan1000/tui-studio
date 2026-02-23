@@ -26,15 +26,21 @@ function parseChangelog(md: string): ChangelogRelease[] {
 
       const name = sectionHeader[1].trim().toLowerCase();
       const type: ChangelogChange['type'] =
-        name === 'added'                    ? 'feature'     :
-        name === 'fixed' || name === 'security' ? 'fix'    :
-        name === 'removed'                  ? 'removed'     :
-        'improvement';
+        name === 'added'
+          ? 'feature'
+          : name === 'fixed' || name === 'security'
+            ? 'fix'
+            : name === 'removed'
+              ? 'removed'
+              : 'improvement';
 
       for (const bullet of section.match(/^- .+/gm) ?? []) {
         changes.push({
           type,
-          description: bullet.replace(/^- /, '').replace(/\*\*(.+?)\*\*/g, '$1').trim(),
+          description: bullet
+            .replace(/^- /, '')
+            .replace(/\*\*(.+?)\*\*/g, '$1')
+            .trim(),
         });
       }
     }

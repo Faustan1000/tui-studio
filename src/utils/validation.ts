@@ -23,9 +23,22 @@ export function isValidDimension(value: number | 'fill' | 'auto'): boolean {
 export function isValidColor(color: string): boolean {
   // Allow ANSI color names
   const ansiColors = [
-    'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
-    'brightBlack', 'brightRed', 'brightGreen', 'brightYellow',
-    'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite',
+    'black',
+    'red',
+    'green',
+    'yellow',
+    'blue',
+    'magenta',
+    'cyan',
+    'white',
+    'brightBlack',
+    'brightRed',
+    'brightGreen',
+    'brightYellow',
+    'brightBlue',
+    'brightMagenta',
+    'brightCyan',
+    'brightWhite',
   ];
 
   if (ansiColors.includes(color)) return true;
@@ -71,7 +84,11 @@ export function validateComponentNode(node: ComponentNode): string[] {
 
   // Validate opacity
   if (node.style.opacity !== undefined) {
-    if (typeof node.style.opacity !== 'number' || node.style.opacity < 0 || node.style.opacity > 1) {
+    if (
+      typeof node.style.opacity !== 'number' ||
+      node.style.opacity < 0 ||
+      node.style.opacity > 1
+    ) {
       errors.push('Opacity must be between 0 and 1');
     }
   }

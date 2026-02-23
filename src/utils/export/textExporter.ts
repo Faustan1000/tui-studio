@@ -14,15 +14,17 @@ export interface TextExportOptions {
 /**
  * Export design to plain text or ANSI format
  */
-export function exportToText(
-  root: ComponentNode | null,
-  options: TextExportOptions
-): string {
+export function exportToText(root: ComponentNode | null, options: TextExportOptions): string {
   if (!root) return '';
 
-  const colorMode = options.format === 'text' ? 'ansi16' :
-                    options.format === 'ansi256' ? 'ansi256' :
-                    options.format === 'trueColor' ? 'trueColor' : 'ansi16';
+  const colorMode =
+    options.format === 'text'
+      ? 'ansi16'
+      : options.format === 'ansi256'
+        ? 'ansi256'
+        : options.format === 'trueColor'
+          ? 'trueColor'
+          : 'ansi16';
 
   let output = renderTree(root, {
     width: options.width,
@@ -54,10 +56,7 @@ export function exportToText(
 /**
  * Export to file-ready format with proper line endings
  */
-export function exportToFile(
-  root: ComponentNode | null,
-  options: TextExportOptions
-): string {
+export function exportToFile(root: ComponentNode | null, options: TextExportOptions): string {
   return exportToText(root, options);
 }
 
@@ -66,10 +65,22 @@ export function exportToFile(
  */
 export function ansiToHtml(text: string): string {
   const ansi16 = [
-    '#1c1c1c', '#cc3333', '#33cc33', '#cccc33',
-    '#3333cc', '#cc33cc', '#33cccc', '#cccccc',
-    '#666666', '#ff5555', '#55ff55', '#ffff55',
-    '#5555ff', '#ff55ff', '#55ffff', '#ffffff',
+    '#1c1c1c',
+    '#cc3333',
+    '#33cc33',
+    '#cccc33',
+    '#3333cc',
+    '#cc33cc',
+    '#33cccc',
+    '#cccccc',
+    '#666666',
+    '#ff5555',
+    '#55ff55',
+    '#ffff55',
+    '#5555ff',
+    '#ff55ff',
+    '#55ffff',
+    '#ffffff',
   ];
 
   let result = '';
@@ -84,13 +95,16 @@ export function ansiToHtml(text: string): string {
   let spanOpen = false;
 
   const closeSpan = () => {
-    if (spanOpen) { result += '</span>'; spanOpen = false; }
+    if (spanOpen) {
+      result += '</span>';
+      spanOpen = false;
+    }
   };
 
   const openSpan = () => {
     const styles: string[] = [];
-    const actualFg = inverse ? (bg || '#1c1c1c') : fg;
-    const actualBg = inverse ? (fg || '#cccccc') : bg;
+    const actualFg = inverse ? bg || '#1c1c1c' : fg;
+    const actualBg = inverse ? fg || '#cccccc' : bg;
     if (actualFg) styles.push(`color:${actualFg}`);
     if (actualBg) styles.push(`background-color:${actualBg}`);
     if (bold) styles.push('font-weight:bold');
@@ -99,7 +113,10 @@ export function ansiToHtml(text: string): string {
     if (underline) deco.push('underline');
     if (strikethrough) deco.push('line-through');
     if (deco.length) styles.push(`text-decoration:${deco.join(' ')}`);
-    if (styles.length) { result += `<span style="${styles.join(';')}">`;  spanOpen = true; }
+    if (styles.length) {
+      result += `<span style="${styles.join(';')}">`;
+      spanOpen = true;
+    }
   };
 
   while (pos < text.length) {
@@ -113,8 +130,15 @@ export function ansiToHtml(text: string): string {
         let i = 0;
         while (i < codes.length) {
           const code = codes[i];
-          if (code === 0) { fg = null; bg = null; bold = false; italic = false; underline = false; strikethrough = false; inverse = false; }
-          else if (code === 1) bold = true;
+          if (code === 0) {
+            fg = null;
+            bg = null;
+            bold = false;
+            italic = false;
+            underline = false;
+            strikethrough = false;
+            inverse = false;
+          } else if (code === 1) bold = true;
           else if (code === 3) italic = true;
           else if (code === 4) underline = true;
           else if (code === 7) inverse = true;
@@ -130,10 +154,19 @@ export function ansiToHtml(text: string): string {
           else if (code === 49) bg = null;
           else if (code >= 90 && code <= 97) fg = ansi16[code - 90 + 8];
           else if (code >= 100 && code <= 107) bg = ansi16[code - 100 + 8];
-          else if (code === 38 && codes[i + 1] === 5) { fg = ansi256ToHex(codes[i + 2]); i += 2; }
-          else if (code === 48 && codes[i + 1] === 5) { bg = ansi256ToHex(codes[i + 2]); i += 2; }
-          else if (code === 38 && codes[i + 1] === 2) { fg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`; i += 4; }
-          else if (code === 48 && codes[i + 1] === 2) { bg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`; i += 4; }
+          else if (code === 38 && codes[i + 1] === 5) {
+            fg = ansi256ToHex(codes[i + 2]);
+            i += 2;
+          } else if (code === 48 && codes[i + 1] === 5) {
+            bg = ansi256ToHex(codes[i + 2]);
+            i += 2;
+          } else if (code === 38 && codes[i + 1] === 2) {
+            fg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`;
+            i += 4;
+          } else if (code === 48 && codes[i + 1] === 2) {
+            bg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`;
+            i += 4;
+          }
           i++;
         }
         openSpan();
@@ -154,18 +187,33 @@ export function ansiToHtml(text: string): string {
 
 function ansi256ToHex(n: number): string {
   const ansi16 = [
-    '#1c1c1c', '#cc3333', '#33cc33', '#cccc33',
-    '#3333cc', '#cc33cc', '#33cccc', '#cccccc',
-    '#666666', '#ff5555', '#55ff55', '#ffff55',
-    '#5555ff', '#ff55ff', '#55ffff', '#ffffff',
+    '#1c1c1c',
+    '#cc3333',
+    '#33cc33',
+    '#cccc33',
+    '#3333cc',
+    '#cc33cc',
+    '#33cccc',
+    '#cccccc',
+    '#666666',
+    '#ff5555',
+    '#55ff55',
+    '#ffff55',
+    '#5555ff',
+    '#ff55ff',
+    '#55ffff',
+    '#ffffff',
   ];
   if (n < 16) return ansi16[n] || '#ffffff';
-  if (n >= 232) { const v = 8 + (n - 232) * 10; return `rgb(${v},${v},${v})`; }
+  if (n >= 232) {
+    const v = 8 + (n - 232) * 10;
+    return `rgb(${v},${v},${v})`;
+  }
   const idx = n - 16;
   const r = Math.floor(idx / 36);
   const g = Math.floor((idx % 36) / 6);
   const b = idx % 6;
-  const c = (x: number) => x === 0 ? 0 : 55 + x * 40;
+  const c = (x: number) => (x === 0 ? 0 : 55 + x * 40);
   return `rgb(${c(r)},${c(g)},${c(b)})`;
 }
 

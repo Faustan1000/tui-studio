@@ -8,7 +8,13 @@ interface DimensionInputProps {
   max?: number;
 }
 
-export function DimensionInput({ value, onChange, label, min = 0, max = 1000 }: DimensionInputProps) {
+export function DimensionInput({
+  value,
+  onChange,
+  label,
+  min = 0,
+  max = 1000,
+}: DimensionInputProps) {
   const currentType = typeof value === 'number' ? 'number' : value || 'auto';
   const currentValue = typeof value === 'number' ? value : 0;
 

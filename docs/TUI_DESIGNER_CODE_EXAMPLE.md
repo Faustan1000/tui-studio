@@ -7,6 +7,7 @@ This document shows what the generated code would look like for different framew
 ## Example Design
 
 Let's say you design a **Login Form** with:
+
 - Box container with border
 - Text label "Login"
 - Username input field
@@ -14,6 +15,7 @@ Let's say you design a **Login Form** with:
 - Two buttons: "Login" and "Cancel"
 
 ### Component Tree
+
 ```
 Box (container)
 ├── Text (title: "Login")
@@ -102,11 +104,7 @@ export function LoginForm({ onLogin, onCancel }: LoginFormProps) {
 
       {/* Buttons */}
       <box flexDirection="row" gap={2} marginTop={1}>
-        <box
-          borderStyle="rounded"
-          padding={{ left: 2, right: 2 }}
-          bg="blue"
-        >
+        <box borderStyle="rounded" padding={{ left: 2, right: 2 }} bg="blue">
           <button onPress={handleSubmit}>
             <text bold fg="white">
               Login
@@ -114,10 +112,7 @@ export function LoginForm({ onLogin, onCancel }: LoginFormProps) {
           </button>
         </box>
 
-        <box
-          borderStyle="rounded"
-          padding={{ left: 2, right: 2 }}
-        >
+        <box borderStyle="rounded" padding={{ left: 2, right: 2 }}>
           <button onPress={handleCancel}>
             <text>Cancel</text>
           </button>
@@ -150,12 +145,14 @@ main().catch(console.error);
 ```
 
 **Dependencies**:
+
 ```bash
 npm install @opentui/core @opentui/react react
 npm install -D @types/react typescript tsx
 ```
 
 **Run**:
+
 ```bash
 tsx LoginForm.tsx
 ```
@@ -188,13 +185,7 @@ export function LoginForm({ onLogin, onCancel }: LoginFormProps) {
   };
 
   return (
-    <Box
-      borderStyle="single"
-      borderColor="cyan"
-      padding={1}
-      flexDirection="column"
-      minWidth={40}
-    >
+    <Box borderStyle="single" borderColor="cyan" padding={1} flexDirection="column" minWidth={40}>
       {/* Title */}
       <Box marginBottom={1}>
         <Text bold color="cyan">
@@ -233,25 +224,14 @@ export function LoginForm({ onLogin, onCancel }: LoginFormProps) {
 
       {/* Buttons */}
       <Box gap={2}>
-        <Box
-          borderStyle="round"
-          paddingLeft={2}
-          paddingRight={2}
-          backgroundColor="blue"
-        >
+        <Box borderStyle="round" paddingLeft={2} paddingRight={2} backgroundColor="blue">
           <Text bold color="white">
             {' Login '}
           </Text>
         </Box>
 
-        <Box
-          borderStyle="round"
-          paddingLeft={2}
-          paddingRight={2}
-        >
-          <Text>
-            {' Cancel '}
-          </Text>
+        <Box borderStyle="round" paddingLeft={2} paddingRight={2}>
+          <Text>{' Cancel '}</Text>
         </Box>
       </Box>
     </Box>
@@ -274,12 +254,14 @@ render(
 ```
 
 **Dependencies**:
+
 ```bash
 npm install ink react ink-text-input
 npm install -D @types/react typescript tsx
 ```
 
 **Run**:
+
 ```bash
 tsx LoginForm.tsx
 ```
@@ -494,6 +476,7 @@ func main() {
 ```
 
 **Dependencies**:
+
 ```bash
 go get github.com/charmbracelet/bubbletea
 go get github.com/charmbracelet/bubbles/textinput
@@ -501,6 +484,7 @@ go get github.com/charmbracelet/lipgloss
 ```
 
 **Run**:
+
 ```bash
 go run login_form.go
 ```
@@ -517,7 +501,7 @@ const blessed = require('blessed');
 // Create screen
 const screen = blessed.screen({
   smartCSR: true,
-  title: 'Login Form'
+  title: 'Login Form',
 });
 
 // Main container
@@ -528,19 +512,19 @@ const container = blessed.box({
   height: 12,
   border: {
     type: 'line',
-    fg: 'cyan'
+    fg: 'cyan',
   },
   padding: {
     top: 1,
     right: 2,
     bottom: 1,
-    left: 2
+    left: 2,
   },
   style: {
     border: {
-      fg: 'cyan'
-    }
-  }
+      fg: 'cyan',
+    },
+  },
 });
 
 // Title
@@ -550,15 +534,15 @@ const title = blessed.text({
   content: 'Login',
   style: {
     fg: 'cyan',
-    bold: true
-  }
+    bold: true,
+  },
 });
 
 // Username label
 const usernameLabel = blessed.text({
   top: 2,
   left: 0,
-  content: 'Username:'
+  content: 'Username:',
 });
 
 // Username input
@@ -568,7 +552,7 @@ const usernameInput = blessed.textbox({
   width: 32,
   height: 1,
   border: {
-    type: 'line'
+    type: 'line',
   },
   inputOnFocus: true,
   style: {
@@ -576,17 +560,17 @@ const usernameInput = blessed.textbox({
     bg: 'black',
     focus: {
       border: {
-        fg: 'blue'
-      }
-    }
-  }
+        fg: 'blue',
+      },
+    },
+  },
 });
 
 // Password label
 const passwordLabel = blessed.text({
   top: 5,
   left: 0,
-  content: 'Password:'
+  content: 'Password:',
 });
 
 // Password input
@@ -596,7 +580,7 @@ const passwordInput = blessed.textbox({
   width: 32,
   height: 1,
   border: {
-    type: 'line'
+    type: 'line',
   },
   censor: true,
   inputOnFocus: true,
@@ -605,10 +589,10 @@ const passwordInput = blessed.textbox({
     bg: 'black',
     focus: {
       border: {
-        fg: 'blue'
-      }
-    }
-  }
+        fg: 'blue',
+      },
+    },
+  },
 });
 
 // Login button
@@ -625,9 +609,9 @@ const loginButton = blessed.button({
     bold: true,
     focus: {
       bg: 'lightblue',
-      fg: 'black'
-    }
-  }
+      fg: 'black',
+    },
+  },
 });
 
 // Cancel button
@@ -643,9 +627,9 @@ const cancelButton = blessed.button({
     bg: 'black',
     focus: {
       bg: 'gray',
-      fg: 'white'
-    }
-  }
+      fg: 'white',
+    },
+  },
 });
 
 // Append all elements
@@ -696,11 +680,13 @@ screen.render();
 ```
 
 **Dependencies**:
+
 ```bash
 npm install blessed
 ```
 
 **Run**:
+
 ```bash
 node login-form.js
 ```
@@ -789,11 +775,13 @@ if __name__ == "__main__":
 ```
 
 **Dependencies**:
+
 ```bash
 pip install textual
 ```
 
 **Run**:
+
 ```bash
 python login_form.py
 ```
@@ -813,19 +801,20 @@ python login_form.py
 
 ### Component Mapping Table
 
-| TUI Designer | OpenTUI | Ink | BubbleTea | Blessed | Textual |
-|--------------|---------|-----|-----------|---------|---------|
-| Box | `<box>` | `<Box>` | `lipgloss.NewStyle()` | `blessed.box()` | `Container` |
-| Text | `<text>` | `<Text>` | `lipgloss.Render()` | `blessed.text()` | `Static` |
-| TextInput | `<textinput>` | `<TextInput>` | `textinput.Model` | `blessed.textbox()` | `Input` |
-| Button | `<button>` | Custom | Button handler | `blessed.button()` | `Button` |
-| List | `<list>` | `<Box>` map | `list.Model` | `blessed.list()` | `ListView` |
+| TUI Designer | OpenTUI       | Ink           | BubbleTea             | Blessed             | Textual     |
+| ------------ | ------------- | ------------- | --------------------- | ------------------- | ----------- |
+| Box          | `<box>`       | `<Box>`       | `lipgloss.NewStyle()` | `blessed.box()`     | `Container` |
+| Text         | `<text>`      | `<Text>`      | `lipgloss.Render()`   | `blessed.text()`    | `Static`    |
+| TextInput    | `<textinput>` | `<TextInput>` | `textinput.Model`     | `blessed.textbox()` | `Input`     |
+| Button       | `<button>`    | Custom        | Button handler        | `blessed.button()`  | `Button`    |
+| List         | `<list>`      | `<Box>` map   | `list.Model`          | `blessed.list()`    | `ListView`  |
 
 ---
 
 ## Summary
 
 The TUI Designer would generate production-ready code for multiple frameworks, handling:
+
 - ✅ Component hierarchy
 - ✅ Layout and styling
 - ✅ Event handlers

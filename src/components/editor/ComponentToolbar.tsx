@@ -17,7 +17,7 @@ import { ComponentType } from '../../types';
 import { dragStore } from '../../hooks/useDragAndDrop';
 import { useComponentStore, useSelectionStore } from '../../stores';
 import { COMPONENT_LIBRARY } from '../../constants/components';
-import { getComponentIcon } from './ComponentTree';
+import { getComponentIcon } from './componentIcons';
 
 type ToolbarPosition = 'TL' | 'T' | 'TR' | 'BL' | 'B' | 'BR' | 'custom';
 
@@ -141,7 +141,9 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
   const settingsRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-  const dragStartPos = useRef<{ x: number; y: number; toolbarX: number; toolbarY: number } | null>(null);
+  const dragStartPos = useRef<{ x: number; y: number; toolbarX: number; toolbarY: number } | null>(
+    null
+  );
 
   // Save docked state to localStorage and notify other components
   useEffect(() => {
@@ -170,68 +172,71 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
   }, []);
 
   // Add component directly (for keyboard shortcuts)
-  const addComponentDirectly = useCallback((type: ComponentType, groupId: string) => {
-    setActiveGroup(groupId);
+  const addComponentDirectly = useCallback(
+    (type: ComponentType, groupId: string) => {
+      setActiveGroup(groupId);
 
-    const root = componentStore.root;
-    let parentId = root?.id;
+      const root = componentStore.root;
+      let parentId = root?.id;
 
-    // Create root if it doesn't exist
-    if (!parentId) {
-      const newRoot: import('../../types').ComponentNode = {
-        id: 'root',
-        type: 'Screen',
-        name: 'Main Screen',
-        props: { width: 80, height: 24, theme: 'dracula' },
-        layout: {
-          type: 'absolute',
-        },
-        style: {
-          border: false,
-        },
-        events: {},
-        children: [],
-        locked: false,
-        hidden: false,
-        collapsed: false,
-      };
-      componentStore.setRoot(newRoot);
-      parentId = 'root';
-    }
-
-    const def = COMPONENT_LIBRARY[type];
-    if (def) {
-      // Calculate position with offset so components don't stack
-      const existingChildren = root?.children.length || 0;
-      const offsetX = existingChildren * 2;
-      const offsetY = existingChildren * 2;
-
-      const newComponent: Omit<import('../../types').ComponentNode, 'id'> = {
-        type: def.type,
-        name: def.name,
-        props: { ...def.defaultProps },
-        layout: {
-          ...def.defaultLayout,
-          x: offsetX,
-          y: offsetY,
-        },
-        style: { ...def.defaultStyle },
-        events: { ...def.defaultEvents },
-        children: [],
-        locked: false,
-        hidden: false,
-        collapsed: false,
-      };
-
-      const id = componentStore.addComponent(parentId, newComponent);
-      if (id) {
-        selectionStore.select(id);
+      // Create root if it doesn't exist
+      if (!parentId) {
+        const newRoot: import('../../types').ComponentNode = {
+          id: 'root',
+          type: 'Screen',
+          name: 'Main Screen',
+          props: { width: 80, height: 24, theme: 'dracula' },
+          layout: {
+            type: 'absolute',
+          },
+          style: {
+            border: false,
+          },
+          events: {},
+          children: [],
+          locked: false,
+          hidden: false,
+          collapsed: false,
+        };
+        componentStore.setRoot(newRoot);
+        parentId = 'root';
       }
-    }
 
-    // Show visual feedback
-    setTimeout(() => setActiveGroup(null), 500);
-  }, [componentStore, selectionStore]);
+      const def = COMPONENT_LIBRARY[type];
+      if (def) {
+        // Calculate position with offset so components don't stack
+        const existingChildren = root?.children.length || 0;
+        const offsetX = existingChildren * 2;
+        const offsetY = existingChildren * 2;
+
+        const newComponent: Omit<import('../../types').ComponentNode, 'id'> = {
+          type: def.type,
+          name: def.name,
+          props: { ...def.defaultProps },
+          layout: {
+            ...def.defaultLayout,
+            x: offsetX,
+            y: offsetY,
+          },
+          style: { ...def.defaultStyle },
+          events: { ...def.defaultEvents },
+          children: [],
+          locked: false,
+          hidden: false,
+          collapsed: false,
+        };
+
+        const id = componentStore.addComponent(parentId, newComponent);
+        if (id) {
+          selectionStore.select(id);
+        }
+      }
+
+      // Show visual feedback
+      setTimeout(() => setActiveGroup(null), 500);
+    },
+    [componentStore, selectionStore]
+  );
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -426,9 +431,11 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
             >
               {/* Dropdown Menu */}
               {isOpen && (
-                <div className={`absolute left-0 min-w-[180px] bg-card border border-border rounded-lg  overflow-hidden z-50 max-h-[400px] overflow-y-auto ${
-                  dropdownPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-                }`}>
+                <div
+                  className={`absolute left-0 min-w-[180px] bg-card border border-border rounded-lg  overflow-hidden z-50 max-h-[400px] overflow-y-auto ${
+                    dropdownPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+                  }`}
+                >
                   <div className="py-1">
                     {group.items.map((item) => (
                       <button
@@ -445,7 +452,9 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
                         className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-accent transition-colors text-left group"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">{getComponentIcon(item.type)}</span>
+                          <span className="text-muted-foreground">
+                            {getComponentIcon(item.type)}
+                          </span>
                           <span className="text-xs">{item.label}</span>
                         </div>
                         {item.hotkey && (
@@ -466,8 +475,8 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
                   isActive
                     ? 'bg-primary text-primary-foreground'
                     : isOpen
-                    ? 'bg-accent'
-                    : 'hover:bg-accent'
+                      ? 'bg-accent'
+                      : 'hover:bg-accent'
                 }`}
                 title={group.name}
               >
@@ -486,9 +495,11 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
         {/* Settings for docked mode */}
         <div className="relative ml-1 pl-2 border-l border-border" ref={settingsRef}>
           {showSettings && (
-            <div className={`absolute left-0 min-w-[160px] bg-card border border-border rounded-lg  overflow-hidden z-50 max-h-[400px] overflow-y-auto ${
-              dropdownPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-            }`}>
+            <div
+              className={`absolute left-0 min-w-[160px] bg-card border border-border rounded-lg  overflow-hidden z-50 max-h-[400px] overflow-y-auto ${
+                dropdownPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+              }`}
+            >
               <div className="py-1">
                 <button
                   onClick={() => {
@@ -536,17 +547,20 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
       className={`absolute z-50 ${isDragging ? 'cursor-grabbing' : ''}`}
       style={getPositionStyle()}
     >
-      <div className={`${isVertical ? 'flex-col items-center' : 'flex items-center'} gap-2 bg-card border border-border rounded-lg  p-1`}>
+      <div
+        className={`${isVertical ? 'flex-col items-center' : 'flex items-center'} gap-2 bg-card border border-border rounded-lg  p-1`}
+      >
         {/* Drag Handle */}
         <button
           onMouseDown={handleDragStart}
           className={`flex items-center justify-center ${isVertical ? 'px-2 py-1 w-full' : 'px-1 py-2'} cursor-grab hover:bg-accent rounded transition-colors`}
           title="Drag to reposition"
         >
-          {isVertical
-            ? <GripHorizontal size={16} className="text-muted-foreground/50" />
-            : <GripVertical size={16} className="text-muted-foreground/50" />
-          }
+          {isVertical ? (
+            <GripHorizontal size={16} className="text-muted-foreground/50" />
+          ) : (
+            <GripVertical size={16} className="text-muted-foreground/50" />
+          )}
         </button>
         {COMPONENT_GROUPS.map((group) => {
           const Icon = group.icon;
@@ -557,9 +571,11 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
             <div key={group.id} className="relative" ref={isOpen ? dropdownRef : null}>
               {/* Dropdown Menu */}
               {isOpen && (
-                <div className={`absolute min-w-[180px] bg-card border border-border rounded-lg  overflow-hidden z-50 ${
-                  isVertical ? 'top-0 left-full ml-2' : 'bottom-full left-0 mb-2'
-                }`}>
+                <div
+                  className={`absolute min-w-[180px] bg-card border border-border rounded-lg  overflow-hidden z-50 ${
+                    isVertical ? 'top-0 left-full ml-2' : 'bottom-full left-0 mb-2'
+                  }`}
+                >
                   <div className="py-1">
                     {group.items.map((item) => (
                       <button
@@ -576,7 +592,9 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
                         className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-accent transition-colors text-left group"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">{getComponentIcon(item.type)}</span>
+                          <span className="text-muted-foreground">
+                            {getComponentIcon(item.type)}
+                          </span>
                           <span className="text-xs">{item.label}</span>
                         </div>
                         {item.hotkey && (
@@ -597,8 +615,8 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
                   isActive
                     ? 'bg-primary text-primary-foreground'
                     : isOpen
-                    ? 'bg-accent'
-                    : 'hover:bg-accent'
+                      ? 'bg-accent'
+                      : 'hover:bg-accent'
                 }`}
                 title={group.name}
               >
@@ -624,12 +642,17 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
         })}
 
         {/* Settings Button */}
-        <div className={`relative ${isVertical ? 'mt-1 pt-2 border-t border-border' : 'ml-1 pl-2 border-l border-border'}`} ref={settingsRef}>
+        <div
+          className={`relative ${isVertical ? 'mt-1 pt-2 border-t border-border' : 'ml-1 pl-2 border-l border-border'}`}
+          ref={settingsRef}
+        >
           {/* Position Dropdown */}
           {showSettings && (
-            <div className={`absolute min-w-[160px] bg-card border border-border rounded-lg  overflow-hidden z-50 ${
-              isVertical ? 'top-0 left-full ml-2' : 'bottom-full left-0 mb-2'
-            }`}>
+            <div
+              className={`absolute min-w-[160px] bg-card border border-border rounded-lg  overflow-hidden z-50 ${
+                isVertical ? 'top-0 left-full ml-2' : 'bottom-full left-0 mb-2'
+              }`}
+            >
               <div className="py-1">
                 <button
                   onClick={() => {
@@ -650,20 +673,22 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">
                   Toolbar Position
                 </div>
-                {(Object.keys(POSITION_LABELS) as Array<Exclude<ToolbarPosition, 'custom'>>).map((pos) => (
-                  <button
-                    key={pos}
-                    onClick={() => handlePresetPosition(pos)}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 hover:bg-accent transition-colors text-left ${
-                      position === pos ? 'bg-accent' : ''
-                    }`}
-                  >
-                    <span className="text-xs">{POSITION_LABELS[pos]}</span>
-                    {position === pos && !customPosition && (
-                      <span className="text-primary text-xs">✓</span>
-                    )}
-                  </button>
-                ))}
+                {(Object.keys(POSITION_LABELS) as Array<Exclude<ToolbarPosition, 'custom'>>).map(
+                  (pos) => (
+                    <button
+                      key={pos}
+                      onClick={() => handlePresetPosition(pos)}
+                      className={`w-full flex items-center justify-between px-3 py-1.5 hover:bg-accent transition-colors text-left ${
+                        position === pos ? 'bg-accent' : ''
+                      }`}
+                    >
+                      <span className="text-xs">{POSITION_LABELS[pos]}</span>
+                      {position === pos && !customPosition && (
+                        <span className="text-primary text-xs">✓</span>
+                      )}
+                    </button>
+                  )
+                )}
               </div>
             </div>
           )}

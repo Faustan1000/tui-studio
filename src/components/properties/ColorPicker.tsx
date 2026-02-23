@@ -7,22 +7,22 @@ import { THEMES } from '../../stores/themeStore';
 import type { GradientConfig, GradientStop } from '../../types';
 
 const ANSI_COLORS = [
-  { name: 'Black',          value: 'black' },
-  { name: 'Red',            value: 'red' },
-  { name: 'Green',          value: 'green' },
-  { name: 'Yellow',         value: 'yellow' },
-  { name: 'Blue',           value: 'blue' },
-  { name: 'Magenta',        value: 'magenta' },
-  { name: 'Cyan',           value: 'cyan' },
-  { name: 'White',          value: 'white' },
-  { name: 'Bright Black',   value: 'brightBlack' },
-  { name: 'Bright Red',     value: 'brightRed' },
-  { name: 'Bright Green',   value: 'brightGreen' },
-  { name: 'Bright Yellow',  value: 'brightYellow' },
-  { name: 'Bright Blue',    value: 'brightBlue' },
+  { name: 'Black', value: 'black' },
+  { name: 'Red', value: 'red' },
+  { name: 'Green', value: 'green' },
+  { name: 'Yellow', value: 'yellow' },
+  { name: 'Blue', value: 'blue' },
+  { name: 'Magenta', value: 'magenta' },
+  { name: 'Cyan', value: 'cyan' },
+  { name: 'White', value: 'white' },
+  { name: 'Bright Black', value: 'brightBlack' },
+  { name: 'Bright Red', value: 'brightRed' },
+  { name: 'Bright Green', value: 'brightGreen' },
+  { name: 'Bright Yellow', value: 'brightYellow' },
+  { name: 'Bright Blue', value: 'brightBlue' },
   { name: 'Bright Magenta', value: 'brightMagenta' },
-  { name: 'Bright Cyan',    value: 'brightCyan' },
-  { name: 'Bright White',   value: 'brightWhite' },
+  { name: 'Bright Cyan', value: 'brightCyan' },
+  { name: 'Bright White', value: 'brightWhite' },
 ];
 
 type ColorTab = 'ansi' | 'rgb' | 'gradient';
@@ -38,7 +38,7 @@ interface ColorPickerProps {
 
 function buildCssGradient(g: GradientConfig): string {
   const sorted = [...g.stops].sort((a, b) => a.position - b.position);
-  const stops = sorted.map(s => `${s.color} ${s.position}%`).join(', ');
+  const stops = sorted.map((s) => `${s.color} ${s.position}%`).join(', ');
   return `linear-gradient(${g.angle}deg, ${stops})`;
 }
 
@@ -52,14 +52,18 @@ const DEFAULT_GRADIENT: GradientConfig = {
   ],
 };
 
-export function ColorPicker({ value, onChange, label, gradient, onGradientChange }: ColorPickerProps) {
+export function ColorPicker({
+  value,
+  onChange,
+  label,
+  gradient,
+  onGradientChange,
+}: ColorPickerProps) {
   const themeStore = useThemeStore();
   const supportsGradient = !!onGradientChange;
 
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<ColorTab>(() =>
-    gradient ? 'gradient' : 'ansi'
-  );
+  const [activeTab, setActiveTab] = useState<ColorTab>(() => (gradient ? 'gradient' : 'ansi'));
   const [hexFocused, setHexFocused] = useState(false);
   const [hexText, setHexText] = useState('');
   const [searchKey, setSearchKey] = useState('');
@@ -74,7 +78,7 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
   useEffect(() => {
     if (gradient) setActiveTab('gradient');
     else if (activeTab === 'gradient') setActiveTab('ansi');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gradient]);
 
   // Resolve any color value → hex string
@@ -87,44 +91,61 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
 
   const derivedHex = resolveHex(value);
   const swatchHex = value
-    ? (value.startsWith('#') ? value : (activeTheme[value as keyof typeof activeTheme] || null))
+    ? value.startsWith('#')
+      ? value
+      : activeTheme[value as keyof typeof activeTheme] || null
     : null;
   const swatchColor = swatchHex || 'hsl(var(--foreground))';
 
   const hexDisplay = hexFocused ? hexText : derivedHex;
 
-  const handleHexFocus = () => { setHexText(derivedHex); setHexFocused(true); };
+  const handleHexFocus = () => {
+    setHexText(derivedHex);
+    setHexFocused(true);
+  };
   const handleHexBlur = () => setHexFocused(false);
   const handleHexChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 6);
+    const v = e.target.value
+      .toUpperCase()
+      .replace(/[^0-9A-F]/g, '')
+      .slice(0, 6);
     setHexText(v);
     if (v.length === 6) onChange('#' + v);
   };
 
   const handleEyeToggle = () => {
-    if (value) { savedColorRef.current = value; onChange(''); }
-    else onChange(savedColorRef.current || '');
+    if (value) {
+      savedColorRef.current = value;
+      onChange('');
+    } else onChange(savedColorRef.current || '');
   };
 
   const handlePopupKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === 'Escape') {
-      e.preventDefault(); e.stopPropagation(); setIsOpen(false); return;
+      e.preventDefault();
+      e.stopPropagation();
+      setIsOpen(false);
+      return;
     }
     if (activeTab !== 'ansi') return;
     const key = e.key.toLowerCase();
     if (!/^[a-z]$/.test(key)) return;
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
 
-    const matches = ANSI_COLORS.filter(c => c.name.toLowerCase().startsWith(key));
+    const matches = ANSI_COLORS.filter((c) => c.name.toLowerCase().startsWith(key));
     if (matches.length === 0) return;
 
     let idx = 0;
     if (key === searchKey) idx = (searchIndex + 1) % matches.length;
-    setSearchKey(key); setSearchIndex(idx);
+    setSearchKey(key);
+    setSearchIndex(idx);
 
     const chosen = matches[idx];
     onChange(chosen.value);
-    const el = listRef.current?.querySelector(`[data-color="${chosen.value}"]`) as HTMLElement | null;
+    const el = listRef.current?.querySelector(
+      `[data-color="${chosen.value}"]`
+    ) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
   };
 
@@ -140,8 +161,14 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
   };
 
   useEffect(() => {
-    if (!isOpen) { setSearchKey(''); setSearchIndex(0); }
-    else setTimeout(() => (dropdownRef.current?.querySelector('[tabindex="-1"]') as HTMLElement)?.focus(), 0);
+    if (!isOpen) {
+      setSearchKey('');
+      setSearchIndex(0);
+    } else
+      setTimeout(
+        () => (dropdownRef.current?.querySelector('[tabindex="-1"]') as HTMLElement)?.focus(),
+        0
+      );
   }, [isOpen]);
 
   useEffect(() => {
@@ -170,9 +197,10 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
         >
           <div
             className="absolute inset-0"
-            style={isGradientActive
-              ? { background: buildCssGradient(gradient!) }
-              : { backgroundColor: swatchColor, opacity: swatchHex ? 1 : 0.45 }
+            style={
+              isGradientActive
+                ? { background: buildCssGradient(gradient!) }
+                : { backgroundColor: swatchColor, opacity: swatchHex ? 1 : 0.45 }
             }
           />
         </button>
@@ -201,24 +229,35 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
 
         {!isGradientActive && (
           <>
-            <span className="text-[11px] font-mono text-foreground/70 flex-shrink-0 w-6 text-right">100</span>
+            <span className="text-[11px] font-mono text-foreground/70 flex-shrink-0 w-6 text-right">
+              100
+            </span>
             <span className="text-[10px] text-muted-foreground flex-shrink-0">%</span>
           </>
         )}
 
         {/* Eye toggle (only for solid) */}
         {!isGradientActive && (
-          <button type="button" onClick={handleEyeToggle} title={value ? 'Hide color' : 'Restore color'}
-            className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            type="button"
+            onClick={handleEyeToggle}
+            title={value ? 'Hide color' : 'Restore color'}
+            className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
             {value ? <Eye size={11} /> : <EyeOff size={11} />}
           </button>
         )}
 
         {/* Clear */}
-        <button type="button"
-          onClick={() => { onChange(''); if (isGradientActive && onGradientChange) onGradientChange(undefined); }}
+        <button
+          type="button"
+          onClick={() => {
+            onChange('');
+            if (isGradientActive && onGradientChange) onGradientChange(undefined);
+          }}
           title="Remove color"
-          className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+          className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+        >
           <Minus size={11} />
         </button>
       </div>
@@ -233,75 +272,121 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
         >
           {/* Tabs */}
           <div className="flex border-b border-border bg-secondary/50">
-            {(['ansi', 'rgb', ...(supportsGradient ? ['gradient'] : [])] as ColorTab[]).map((tab) => (
-              <button key={tab} type="button" onClick={() => handleTabChange(tab)}
-                className={`flex-1 px-2 py-1.5 text-[10px] font-medium transition-colors ${
-                  activeTab === tab
-                    ? 'bg-background border-b-2 border-primary text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}>
-                {tab === 'ansi' ? 'ANSI' : tab === 'rgb' ? 'RGB' : 'Gradient'}
-              </button>
-            ))}
+            {(['ansi', 'rgb', ...(supportsGradient ? ['gradient'] : [])] as ColorTab[]).map(
+              (tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => handleTabChange(tab)}
+                  className={`flex-1 px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                    activeTab === tab
+                      ? 'bg-background border-b-2 border-primary text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab === 'ansi' ? 'ANSI' : tab === 'rgb' ? 'RGB' : 'Gradient'}
+                </button>
+              )
+            )}
           </div>
 
-          <div ref={listRef} className={activeTab === 'gradient' ? '' : 'overflow-y-auto max-h-72 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full'}>
+          <div
+            ref={listRef}
+            className={
+              activeTab === 'gradient'
+                ? ''
+                : 'overflow-y-auto max-h-72 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full'
+            }
+          >
             {/* None option (solid tabs only) */}
             {activeTab !== 'gradient' && (
-              <button type="button" onClick={() => { onChange(''); setIsOpen(false); }}
-                className="w-full px-2 py-1.5 text-xs flex items-center gap-2 hover:bg-accent transition-colors text-left border-b border-border">
-                <div className="w-4 h-4 rounded-sm border border-border flex-shrink-0"
-                  style={{ background: 'repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 0 0 / 4px 4px' }} />
+              <button
+                type="button"
+                onClick={() => {
+                  onChange('');
+                  setIsOpen(false);
+                }}
+                className="w-full px-2 py-1.5 text-xs flex items-center gap-2 hover:bg-accent transition-colors text-left border-b border-border"
+              >
+                <div
+                  className="w-4 h-4 rounded-sm border border-border flex-shrink-0"
+                  style={{
+                    background: 'repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 0 0 / 4px 4px',
+                  }}
+                />
                 <span>None</span>
               </button>
             )}
 
             {/* ANSI tab */}
-            {activeTab === 'ansi' && ANSI_COLORS.map((color) => {
-              const hex = activeTheme[color.value as keyof typeof activeTheme];
-              const isActive = value === color.value;
-              return (
-                <button key={color.value} data-color={color.value} type="button"
-                  onClick={() => { onChange(color.value); setIsOpen(false); }}
-                  className={`w-full px-2 py-1.5 text-xs flex items-center gap-2 hover:bg-accent transition-colors text-left ${isActive ? 'bg-accent ring-1 ring-inset ring-primary' : ''}`}>
-                  <div className="w-4 h-4 rounded-sm border border-border flex-shrink-0" style={{ backgroundColor: hex }} />
-                  <span>{color.name}</span>
-                  {isActive && (
-                    <span className="ml-auto text-[9px] text-primary font-mono uppercase">
-                      {searchKey && color.name.toLowerCase().startsWith(searchKey)
-                        ? `${ANSI_COLORS.filter(c => c.name.toLowerCase().startsWith(searchKey)).findIndex(c => c.value === color.value) + 1}/${ANSI_COLORS.filter(c => c.name.toLowerCase().startsWith(searchKey)).length}`
-                        : ''}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            {activeTab === 'ansi' &&
+              ANSI_COLORS.map((color) => {
+                const hex = activeTheme[color.value as keyof typeof activeTheme];
+                const isActive = value === color.value;
+                return (
+                  <button
+                    key={color.value}
+                    data-color={color.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(color.value);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full px-2 py-1.5 text-xs flex items-center gap-2 hover:bg-accent transition-colors text-left ${isActive ? 'bg-accent ring-1 ring-inset ring-primary' : ''}`}
+                  >
+                    <div
+                      className="w-4 h-4 rounded-sm border border-border flex-shrink-0"
+                      style={{ backgroundColor: hex }}
+                    />
+                    <span>{color.name}</span>
+                    {isActive && (
+                      <span className="ml-auto text-[9px] text-primary font-mono uppercase">
+                        {searchKey && color.name.toLowerCase().startsWith(searchKey)
+                          ? `${ANSI_COLORS.filter((c) => c.name.toLowerCase().startsWith(searchKey)).findIndex((c) => c.value === color.value) + 1}/${ANSI_COLORS.filter((c) => c.name.toLowerCase().startsWith(searchKey)).length}`
+                          : ''}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
 
             {/* RGB tab */}
             {activeTab === 'rgb' && (
               <div className="p-3 space-y-3">
                 <div className="flex gap-2 items-center">
-                  <input type="color"
+                  <input
+                    type="color"
                     value={value?.startsWith('#') ? value : '#ffffff'}
                     onChange={(e) => onChange(e.target.value)}
-                    className="w-10 h-8 rounded border border-border cursor-pointer" />
+                    className="w-10 h-8 rounded border border-border cursor-pointer"
+                  />
                   <div className="flex-1">
                     <label className="text-[10px] text-muted-foreground mb-1 block">Hex</label>
-                    <input type="text"
+                    <input
+                      type="text"
                       value={value?.startsWith('#') ? value : ''}
-                      onChange={(e) => { if (e.target.value.startsWith('#') || e.target.value === '') onChange(e.target.value); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') setIsOpen(false); }}
+                      onChange={(e) => {
+                        if (e.target.value.startsWith('#') || e.target.value === '')
+                          onChange(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') setIsOpen(false);
+                      }}
                       placeholder="#ffffff"
-                      className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[10px] font-mono focus:border-primary focus:outline-none" />
+                      className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[10px] font-mono focus:border-primary focus:outline-none"
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <RGBSlider label="R" color="red"   value={value} onChange={onChange} />
+                  <RGBSlider label="R" color="red" value={value} onChange={onChange} />
                   <RGBSlider label="G" color="green" value={value} onChange={onChange} />
-                  <RGBSlider label="B" color="blue"  value={value} onChange={onChange} />
+                  <RGBSlider label="B" color="blue" value={value} onChange={onChange} />
                 </div>
-                <button type="button" onClick={() => setIsOpen(false)}
-                  className="w-full px-2 py-1 bg-primary text-primary-foreground rounded text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="w-full px-2 py-1 bg-primary text-primary-foreground rounded text-xs"
+                >
                   Done
                 </button>
               </div>
@@ -309,10 +394,7 @@ export function ColorPicker({ value, onChange, label, gradient, onGradientChange
 
             {/* Gradient tab */}
             {activeTab === 'gradient' && onGradientChange && (
-              <GradientEditor
-                gradient={gradient ?? DEFAULT_GRADIENT}
-                onChange={onGradientChange}
-              />
+              <GradientEditor gradient={gradient ?? DEFAULT_GRADIENT} onChange={onGradientChange} />
             )}
           </div>
         </div>
@@ -333,7 +415,7 @@ function GradientEditor({
   const sorted = [...gradient.stops].sort((a, b) => a.position - b.position);
 
   const updateStop = (index: number, partial: Partial<GradientStop>) => {
-    const stops = gradient.stops.map((s, i) => i === index ? { ...s, ...partial } : s);
+    const stops = gradient.stops.map((s, i) => (i === index ? { ...s, ...partial } : s));
     onChange({ ...gradient, stops });
   };
 
@@ -357,30 +439,50 @@ function GradientEditor({
   return (
     <div className="p-3 space-y-3">
       {/* Preview */}
-      <div className="w-full h-6 rounded border border-border" style={{ background: cssGradient }} />
+      <div
+        className="w-full h-6 rounded border border-border"
+        style={{ background: cssGradient }}
+      />
 
       {/* Angle */}
       <div>
-        <label className="text-[10px] text-muted-foreground mb-1 block">Angle — {gradient.angle}°</label>
+        <label className="text-[10px] text-muted-foreground mb-1 block">
+          Angle — {gradient.angle}°
+        </label>
         <div className="flex items-center gap-2">
-          <input type="range" min="0" max="360" value={gradient.angle}
+          <input
+            type="range"
+            min="0"
+            max="360"
+            value={gradient.angle}
             onChange={(e) => onChange({ ...gradient, angle: parseInt(e.target.value) })}
-            className="flex-1 h-1 accent-primary" />
-          <input type="number" min="0" max="360" value={gradient.angle}
+            className="flex-1 h-1 accent-primary"
+          />
+          <input
+            type="number"
+            min="0"
+            max="360"
+            value={gradient.angle}
             onChange={(e) => {
               const v = parseInt(e.target.value);
               if (!isNaN(v)) onChange({ ...gradient, angle: ((v % 360) + 360) % 360 });
             }}
-            className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none" />
+            className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none"
+          />
         </div>
       </div>
 
       {/* Color stops */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-[10px] text-muted-foreground">Stops ({gradient.stops.length})</label>
-          <button type="button" onClick={addStop}
-            className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 transition-colors">
+          <label className="text-[10px] text-muted-foreground">
+            Stops ({gradient.stops.length})
+          </label>
+          <button
+            type="button"
+            onClick={addStop}
+            className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 transition-colors"
+          >
             <Plus size={10} /> Add
           </button>
         </div>
@@ -388,13 +490,16 @@ function GradientEditor({
         <div className="space-y-1.5">
           {sorted.map((stop, sortedIdx) => {
             // Find original index for updates/deletes
-            const origIdx = gradient.stops.findIndex(s => s === stop);
+            const origIdx = gradient.stops.findIndex((s) => s === stop);
             return (
               <div key={sortedIdx} className="flex items-center gap-1.5">
                 {/* Color input */}
-                <input type="color" value={stop.color}
+                <input
+                  type="color"
+                  value={stop.color}
                   onChange={(e) => updateStop(origIdx, { color: e.target.value })}
-                  className="w-7 h-6 rounded border border-border cursor-pointer flex-shrink-0 p-0.5 bg-input" />
+                  className="w-7 h-6 rounded border border-border cursor-pointer flex-shrink-0 p-0.5 bg-input"
+                />
 
                 {/* Hex display */}
                 <span className="text-[10px] font-mono text-muted-foreground w-14 flex-shrink-0">
@@ -402,24 +507,37 @@ function GradientEditor({
                 </span>
 
                 {/* Position */}
-                <input type="range" min="0" max="100" value={stop.position}
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={stop.position}
                   onChange={(e) => updateStop(origIdx, { position: parseInt(e.target.value) })}
-                  className="flex-1 h-1 accent-primary" />
+                  className="flex-1 h-1 accent-primary"
+                />
 
-                <input type="number" min="0" max="100" value={stop.position}
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={stop.position}
                   onChange={(e) => {
                     const v = parseInt(e.target.value);
                     if (!isNaN(v) && v >= 0 && v <= 100) updateStop(origIdx, { position: v });
                   }}
-                  className="w-9 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none flex-shrink-0" />
+                  className="w-9 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none flex-shrink-0"
+                />
 
                 <span className="text-[9px] text-muted-foreground flex-shrink-0">%</span>
 
                 {/* Delete */}
-                <button type="button" onClick={() => removeStop(origIdx)}
+                <button
+                  type="button"
+                  onClick={() => removeStop(origIdx)}
                   disabled={gradient.stops.length <= 2}
                   title="Remove stop"
-                  className="flex-shrink-0 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                  className="flex-shrink-0 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
                   <Trash2 size={10} />
                 </button>
               </div>
@@ -434,7 +552,10 @@ function GradientEditor({
 // ─── RGB Slider ───────────────────────────────────────────────────────────────
 
 function RGBSlider({
-  label, color, value, onChange,
+  label,
+  color,
+  value,
+  onChange,
 }: {
   label: string;
   color: 'red' | 'green' | 'blue';
@@ -459,18 +580,33 @@ function RGBSlider({
     if (color === 'red') n.r = v;
     if (color === 'green') n.g = v;
     if (color === 'blue') n.b = v;
-    onChange(`#${n.r.toString(16).padStart(2, '0')}${n.g.toString(16).padStart(2, '0')}${n.b.toString(16).padStart(2, '0')}`);
+    onChange(
+      `#${n.r.toString(16).padStart(2, '0')}${n.g.toString(16).padStart(2, '0')}${n.b.toString(16).padStart(2, '0')}`
+    );
   };
 
   return (
     <div className="flex items-center gap-2">
       <label className="text-[10px] font-medium w-3">{label}</label>
-      <input type="range" min="0" max="255" value={current}
+      <input
+        type="range"
+        min="0"
+        max="255"
+        value={current}
         onChange={(e) => handleChange(parseInt(e.target.value))}
-        className="flex-1 h-1" />
-      <input type="number" min="0" max="255" value={current}
-        onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 0 && v <= 255) handleChange(v); }}
-        className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none" />
+        className="flex-1 h-1"
+      />
+      <input
+        type="number"
+        min="0"
+        max="255"
+        value={current}
+        onChange={(e) => {
+          const v = parseInt(e.target.value);
+          if (!isNaN(v) && v >= 0 && v <= 255) handleChange(v);
+        }}
+        className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none"
+      />
     </div>
   );
 }

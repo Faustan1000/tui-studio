@@ -1,7 +1,18 @@
 // Command palette for quick access to commands and components
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, FileDown, Save, Palette, Package, Settings, Keyboard, Info, Sun, Moon } from 'lucide-react';
+import {
+  Search,
+  FileDown,
+  Save,
+  Palette,
+  Package,
+  Settings,
+  Keyboard,
+  Info,
+  Sun,
+  Moon,
+} from 'lucide-react';
 import { useThemeStore } from '../../stores';
 import { COMPONENT_LIBRARY } from '../../constants/components';
 import { THEME_NAMES } from '../../stores/themeStore';
@@ -215,13 +226,20 @@ export function CommandPalette({ isOpen, onClose, onAddComponent }: CommandPalet
           ) : (
             (() => {
               // Group commands by category
-              const grouped = filteredCommands.reduce((acc, cmd) => {
-                if (!acc[cmd.category]) acc[cmd.category] = [];
-                acc[cmd.category].push(cmd);
-                return acc;
-              }, {} as Record<string, Command[]>);
+              const grouped = filteredCommands.reduce(
+                (acc, cmd) => {
+                  if (!acc[cmd.category]) acc[cmd.category] = [];
+                  acc[cmd.category].push(cmd);
+                  return acc;
+                },
+                {} as Record<string, Command[]>
+              );
 
-              const categoryOrder: Array<'component' | 'action' | 'theme'> = ['component', 'action', 'theme'];
+              const categoryOrder: Array<'component' | 'action' | 'theme'> = [
+                'component',
+                'action',
+                'theme',
+              ];
               const categoryLabels = {
                 component: 'Components',
                 action: 'Actions',

@@ -1,3 +1,5 @@
+import { ComponentLibrary } from './components';
+
 // Layout calculation types
 
 export interface LayoutBox {
@@ -17,7 +19,7 @@ export interface LayoutConstraints {
   maxWidth: number;
   minHeight: number;
   maxHeight: number;
-  canvasWidth: number;  // Terminal columns
+  canvasWidth: number; // Terminal columns
   canvasHeight: number; // Terminal rows
 }
 
@@ -41,8 +43,8 @@ export interface Page {
 export interface Frame {
   id: string;
   name: string;
-  width: number;    // Terminal columns
-  height: number;   // Terminal rows
+  width: number; // Terminal columns
+  height: number; // Terminal rows
   root: LayerNode;
   backgroundColor?: string;
 }
@@ -69,11 +71,7 @@ export interface LayerNode {
   order: number;
 }
 
-export type LayerType =
-  | 'frame'
-  | 'group'
-  | 'component'
-  | 'instance';
+export type LayerType = 'frame' | 'group' | 'component' | 'instance';
 
 // Re-export ComponentLibrary for convenience
 export type { ComponentLibrary } from './components';

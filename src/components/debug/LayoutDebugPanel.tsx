@@ -20,10 +20,12 @@ export function LayoutDebugPanel() {
       <div className="p-3 border-b border-border bg-yellow-950/20">
         <div className="flex items-center gap-2 text-yellow-500 text-sm mb-2">
           <AlertTriangle className="w-4 h-4" />
-          <span className="font-semibold">{nodesWithWarnings.length} Layout Warning{nodesWithWarnings.length !== 1 ? 's' : ''}</span>
+          <span className="font-semibold">
+            {nodesWithWarnings.length} Layout Warning{nodesWithWarnings.length !== 1 ? 's' : ''}
+          </span>
         </div>
         <div className="space-y-1 text-xs">
-          {nodesWithWarnings.slice(0, 3).map(nodeId => {
+          {nodesWithWarnings.slice(0, 3).map((nodeId) => {
             const node = findNodeById(componentStore.root, nodeId);
             const debugInfo = layoutEngine.getDebugInfo(nodeId);
             if (!node || !debugInfo) return null;
@@ -36,7 +38,7 @@ export function LayoutDebugPanel() {
               >
                 <span className="text-yellow-400 font-semibold">{node.name}:</span>
                 <span className="text-yellow-300">
-                  {debugInfo.warnings.map(w => formatWarning(w)).join(', ')}
+                  {debugInfo.warnings.map((w) => formatWarning(w)).join(', ')}
                 </span>
               </div>
             );
@@ -67,7 +69,10 @@ function formatWarning(warning: import('../../utils/layout').LayoutWarning): str
   }
 }
 
-function findNodeById(root: import('../../types').ComponentNode | null, id: string): import('../../types').ComponentNode | null {
+function findNodeById(
+  root: import('../../types').ComponentNode | null,
+  id: string
+): import('../../types').ComponentNode | null {
   if (!root) return null;
   if (root.id === id) return root;
 

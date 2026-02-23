@@ -1,13 +1,33 @@
 // Top toolbar with controls
 
 import { useState, useEffect, useRef } from 'react';
-import { Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Save, Palette, Search, ChevronDown, ChevronRight, Github, FolderOpen, Check, Sun, Moon } from 'lucide-react';
+import {
+  Undo2,
+  Redo2,
+  ZoomIn,
+  ZoomOut,
+  Grid3x3,
+  Save,
+  Palette,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  Github,
+  FolderOpen,
+  Check,
+  Sun,
+  Moon,
+} from 'lucide-react';
 import { useComponentStore, useCanvasStore, useThemeStore } from '../../stores';
 import { ExportModal } from '../export/ExportModal';
 import { THEME_NAMES, THEMES } from '../../stores/themeStore';
 import { ComponentToolbar } from './ComponentToolbar';
 import { buildTuiData, saveTuiData, openTuiFile } from '../../utils/fileOps';
-import { selectDownloadFolder, getDownloadFolderName, isDirectoryPickerSupported } from '../../utils/downloadManager';
+import {
+  selectDownloadFolder,
+  getDownloadFolderName,
+  isDirectoryPickerSupported,
+} from '../../utils/downloadManager';
 import { ColorPicker } from '../properties/ColorPicker';
 import { CHANGELOG } from '../../data/changelog';
 
@@ -15,31 +35,39 @@ import { CHANGELOG } from '../../data/changelog';
 
 const ACCENT_PRESETS = [
   { name: 'TUIGreen', value: 'tuigreen', hex: '#3fcf8e', primary: '153 60% 53%', fg: '0 0% 5%' },
-  { name: 'Blue',     value: 'blue',     hex: '#3b82f6', primary: '221 83% 53%', fg: '0 0% 100%' },
-  { name: 'Red',      value: 'red',      hex: '#ef4444', primary: '0 84% 60%',   fg: '0 0% 100%' },
-  { name: 'Lime',     value: 'lime',     hex: '#84cc16', primary: '85 60% 45%',  fg: '0 0% 5%' },
-  { name: 'Orange',   value: 'orange',   hex: '#f97316', primary: '25 95% 53%',  fg: '0 0% 5%' },
-  { name: 'Rose',     value: 'rose',     hex: '#f43f5e', primary: '347 77% 50%', fg: '0 0% 100%' },
-  { name: 'Violet',   value: 'violet',   hex: '#8b5cf6', primary: '263 70% 58%', fg: '0 0% 100%' },
-  { name: 'Yellow',   value: 'yellow',   hex: '#eab308', primary: '48 96% 48%',  fg: '0 0% 5%' },
+  { name: 'Blue', value: 'blue', hex: '#3b82f6', primary: '221 83% 53%', fg: '0 0% 100%' },
+  { name: 'Red', value: 'red', hex: '#ef4444', primary: '0 84% 60%', fg: '0 0% 100%' },
+  { name: 'Lime', value: 'lime', hex: '#84cc16', primary: '85 60% 45%', fg: '0 0% 5%' },
+  { name: 'Orange', value: 'orange', hex: '#f97316', primary: '25 95% 53%', fg: '0 0% 5%' },
+  { name: 'Rose', value: 'rose', hex: '#f43f5e', primary: '347 77% 50%', fg: '0 0% 100%' },
+  { name: 'Violet', value: 'violet', hex: '#8b5cf6', primary: '263 70% 58%', fg: '0 0% 100%' },
+  { name: 'Yellow', value: 'yellow', hex: '#eab308', primary: '48 96% 48%', fg: '0 0% 5%' },
 ] as const;
 
-type AccentPreset = typeof ACCENT_PRESETS[number]['value'] | 'custom';
+type AccentPreset = (typeof ACCENT_PRESETS)[number]['value'] | 'custom';
 
 function hexToHsl(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0;
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b);
+  let h = 0,
+    s = 0;
   const l = (max + min) / 2;
   if (max !== min) {
     const d = max - min;
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
     switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
+      case r:
+        h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        break;
+      case g:
+        h = ((b - r) / d + 2) / 6;
+        break;
+      case b:
+        h = ((r - g) / d + 4) / 6;
+        break;
     }
   }
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
@@ -52,7 +80,7 @@ function isLightHex(hex: string): boolean {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
 }
 
-function resolveColorToHex(color: string, theme: typeof THEMES[keyof typeof THEMES]): string {
+function resolveColorToHex(color: string, theme: (typeof THEMES)[keyof typeof THEMES]): string {
   if (!color) return '#ffffff';
   if (color.startsWith('#')) return color;
   return theme[color as keyof typeof theme] || '#ffffff';
@@ -66,7 +94,7 @@ function applyAccentColor(preset: AccentPreset, customHex?: string) {
     primary = hexToHsl(hex);
     fg = isLightHex(hex) ? '0 0% 5%' : '0 0% 100%';
   } else {
-    const found = ACCENT_PRESETS.find(p => p.value === preset) || ACCENT_PRESETS[0];
+    const found = ACCENT_PRESETS.find((p) => p.value === preset) || ACCENT_PRESETS[0];
     primary = found.primary;
     fg = found.fg;
   }
@@ -83,7 +111,9 @@ function applyAccentColor(preset: AccentPreset, customHex?: string) {
 
 function useEscapeKey(onClose: () => void) {
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
@@ -102,26 +132,38 @@ function SaveDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="bg-card border border-border rounded-xl shadow-2xl p-6 w-96"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold mb-4">Save File</h2>
         <label className="block text-xs text-muted-foreground mb-1">File name</label>
         <input
           autoFocus
           value={filename}
-          onChange={e => setFilename(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onClose(); }}
+          onChange={(e) => setFilename(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave();
+            if (e.key === 'Escape') onClose();
+          }}
           className="w-full px-3 py-1.5 bg-input border border-border rounded-lg text-sm focus:border-primary focus:outline-none mb-4"
         />
-        {'showSaveFilePicker' in window
-          ? <p className="text-[11px] text-muted-foreground mb-4">A folder picker will open next.</p>
-          : <p className="text-[11px] text-muted-foreground mb-4">The file will be saved to your Downloads folder.</p>
-        }
+        {'showSaveFilePicker' in window ? (
+          <p className="text-[11px] text-muted-foreground mb-4">A folder picker will open next.</p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground mb-4">
+            The file will be saved to your Downloads folder.
+          </p>
+        )}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm hover:bg-accent rounded-lg transition-colors">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm hover:bg-accent rounded-lg transition-colors"
+          >
             Cancel
           </button>
           <button
@@ -179,27 +221,33 @@ const SHORTCUT_GROUPS = [
 ];
 
 const TYPE_BADGE: Record<string, string> = {
-  feature:     'bg-primary/15 text-primary',
+  feature: 'bg-primary/15 text-primary',
   improvement: 'bg-yellow-500/15 text-yellow-500',
-  fix:         'bg-red-500/15 text-red-400',
-  removed:     'bg-muted text-muted-foreground',
+  fix: 'bg-red-500/15 text-red-400',
+  removed: 'bg-muted text-muted-foreground',
 };
 const TYPE_LABEL: Record<string, string> = {
-  feature: 'New', improvement: 'Improved', fix: 'Fixed', removed: 'Removed',
+  feature: 'New',
+  improvement: 'Improved',
+  fix: 'Fixed',
+  removed: 'Removed',
 };
 
 function ChangelogModal({ onClose }: { onClose: () => void }) {
   useEscapeKey(onClose);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="bg-card border border-border rounded-xl shadow-2xl p-6 w-[480px] max-h-[80vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold mb-4 flex-shrink-0">Changelog</h2>
 
         <div className="overflow-y-auto flex-1 space-y-5 pr-1">
-          {CHANGELOG.map(release => (
+          {CHANGELOG.map((release) => (
             <div key={release.version}>
               <div className="flex items-baseline gap-2 mb-2">
                 <span className="text-xs font-semibold font-mono">v{release.version}</span>
@@ -208,10 +256,14 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
               <div className="space-y-1.5 pl-2 border-l border-border/50">
                 {release.changes.map((change, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
-                    <span className={`flex-shrink-0 mt-px px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wide ${TYPE_BADGE[change.type]}`}>
+                    <span
+                      className={`flex-shrink-0 mt-px px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wide ${TYPE_BADGE[change.type]}`}
+                    >
                       {TYPE_LABEL[change.type]}
                     </span>
-                    <span className="text-muted-foreground leading-relaxed">{change.description}</span>
+                    <span className="text-muted-foreground leading-relaxed">
+                      {change.description}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -220,7 +272,10 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="mt-4 pt-4 border-t border-border flex justify-end flex-shrink-0">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm hover:bg-accent rounded-lg transition-colors">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm hover:bg-accent rounded-lg transition-colors"
+          >
             Close
           </button>
         </div>
@@ -234,22 +289,29 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
 function HelpModal({ onClose }: { onClose: () => void }) {
   useEscapeKey(onClose);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="bg-card border border-border rounded-xl shadow-2xl p-6 w-[520px] max-h-[80vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold mb-4">Keyboard Shortcuts</h2>
 
         <div className="grid grid-cols-2 gap-6">
-          {SHORTCUT_GROUPS.map(group => (
+          {SHORTCUT_GROUPS.map((group) => (
             <div key={group.title}>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">{group.title}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">
+                {group.title}
+              </p>
               <div className="space-y-1">
                 {group.shortcuts.map(({ key, label }) => (
                   <div key={key} className="flex items-center justify-between gap-4">
                     <span className="text-xs text-muted-foreground">{label}</span>
-                    <kbd className="text-[10px] font-mono bg-muted border border-border rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
+                    <kbd className="text-[10px] font-mono bg-muted border border-border rounded px-1.5 py-0.5 whitespace-nowrap">
+                      {key}
+                    </kbd>
                   </div>
                 ))}
               </div>
@@ -276,12 +338,19 @@ function AboutModal({ onClose }: { onClose: () => void }) {
   useEscapeKey(onClose);
   const { darkMode } = useThemeStore();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="bg-card border border-border rounded-xl shadow-2xl p-8 w-96 flex flex-col items-center gap-4 text-center"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
-        <img src={darkMode ? '/logo-tui-studio_dark.svg' : '/logo-tui-studio_light.svg'} alt="TUIStudio" className="w-16 h-16" />
+        <img
+          src={darkMode ? '/logo-tui-studio_dark.svg' : '/logo-tui-studio_light.svg'}
+          alt="TUIStudio"
+          className="w-16 h-16"
+        />
         <div>
           <h2 className="text-base font-semibold">TUIStudio</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">Terminal UI Design Tool</p>
@@ -334,7 +403,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleCustomColorChange = (color: string) => {
-    const hex = resolveColorToHex(color, THEMES[themeStore.currentTheme as keyof typeof THEMES] || THEMES.dracula);
+    const hex = resolveColorToHex(
+      color,
+      THEMES[themeStore.currentTheme as keyof typeof THEMES] || THEMES.dracula
+    );
     setCustomColor(hex);
     setAccentPresetState('custom');
     applyAccentColor('custom', hex);
@@ -346,10 +418,13 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="bg-card border border-border rounded-xl shadow-2xl p-6 w-[480px] max-h-[80vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-sm font-semibold mb-5">Settings</h2>
 
@@ -360,7 +435,11 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           </p>
           <div className="flex items-center gap-3">
             <Sun className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            <span className={`text-sm ${!themeStore.darkMode ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Light</span>
+            <span
+              className={`text-sm ${!themeStore.darkMode ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
+            >
+              Light
+            </span>
             <button
               type="button"
               role="switch"
@@ -376,7 +455,11 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                 }`}
               />
             </button>
-            <span className={`text-sm ${themeStore.darkMode ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Dark</span>
+            <span
+              className={`text-sm ${themeStore.darkMode ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
+            >
+              Dark
+            </span>
             <Moon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           </div>
         </div>
@@ -414,7 +497,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             </>
           ) : (
             <p className="text-[11px] text-muted-foreground">
-              Folder selection requires Chrome or Edge. Files will save to your browser's Downloads folder.
+              Folder selection requires Chrome or Edge. Files will save to your browser's Downloads
+              folder.
             </p>
           )}
         </div>
@@ -425,7 +509,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             Editor Accent Color
           </p>
           <div className="flex flex-wrap gap-2 mb-3">
-            {ACCENT_PRESETS.map(preset => (
+            {ACCENT_PRESETS.map((preset) => (
               <button
                 key={preset.value}
                 onClick={() => handlePresetClick(preset.value, preset.hex)}
@@ -439,7 +523,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                 }}
               >
                 {accentPreset === preset.value && (
-                  <Check className="w-3.5 h-3.5 absolute inset-0 m-auto" style={{ color: preset.fg === '0 0% 5%' ? '#000' : '#fff' }} />
+                  <Check
+                    className="w-3.5 h-3.5 absolute inset-0 m-auto"
+                    style={{ color: preset.fg === '0 0% 5%' ? '#000' : '#fff' }}
+                  />
                 )}
               </button>
             ))}
@@ -456,7 +543,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                   : 'border-border hover:border-border/80'
               }`}
               style={{
-                background: accentPreset === 'custom' ? customColor : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+                background:
+                  accentPreset === 'custom'
+                    ? customColor
+                    : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
                 outlineColor: accentPreset === 'custom' ? customColor : 'transparent',
               }}
               title="Custom color"
@@ -478,8 +568,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           <p className="text-[11px] text-muted-foreground mt-2">
             {accentPreset === 'custom'
               ? 'Custom'
-              : ACCENT_PRESETS.find(p => p.value === accentPreset)?.name || ''
-            }
+              : ACCENT_PRESETS.find((p) => p.value === accentPreset)?.name || ''}
           </p>
         </div>
 
@@ -518,44 +607,72 @@ function AppMenu() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const close = () => { setOpen(false); setHovered(null); };
+  const close = () => {
+    setOpen(false);
+    setHovered(null);
+  };
 
-  const dispatch = (event: string) => { close(); window.dispatchEvent(new Event(event)); };
+  const dispatch = (event: string) => {
+    close();
+    window.dispatchEvent(new Event(event));
+  };
 
-  const groups: Array<Array<{
-    label: string;
-    shortcut?: string;
-    action?: () => void;
-    submenu?: Array<{ label: string; shortcut?: string; action: () => void }>;
-  }>> = [
+  const groups: Array<
+    Array<{
+      label: string;
+      shortcut?: string;
+      action?: () => void;
+      submenu?: Array<{ label: string; shortcut?: string; action: () => void }>;
+    }>
+  > = [
     [
-      { label: 'Command Palette', shortcut: `${mod}P`, action: () => dispatch('open-command-palette') },
+      {
+        label: 'Command Palette',
+        shortcut: `${mod}P`,
+        action: () => dispatch('open-command-palette'),
+      },
     ],
     [
       {
         label: 'File',
         submenu: [
-          { label: 'Open',   shortcut: `${mod}O`, action: () => { close(); openTuiFile(); } },
-          { label: 'Save',   shortcut: `${mod}S`, action: () => { close(); window.dispatchEvent(new Event('open-save-dialog')); } },
+          {
+            label: 'Open',
+            shortcut: `${mod}O`,
+            action: () => {
+              close();
+              openTuiFile();
+            },
+          },
+          {
+            label: 'Save',
+            shortcut: `${mod}S`,
+            action: () => {
+              close();
+              window.dispatchEvent(new Event('open-save-dialog'));
+            },
+          },
           { label: 'Export', shortcut: `${mod}E`, action: () => dispatch('command-export') },
         ],
       },
       {
         label: 'Edit',
         submenu: [
-          { label: 'Copy',  shortcut: `${mod}C`, action: () => dispatch('command-copy') },
+          { label: 'Copy', shortcut: `${mod}C`, action: () => dispatch('command-copy') },
           { label: 'Paste', shortcut: `${mod}V`, action: () => dispatch('command-paste') },
         ],
       },
     ],
-    [
-      { label: 'Settings', shortcut: `${mod}K`, action: () => dispatch('command-settings') },
-    ],
+    [{ label: 'Settings', shortcut: `${mod}K`, action: () => dispatch('command-settings') }],
     [
       {
         label: 'Help',
         submenu: [
-          { label: 'Keyboard Shortcuts', shortcut: `${mod}?`, action: () => dispatch('command-help') },
+          {
+            label: 'Keyboard Shortcuts',
+            shortcut: `${mod}?`,
+            action: () => dispatch('command-help'),
+          },
           { label: 'Changelog', action: () => dispatch('command-changelog') },
           { label: 'About', action: () => dispatch('command-about') },
         ],
@@ -567,7 +684,10 @@ function AppMenu() {
     <div className="relative" ref={menuRef}>
       {/* Trigger */}
       <button
-        onClick={() => { setOpen(o => !o); setHovered(null); }}
+        onClick={() => {
+          setOpen((o) => !o);
+          setHovered(null);
+        }}
         className={`flex items-center p-1 rounded transition-colors ${open ? 'bg-accent' : 'hover:bg-accent'}`}
         title="Menu"
       >
@@ -588,7 +708,9 @@ function AppMenu() {
                     onMouseEnter={() => setHovered(item.label)}
                     onMouseLeave={() => setHovered(null)}
                   >
-                    <div className={`flex items-center justify-between px-3 py-1.5 cursor-default transition-colors ${hovered === item.label ? 'bg-accent' : 'hover:bg-accent'}`}>
+                    <div
+                      className={`flex items-center justify-between px-3 py-1.5 cursor-default transition-colors ${hovered === item.label ? 'bg-accent' : 'hover:bg-accent'}`}
+                    >
                       <span>{item.label}</span>
                       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
@@ -601,7 +723,9 @@ function AppMenu() {
                             className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-accent transition-colors text-left"
                           >
                             <span>{sub.label}</span>
-                            {sub.shortcut && <span className="text-xs text-muted-foreground">{sub.shortcut}</span>}
+                            {sub.shortcut && (
+                              <span className="text-xs text-muted-foreground">{sub.shortcut}</span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -614,7 +738,9 @@ function AppMenu() {
                     className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-accent transition-colors text-left"
                   >
                     <span>{item.label}</span>
-                    {item.shortcut && <span className="text-xs text-muted-foreground">{item.shortcut}</span>}
+                    {item.shortcut && (
+                      <span className="text-xs text-muted-foreground">{item.shortcut}</span>
+                    )}
                   </button>
                 )
               )}
@@ -720,117 +846,117 @@ export function Toolbar() {
           </div>
         </div>
 
-      {/* Center - Tools */}
-      <div className="flex items-center gap-2">
-        {/* Component Toolbar (when docked) */}
-        {isToolbarDocked && (
-          <>
-            <ComponentToolbar docked={true} />
-            {/* Separator */}
-            <div className="h-6 w-px bg-border" />
-          </>
-        )}
+        {/* Center - Tools */}
+        <div className="flex items-center gap-2">
+          {/* Component Toolbar (when docked) */}
+          {isToolbarDocked && (
+            <>
+              <ComponentToolbar docked={true} />
+              {/* Separator */}
+              <div className="h-6 w-px bg-border" />
+            </>
+          )}
 
-        {/* Undo/Redo */}
-        <div className="flex items-center gap-1">
+          {/* Undo/Redo */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => componentStore.undo()}
+              disabled={!canUndo}
+              className="p-2 hover:bg-accent rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="Undo (Cmd+Z)"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => componentStore.redo()}
+              disabled={!canRedo}
+              className="p-2 hover:bg-accent rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="Redo (Cmd+Shift+Z)"
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Zoom */}
+          <div className="flex items-center gap-1 bg-card rounded-lg px-1 py-0.5">
+            <button
+              onClick={() => canvasStore.setZoom(canvasStore.zoom - 0.25)}
+              disabled={canvasStore.zoom <= 0.25}
+              className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30 transition-colors"
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="min-w-[3.5rem] text-center text-xs font-medium px-1">
+              {Math.round(canvasStore.zoom * 100)}%
+            </span>
+            <button
+              onClick={() => canvasStore.setZoom(canvasStore.zoom + 0.25)}
+              disabled={canvasStore.zoom >= 4}
+              className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30 transition-colors"
+              title="Zoom In"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <button
-            onClick={() => componentStore.undo()}
-            disabled={!canUndo}
-            className="p-2 hover:bg-accent rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Undo (Cmd+Z)"
+            onClick={() => canvasStore.resetView()}
+            className="px-2.5 py-1.5 text-xs hover:bg-accent rounded-lg transition-colors"
+            title="Reset View"
           >
-            <Undo2 className="w-4 h-4" />
+            Reset
           </button>
+
+          {/* Grid */}
           <button
-            onClick={() => componentStore.redo()}
-            disabled={!canRedo}
-            className="p-2 hover:bg-accent rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Redo (Cmd+Shift+Z)"
+            onClick={() => canvasStore.toggleGrid()}
+            className={`p-2 hover:bg-accent rounded-lg transition-colors ${
+              canvasStore.showGrid ? 'bg-accent' : ''
+            }`}
+            title="Toggle Grid"
           >
-            <Redo2 className="w-4 h-4" />
+            <Grid3x3 className="w-4 h-4" />
+          </button>
+
+          {/* Theme Selector */}
+          <div className="flex items-center gap-2 bg-card rounded-lg px-2.5 py-1.5">
+            <Palette className="w-3.5 h-3.5 text-muted-foreground" />
+            <select
+              value={themeStore.currentTheme}
+              onChange={(e) => themeStore.setTheme(e.target.value as any)}
+              className="text-xs bg-transparent border-none outline-none cursor-pointer text-foreground"
+              title="Color Theme"
+            >
+              {THEME_NAMES.map((theme) => (
+                <option key={theme.value} value={theme.value} className="bg-card">
+                  {theme.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Command Palette */}
+          <button
+            onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+            className="p-2 hover:bg-accent rounded-lg transition-colors"
+            title="Command Palette (Ctrl+P)"
+          >
+            <Search className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Zoom */}
-        <div className="flex items-center gap-1 bg-card rounded-lg px-1 py-0.5">
+        {/* Right - Actions */}
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => canvasStore.setZoom(canvasStore.zoom - 0.25)}
-            disabled={canvasStore.zoom <= 0.25}
-            className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30 transition-colors"
-            title="Zoom Out"
+            onClick={() => setSaveDialogOpen(true)}
+            className="px-3 py-2 text-sm hover:bg-accent rounded-lg flex items-center gap-2 transition-colors"
+            title="Save (Cmd+S)"
           >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <span className="min-w-[3.5rem] text-center text-xs font-medium px-1">
-            {Math.round(canvasStore.zoom * 100)}%
-          </span>
-          <button
-            onClick={() => canvasStore.setZoom(canvasStore.zoom + 0.25)}
-            disabled={canvasStore.zoom >= 4}
-            className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30 transition-colors"
-            title="Zoom In"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
+            <Save className="w-4 h-4" />
+            <span className="font-medium">Save</span>
           </button>
         </div>
-        <button
-          onClick={() => canvasStore.resetView()}
-          className="px-2.5 py-1.5 text-xs hover:bg-accent rounded-lg transition-colors"
-          title="Reset View"
-        >
-          Reset
-        </button>
-
-        {/* Grid */}
-        <button
-          onClick={() => canvasStore.toggleGrid()}
-          className={`p-2 hover:bg-accent rounded-lg transition-colors ${
-            canvasStore.showGrid ? 'bg-accent' : ''
-          }`}
-          title="Toggle Grid"
-        >
-          <Grid3x3 className="w-4 h-4" />
-        </button>
-
-        {/* Theme Selector */}
-        <div className="flex items-center gap-2 bg-card rounded-lg px-2.5 py-1.5">
-          <Palette className="w-3.5 h-3.5 text-muted-foreground" />
-          <select
-            value={themeStore.currentTheme}
-            onChange={(e) => themeStore.setTheme(e.target.value as any)}
-            className="text-xs bg-transparent border-none outline-none cursor-pointer text-foreground"
-            title="Color Theme"
-          >
-            {THEME_NAMES.map((theme) => (
-              <option key={theme.value} value={theme.value} className="bg-card">
-                {theme.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Command Palette */}
-        <button
-          onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
-          className="p-2 hover:bg-accent rounded-lg transition-colors"
-          title="Command Palette (Ctrl+P)"
-        >
-          <Search className="w-4 h-4" />
-        </button>
       </div>
-
-      {/* Right - Actions */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setSaveDialogOpen(true)}
-          className="px-3 py-2 text-sm hover:bg-accent rounded-lg flex items-center gap-2 transition-colors"
-          title="Save (Cmd+S)"
-        >
-          <Save className="w-4 h-4" />
-          <span className="font-medium">Save</span>
-        </button>
-      </div>
-    </div>
 
       {/* Export Modal */}
       <ExportModal isOpen={exportOpen} onClose={() => setExportOpen(false)} />

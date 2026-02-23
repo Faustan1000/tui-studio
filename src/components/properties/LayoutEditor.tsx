@@ -9,7 +9,11 @@ import { canHaveChildren } from '../../constants/components';
 // ─── Numeric input that allows clearing before typing a new value ─────────────
 
 export function NumericInput({
-  value, onChange, min, max, className,
+  value,
+  onChange,
+  min,
+  max,
+  className,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -24,8 +28,7 @@ export function NumericInput({
     if (!focused) setText(String(value));
   }, [value, focused]);
 
-  const clamp = (n: number) =>
-    Math.max(min ?? -Infinity, Math.min(max ?? Infinity, n));
+  const clamp = (n: number) => Math.max(min ?? -Infinity, Math.min(max ?? Infinity, n));
 
   return (
     <input
@@ -38,7 +41,10 @@ export function NumericInput({
         const n = parseInt(raw, 10);
         if (!isNaN(n)) onChange(clamp(n));
       }}
-      onFocus={() => { setFocused(true); setText(String(value)); }}
+      onFocus={() => {
+        setFocused(true);
+        setText(String(value));
+      }}
       onBlur={() => {
         setFocused(false);
         const n = parseInt(text, 10);
@@ -53,8 +59,10 @@ interface LayoutEditorProps {
   component: ComponentNode;
 }
 
-const input = 'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
-const select = 'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+const input =
+  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+const select =
+  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
 const label = 'text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide';
 
 // ─── Edge editor (padding & margin) ──────────────────────────────────────────
@@ -94,19 +102,19 @@ function EdgeEditor({
 
   const setSide = (side: 'top' | 'right' | 'bottom' | 'left', v: number) => {
     onChange({
-      top:    getSide(value ?? 0, 'top'),
-      right:  getSide(value ?? 0, 'right'),
+      top: getSide(value ?? 0, 'top'),
+      right: getSide(value ?? 0, 'right'),
       bottom: getSide(value ?? 0, 'bottom'),
-      left:   getSide(value ?? 0, 'left'),
+      left: getSide(value ?? 0, 'left'),
       [side]: v,
     });
   };
 
   const sides = [
-    { side: 'top'    as const, icon: '↑', title: 'Top' },
-    { side: 'right'  as const, icon: '→', title: 'Right' },
+    { side: 'top' as const, icon: '↑', title: 'Top' },
+    { side: 'right' as const, icon: '→', title: 'Right' },
     { side: 'bottom' as const, icon: '↓', title: 'Bottom' },
-    { side: 'left'   as const, icon: '←', title: 'Left' },
+    { side: 'left' as const, icon: '←', title: 'Left' },
   ];
 
   return (
@@ -122,9 +130,7 @@ function EdgeEditor({
               : 'bg-input border-border/50 text-muted-foreground hover:bg-accent'
           }`}
         >
-          {individual
-            ? <LayoutGrid size={12} />
-            : <Maximize2 size={12} />}
+          {individual ? <LayoutGrid size={12} /> : <Maximize2 size={12} />}
         </button>
       </div>
 
@@ -137,7 +143,10 @@ function EdgeEditor({
         <div className="grid grid-cols-2 gap-1">
           {sides.map(({ side, icon, title }) => (
             <div key={side} className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground font-mono w-4 text-center" title={title}>
+              <span
+                className="text-[10px] text-muted-foreground font-mono w-4 text-center"
+                title={title}
+              >
                 {icon}
               </span>
               <NumericInput
@@ -157,7 +166,7 @@ function EdgeEditor({
 // ─── Main editor ─────────────────────────────────────────────────────────────
 
 export function LayoutEditor({ component }: LayoutEditorProps) {
-  const updateLayout = useComponentStore(state => state.updateLayout);
+  const updateLayout = useComponentStore((state) => state.updateLayout);
 
   const upd = (updates: Partial<ComponentNode['layout']>) => updateLayout(component.id, updates);
 
@@ -170,11 +179,19 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
       <div className="grid grid-cols-2 gap-1.5">
         <div>
           <label className={label}>X</label>
-          <NumericInput value={component.layout.x || 0} onChange={(v) => upd({ x: v })} className={input} />
+          <NumericInput
+            value={component.layout.x || 0}
+            onChange={(v) => upd({ x: v })}
+            className={input}
+          />
         </div>
         <div>
           <label className={label}>Y</label>
-          <NumericInput value={component.layout.y || 0} onChange={(v) => upd({ y: v })} className={input} />
+          <NumericInput
+            value={component.layout.y || 0}
+            onChange={(v) => upd({ y: v })}
+            className={input}
+          />
         </div>
       </div>
 
@@ -217,7 +234,11 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
                 <div>
                   <label className={label}>Direction</label>
                   <select
-                    value={['List', 'Tree'].includes(component.type) ? 'column' : component.layout.direction}
+                    value={
+                      ['List', 'Tree'].includes(component.type)
+                        ? 'column'
+                        : component.layout.direction
+                    }
                     onChange={(e) => upd({ direction: e.target.value as any })}
                     disabled={['List', 'Tree'].includes(component.type)}
                     className={select + ' disabled:opacity-50'}
@@ -228,7 +249,12 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
                 </div>
                 <div>
                   <label className={label}>Gap</label>
-                  <NumericInput value={component.layout.gap || 0} onChange={(v) => upd({ gap: v })} min={0} className={input} />
+                  <NumericInput
+                    value={component.layout.gap || 0}
+                    onChange={(v) => upd({ gap: v })}
+                    min={0}
+                    className={input}
+                  />
                 </div>
               </div>
 
@@ -270,7 +296,9 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
                   onChange={(e) => upd({ wrap: e.target.checked })}
                   className="w-3 h-3"
                 />
-                <label htmlFor="wrap" className="text-[11px]">Wrap</label>
+                <label htmlFor="wrap" className="text-[11px]">
+                  Wrap
+                </label>
               </div>
             </>
           )}
@@ -280,21 +308,41 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className={label}>Columns</label>
-                  <NumericInput value={component.layout.columns || 2} onChange={(v) => upd({ columns: v })} min={1} className={input} />
+                  <NumericInput
+                    value={component.layout.columns || 2}
+                    onChange={(v) => upd({ columns: v })}
+                    min={1}
+                    className={input}
+                  />
                 </div>
                 <div>
                   <label className={label}>Rows</label>
-                  <NumericInput value={component.layout.rows || 2} onChange={(v) => upd({ rows: v })} min={1} className={input} />
+                  <NumericInput
+                    value={component.layout.rows || 2}
+                    onChange={(v) => upd({ rows: v })}
+                    min={1}
+                    className={input}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className={label}>Col Gap</label>
-                  <NumericInput value={component.layout.columnGap || 0} onChange={(v) => upd({ columnGap: v })} min={0} className={input} />
+                  <NumericInput
+                    value={component.layout.columnGap || 0}
+                    onChange={(v) => upd({ columnGap: v })}
+                    min={0}
+                    className={input}
+                  />
                 </div>
                 <div>
                   <label className={label}>Row Gap</label>
-                  <NumericInput value={component.layout.rowGap || 0} onChange={(v) => upd({ rowGap: v })} min={0} className={input} />
+                  <NumericInput
+                    value={component.layout.rowGap || 0}
+                    onChange={(v) => upd({ rowGap: v })}
+                    min={0}
+                    className={input}
+                  />
                 </div>
               </div>
             </>
@@ -310,7 +358,6 @@ export function LayoutEditor({ component }: LayoutEditorProps) {
           onChange={(v) => upd({ padding: v })}
         />
       )}
-
     </div>
   );
 }

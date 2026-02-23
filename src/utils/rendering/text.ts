@@ -67,7 +67,12 @@ export function truncateText(text: string, width: number, ellipsis: string = 'â€
 /**
  * Pad text to a specific width with alignment
  */
-export function padText(text: string, width: number, align: TextAlign = 'left', fillChar: string = ' '): string {
+export function padText(
+  text: string,
+  width: number,
+  align: TextAlign = 'left',
+  fillChar: string = ' '
+): string {
   const length = visibleLength(text);
   if (length >= width) return text;
 
@@ -90,13 +95,17 @@ export function padText(text: string, width: number, align: TextAlign = 'left', 
  * Align lines of text horizontally within a width
  */
 export function alignText(lines: string[], width: number, align: TextAlign = 'left'): string[] {
-  return lines.map(line => padText(line, width, align));
+  return lines.map((line) => padText(line, width, align));
 }
 
 /**
  * Align lines of text vertically within a height
  */
-export function alignVertical(lines: string[], height: number, valign: VerticalAlign = 'top'): string[] {
+export function alignVertical(
+  lines: string[],
+  height: number,
+  valign: VerticalAlign = 'top'
+): string[] {
   if (lines.length >= height) return lines.slice(0, height);
 
   const emptyLines = height - lines.length;
@@ -105,22 +114,12 @@ export function alignVertical(lines: string[], height: number, valign: VerticalA
     case 'middle': {
       const topPad = Math.floor(emptyLines / 2);
       const bottomPad = emptyLines - topPad;
-      return [
-        ...Array(topPad).fill(''),
-        ...lines,
-        ...Array(bottomPad).fill(''),
-      ];
+      return [...Array(topPad).fill(''), ...lines, ...Array(bottomPad).fill('')];
     }
     case 'bottom':
-      return [
-        ...Array(emptyLines).fill(''),
-        ...lines,
-      ];
+      return [...Array(emptyLines).fill(''), ...lines];
     default: // 'top'
-      return [
-        ...lines,
-        ...Array(emptyLines).fill(''),
-      ];
+      return [...lines, ...Array(emptyLines).fill('')];
   }
 }
 
@@ -136,7 +135,7 @@ export function createEmptyBox(width: number, height: number, fillChar: string =
  */
 export function measureText(text: string): { width: number; height: number } {
   const lines = text.split('\n');
-  const width = Math.max(...lines.map(line => visibleLength(line)), 0);
+  const width = Math.max(...lines.map((line) => visibleLength(line)), 0);
   const height = lines.length;
   return { width, height };
 }

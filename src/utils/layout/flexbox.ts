@@ -23,13 +23,13 @@ export function calculateFlexboxLayout(
   const padding = typeof container.layout.padding === 'number' ? container.layout.padding : 0;
 
   // Calculate content area
-  const contentWidth = availableWidth - (padding * 2);
-  const contentHeight = availableHeight - (padding * 2);
+  const contentWidth = availableWidth - padding * 2;
+  const contentHeight = availableHeight - padding * 2;
 
   const isRow = direction === 'row';
   const mainSize = isRow ? contentWidth : contentHeight;
   // Convert children to flex items
-  const flexItems: FlexItem[] = container.children.map(child => ({
+  const flexItems: FlexItem[] = container.children.map((child) => ({
     id: child.id,
     flexGrow: 0,
     flexShrink: 1,
@@ -41,11 +41,13 @@ export function calculateFlexboxLayout(
   }));
 
   // Collect items into flex lines
-  const lines = wrap ? collectFlexLines(flexItems, mainSize, gap, isRow) : [{ items: flexItems, crossSize: 0 }];
+  const lines = wrap
+    ? collectFlexLines(flexItems, mainSize, gap, isRow)
+    : [{ items: flexItems, crossSize: 0 }];
 
   let crossOffset = padding;
 
-  lines.forEach(line => {
+  lines.forEach((line) => {
     let mainOffset = padding;
 
     // Calculate sizes for items in this line
@@ -98,12 +100,17 @@ export function calculateFlexboxLayout(
   return layouts;
 }
 
-function collectFlexLines(items: FlexItem[], maxSize: number, gap: number, isRow: boolean): FlexLine[] {
+function collectFlexLines(
+  items: FlexItem[],
+  maxSize: number,
+  gap: number,
+  isRow: boolean
+): FlexLine[] {
   const lines: FlexLine[] = [];
   let currentLine: FlexItem[] = [];
   let currentSize = 0;
 
-  items.forEach(item => {
+  items.forEach((item) => {
     const itemSize = isRow ? resolveWidth(item) : resolveHeight(item);
     const withGap = currentLine.length > 0 ? gap : 0;
 
@@ -124,12 +131,17 @@ function collectFlexLines(items: FlexItem[], maxSize: number, gap: number, isRow
   return lines;
 }
 
-function resolveFlexItemSizes(items: FlexItem[], availableSize: number, gap: number, isRow: boolean): number[] {
+function resolveFlexItemSizes(
+  items: FlexItem[],
+  availableSize: number,
+  gap: number,
+  isRow: boolean
+): number[] {
   const totalGap = (items.length - 1) * gap;
   let remainingSize = availableSize - totalGap;
 
   // First pass: resolve fixed and auto sizes
-  const sizes = items.map(item => {
+  const sizes = items.map((item) => {
     const value = isRow ? item.width : item.height;
     if (typeof value === 'number') {
       remainingSize -= value;
@@ -139,7 +151,7 @@ function resolveFlexItemSizes(items: FlexItem[], availableSize: number, gap: num
   });
 
   // Second pass: distribute remaining space to 'fill' items
-  const fillCount = sizes.filter(s => s === -1).length;
+  const fillCount = sizes.filter((s) => s === -1).length;
   if (fillCount > 0 && remainingSize > 0) {
     const fillSize = Math.max(1, Math.floor(remainingSize / fillCount));
     for (let i = 0; i < sizes.length; i++) {
@@ -151,7 +163,7 @@ function resolveFlexItemSizes(items: FlexItem[], availableSize: number, gap: num
     // Fallback for auto items
     for (let i = 0; i < sizes.length; i++) {
       if (sizes[i] === -1) {
-        sizes[i] = isRow ? (items[i].minWidth || 10) : (items[i].minHeight || 3);
+        sizes[i] = isRow ? items[i].minWidth || 10 : items[i].minHeight || 3;
       }
     }
   }
@@ -169,7 +181,11 @@ function resolveHeight(item: FlexItem): number {
   return item.minHeight || 3;
 }
 
-function calculateJustifySpacing(justify: string, freeSpace: number, itemCount: number): { spacing: number; offset: number } {
+function calculateJustifySpacing(
+  justify: string,
+  freeSpace: number,
+  itemCount: number
+): { spacing: number; offset: number } {
   if (freeSpace <= 0) return { spacing: 0, offset: 0 };
 
   switch (justify) {
@@ -181,9 +197,10 @@ function calculateJustifySpacing(justify: string, freeSpace: number, itemCount: 
       return itemCount > 1
         ? { spacing: freeSpace / (itemCount - 1), offset: 0 }
         : { spacing: 0, offset: 0 };
-    case 'space-around':
+    case 'space-around': {
       const spacing = freeSpace / itemCount;
       return { spacing, offset: spacing / 2 };
+    }
     default: // 'start'
       return { spacing: 0, offset: 0 };
   }

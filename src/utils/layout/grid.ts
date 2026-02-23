@@ -17,8 +17,8 @@ export function calculateGridLayout(
   const padding = typeof container.layout.padding === 'number' ? container.layout.padding : 0;
 
   // Calculate content area
-  const contentWidth = availableWidth - (padding * 2);
-  const contentHeight = availableHeight - (padding * 2);
+  const contentWidth = availableWidth - padding * 2;
+  const contentHeight = availableHeight - padding * 2;
 
   // Calculate column and row sizes
   const totalColumnGap = (columns - 1) * columnGap;
@@ -34,12 +34,12 @@ export function calculateGridLayout(
 
     if (row >= rows) return; // Skip if exceeds grid
 
-    const x = padding + (column * (columnWidth + columnGap));
-    const y = padding + (row * (rowHeight + rowGap));
+    const x = padding + column * (columnWidth + columnGap);
+    const y = padding + row * (rowHeight + rowGap);
 
     // Determine cell dimensions
-    let cellWidth = columnWidth;
-    let cellHeight = rowHeight;
+    const cellWidth = columnWidth;
+    const cellHeight = rowHeight;
 
     // Resolve child dimensions
     let width = cellWidth;

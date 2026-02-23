@@ -61,7 +61,7 @@ export function LeftSidebar() {
             {nodesWithWarnings.length} Layout Warning{nodesWithWarnings.length !== 1 ? 's' : ''}
           </div>
           <div className="space-y-0.5">
-            {nodesWithWarnings.slice(0, 3).map(nodeId => {
+            {nodesWithWarnings.slice(0, 3).map((nodeId) => {
               const node = findNode(componentStore.root, nodeId);
               const info = layoutEngine.getDebugInfo(nodeId);
               if (!node || !info) return null;
@@ -86,7 +86,10 @@ export function LeftSidebar() {
   );
 }
 
-function findNode(root: import('../../types').ComponentNode | null, id: string): import('../../types').ComponentNode | null {
+function findNode(
+  root: import('../../types').ComponentNode | null,
+  id: string
+): import('../../types').ComponentNode | null {
   if (!root) return null;
   if (root.id === id) return root;
   for (const child of root.children) {
@@ -98,10 +101,15 @@ function findNode(root: import('../../types').ComponentNode | null, id: string):
 
 function formatWarning(warning: import('../../utils/layout').LayoutWarning): string {
   switch (warning.type) {
-    case 'overflow': return `Overflow ${warning.axis}-axis: ${warning.amount} cols/rows`;
-    case 'constraint-violation': return `Constraint: ${warning.constraint}`;
-    case 'negative-space': return `Negative ${warning.dimension}`;
-    case 'circular-dependency': return 'Circular dependency';
-    default: return 'Layout issue';
+    case 'overflow':
+      return `Overflow ${warning.axis}-axis: ${warning.amount} cols/rows`;
+    case 'constraint-violation':
+      return `Constraint: ${warning.constraint}`;
+    case 'negative-space':
+      return `Negative ${warning.dimension}`;
+    case 'circular-dependency':
+      return 'Circular dependency';
+    default:
+      return 'Layout issue';
   }
 }

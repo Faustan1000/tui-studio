@@ -37,11 +37,11 @@ async function toggleEditorMode(page) {
 }
 
 const SLIDES = [
-  { theme: 'dracula',        label: 'dracula',     darkMode: true  },
-  { theme: 'nord',           label: 'nord',        darkMode: true  },
-  { theme: 'tokyo-night',    label: 'tokyo-night', darkMode: true  },
-  { theme: 'monokai',        label: 'monokai',     darkMode: true  },
-  { theme: 'solarized-light',label: 'light-mode',  darkMode: false },
+  { theme: 'dracula', label: 'dracula', darkMode: true },
+  { theme: 'nord', label: 'nord', darkMode: true },
+  { theme: 'tokyo-night', label: 'tokyo-night', darkMode: true },
+  { theme: 'monokai', label: 'monokai', darkMode: true },
+  { theme: 'solarized-light', label: 'light-mode', darkMode: false },
 ];
 
 let page = null;

@@ -66,7 +66,7 @@ export function hexToAnsi256(hex: string): number {
   const gIndex = Math.round((g / 255) * 5);
   const bIndex = Math.round((b / 255) * 5);
 
-  return 16 + (rIndex * 36) + (gIndex * 6) + bIndex;
+  return 16 + rIndex * 36 + gIndex * 6 + bIndex;
 }
 
 /**
@@ -85,7 +85,10 @@ export function hexToAnsiRgb(hex: string): string {
 /**
  * Generate ANSI escape codes for styling
  */
-export function generateAnsiCodes(style: AnsiStyle, colorMode: 'ansi16' | 'ansi256' | 'trueColor' = 'ansi16'): string {
+export function generateAnsiCodes(
+  style: AnsiStyle,
+  colorMode: 'ansi16' | 'ansi256' | 'trueColor' = 'ansi16'
+): string {
   const codes: string[] = [];
 
   // Text decoration
@@ -148,7 +151,11 @@ export function hexToRgb(hex: string): [number, number, number] {
 /**
  * Linearly interpolate between two RGB values
  */
-function lerpRgb(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
+function lerpRgb(
+  a: [number, number, number],
+  b: [number, number, number],
+  t: number
+): [number, number, number] {
   return [
     Math.round(a[0] + (b[0] - a[0]) * t),
     Math.round(a[1] + (b[1] - a[1]) * t),
@@ -160,7 +167,10 @@ function lerpRgb(a: [number, number, number], b: [number, number, number], t: nu
  * Interpolate a gradient at position t (0–1), returns [r, g, b].
  * Sorts stops by position and lerps between the two surrounding stops.
  */
-export function interpolateGradientColor(gradient: GradientConfig, t: number): [number, number, number] {
+export function interpolateGradientColor(
+  gradient: GradientConfig,
+  t: number
+): [number, number, number] {
   const stops = [...gradient.stops].sort((a, b) => a.position - b.position);
   if (stops.length === 0) return [0, 0, 0];
   if (stops.length === 1) return hexToRgb(stops[0].color);
@@ -193,7 +203,11 @@ export function gradientBgCode(gradient: GradientConfig, t: number): string {
 /**
  * Wrap text with ANSI codes
  */
-export function wrapWithAnsi(text: string, style: AnsiStyle, colorMode?: 'ansi16' | 'ansi256' | 'trueColor'): string {
+export function wrapWithAnsi(
+  text: string,
+  style: AnsiStyle,
+  colorMode?: 'ansi16' | 'ansi256' | 'trueColor'
+): string {
   const codes = generateAnsiCodes(style, colorMode);
   return codes ? `${codes}${text}${ANSI_RESET}` : text;
 }
@@ -202,6 +216,7 @@ export function wrapWithAnsi(text: string, style: AnsiStyle, colorMode?: 'ansi16
  * Strip ANSI codes from text
  */
 export function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*m/g, '');
 }
 

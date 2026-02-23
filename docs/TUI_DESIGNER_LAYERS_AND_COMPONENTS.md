@@ -11,6 +11,7 @@ This document describes the layer organization system and reusable component lib
 ### Concept
 
 Organize your TUI design into logical layers, just like Figma:
+
 - **Pages**: Top-level organization (e.g., "Login Screen", "Dashboard", "Settings")
 - **Frames**: Artboards/screens within pages
 - **Layers**: Individual components with hierarchy
@@ -40,8 +41,8 @@ export interface Page {
 export interface Frame {
   id: string;
   name: string;
-  width: number;    // Terminal columns
-  height: number;   // Terminal rows
+  width: number; // Terminal columns
+  height: number; // Terminal rows
   root: LayerNode;
   backgroundColor?: string;
 }
@@ -68,11 +69,7 @@ export interface LayerNode {
   order: number;
 }
 
-export type LayerType =
-  | 'frame'
-  | 'group'
-  | 'component'
-  | 'instance';
+export type LayerType = 'frame' | 'group' | 'component' | 'instance';
 ```
 
 ### Layer Panel UI
@@ -151,6 +148,7 @@ interface LayerActions {
 Create **master components** that can be instantiated multiple times. Changes to the master automatically propagate to all instances.
 
 **Key Features:**
+
 - **Component Library**: Centralized collection of reusable components
 - **Instances**: Linked copies that inherit from master
 - **Overrides**: Customize instances without breaking the link
@@ -241,7 +239,7 @@ const buttonComponent: MasterComponent = {
       label: 'Label',
       type: 'text',
       defaultValue: 'Button',
-      description: 'Button text'
+      description: 'Button text',
     },
     {
       key: 'variant',
@@ -249,20 +247,20 @@ const buttonComponent: MasterComponent = {
       type: 'select',
       defaultValue: 'primary',
       options: ['primary', 'secondary', 'danger'],
-      description: 'Visual style'
+      description: 'Visual style',
     },
     {
       key: 'disabled',
       label: 'Disabled',
       type: 'boolean',
-      defaultValue: false
+      defaultValue: false,
     },
     {
       key: 'width',
       label: 'Width',
       type: 'number',
-      defaultValue: 'auto'
-    }
+      defaultValue: 'auto',
+    },
   ],
   variants: [
     {
@@ -271,8 +269,8 @@ const buttonComponent: MasterComponent = {
       props: {
         backgroundColor: 'blue',
         color: 'white',
-        bold: true
-      }
+        bold: true,
+      },
     },
     {
       id: 'secondary',
@@ -280,8 +278,8 @@ const buttonComponent: MasterComponent = {
       props: {
         backgroundColor: 'transparent',
         color: 'white',
-        borderColor: 'white'
-      }
+        borderColor: 'white',
+      },
     },
     {
       id: 'danger',
@@ -289,9 +287,9 @@ const buttonComponent: MasterComponent = {
       props: {
         backgroundColor: 'red',
         color: 'white',
-        bold: true
-      }
-    }
+        bold: true,
+      },
+    },
   ],
   root: {
     id: 'root',
@@ -299,27 +297,27 @@ const buttonComponent: MasterComponent = {
     name: 'Button',
     props: {
       label: '{{label}}', // Variable
-      width: '{{width}}'
+      width: '{{width}}',
     },
     style: {
       border: true,
       borderStyle: 'rounded',
       backgroundColor: '{{backgroundColor}}',
       color: '{{color}}',
-      bold: '{{bold}}'
+      bold: '{{bold}}',
     },
     layout: {
       type: 'none',
-      padding: { top: 0, right: 2, bottom: 0, left: 2 }
+      padding: { top: 0, right: 2, bottom: 0, left: 2 },
     },
     events: {
-      onClick: 'handleClick'
+      onClick: 'handleClick',
     },
-    children: []
+    children: [],
   },
   created: new Date(),
   modified: new Date(),
-  tags: ['button', 'control', 'form']
+  tags: ['button', 'control', 'form'],
 };
 ```
 
@@ -333,10 +331,10 @@ const loginButton: ComponentInstance = {
   overrides: {
     label: 'Login',
     variant: 'primary',
-    width: 20
+    width: 20,
   },
   childOverrides: new Map(),
-  detached: false
+  detached: false,
 };
 
 // Another instance with different overrides
@@ -346,10 +344,10 @@ const cancelButton: ComponentInstance = {
   overrides: {
     label: 'Cancel',
     variant: 'secondary',
-    width: 20
+    width: 20,
   },
   childOverrides: new Map(),
-  detached: false
+  detached: false,
 };
 ```
 
@@ -430,6 +428,7 @@ interface ComponentActions {
 **Tasks:**
 
 **9.1 Layer Data Model** (`src/stores/layerStore.ts`)
+
 ```typescript
 interface LayerState {
   pages: Page[];
@@ -457,6 +456,7 @@ interface LayerState {
 ```
 
 **9.2 Layer Panel Component** (`src/components/layers/`)
+
 - [ ] `LayerPanel.tsx` - Main layer panel
 - [ ] `LayerTree.tsx` - Hierarchical tree view
 - [ ] `LayerItem.tsx` - Individual layer item
@@ -466,12 +466,14 @@ interface LayerState {
 - [ ] Multi-select layers
 
 **9.3 Page Management** (`src/components/pages/`)
+
 - [ ] `PageTabs.tsx` - Tab bar for pages
 - [ ] `PageContextMenu.tsx` - Page actions
 - [ ] Add/delete/rename pages
 - [ ] Switch between pages
 
 **9.4 Frame/Artboard System**
+
 - [ ] `FrameSelector.tsx` - Select frame on canvas
 - [ ] Multiple frames per page
 - [ ] Frame thumbnails
@@ -484,6 +486,7 @@ interface LayerState {
 **Tasks:**
 
 **11.1 Component Library Data** (`src/stores/componentLibraryStore.ts`)
+
 ```typescript
 interface ComponentLibraryState {
   library: ComponentLibrary;
@@ -508,6 +511,7 @@ interface ComponentLibraryState {
 ```
 
 **11.2 Component Panel** (`src/components/components/`)
+
 - [ ] `ComponentPanel.tsx` - Main component library panel
 - [ ] `ComponentGrid.tsx` - Grid view of components
 - [ ] `ComponentItem.tsx` - Draggable component item
@@ -517,6 +521,7 @@ interface ComponentLibraryState {
 - [ ] Filter by category/tags
 
 **11.3 Component Creation Flow**
+
 - [ ] "Create Component" button
 - [ ] Component name dialog
 - [ ] Define customizable props
@@ -524,6 +529,7 @@ interface ComponentLibraryState {
 - [ ] Add to library
 
 **11.4 Instance Management**
+
 - [ ] Visual indicator for instances (purple outline, like Figma)
 - [ ] "Go to Master Component" button
 - [ ] Override indicators in property panel
@@ -531,12 +537,14 @@ interface ComponentLibraryState {
 - [ ] "Detach Instance" action
 
 **11.5 Component Variants**
+
 - [ ] Define variant properties
 - [ ] Variant switcher in property panel
 - [ ] Visual variant preview
 - [ ] Apply variant presets
 
 **11.6 Publishing/Sharing**
+
 - [ ] Export library as `.tuicomp` file
 - [ ] Import library from file
 - [ ] Component library marketplace (future)
@@ -548,6 +556,7 @@ interface ComponentLibraryState {
 ### Component Highlighting
 
 **Master Component** (in component library):
+
 ```
 ┌─────────────────┐
 │  🔘 Button      │ ← Purple icon
@@ -558,6 +567,7 @@ interface ComponentLibraryState {
 ```
 
 **Component Instance** (in layer panel):
+
 ```
 ┌─────────────────────────┐
 │ 📄 Login Screen         │
@@ -661,6 +671,7 @@ interface ComponentLibraryFile {
 ```
 
 **Example:**
+
 ```json
 {
   "version": "1.0.0",
@@ -696,12 +707,14 @@ interface ComponentLibraryFile {
 ## 🚀 Benefits
 
 ### For Designers
+
 - **Organization**: Keep designs structured with pages and layers
 - **Consistency**: Reuse components across screens
 - **Efficiency**: Update once, propagate everywhere
 - **Collaboration**: Share component libraries with team
 
 ### For Developers
+
 - **DRY Principle**: Single source of truth for components
 - **Type Safety**: Generated code maintains component contracts
 - **Flexibility**: Override what you need, inherit the rest

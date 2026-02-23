@@ -12,7 +12,7 @@ export function calculateAbsoluteLayout(
 
   const padding = typeof container.layout.padding === 'number' ? container.layout.padding : 0;
 
-  container.children.forEach(child => {
+  container.children.forEach((child) => {
     // Get absolute position from child's layout
     const x = (child.layout.x || 0) + padding;
     const y = (child.layout.y || 0) + padding;

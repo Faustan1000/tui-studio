@@ -6,7 +6,6 @@ import { useComponentStore, useCanvasStore } from '../../stores';
 import { exportToText, exportToCode, exportToHtmlFile, ansiToHtml } from '../../utils/export';
 import { saveToDownloadFolder } from '../../utils/downloadManager';
 // ExportFormat is typed as an interface but used as a string in the codebase
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CodeFormat = any;
 
 type ExportMode = 'preview' | 'text' | 'code';
@@ -41,16 +40,17 @@ export function ExportPanel() {
   };
 
   const handleDownload = async () => {
-    const output = mode === 'code'
-      ? (codeFormat === 'html'
+    const output =
+      mode === 'code'
+        ? codeFormat === 'html'
           ? exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height)
-          : exportToCode(componentStore.root, codeFormat as CodeFormat))
-      : exportToText(componentStore.root, {
-          format: textFormat,
-          width: canvasStore.width,
-          height: canvasStore.height,
-          includeMetadata: true,
-        });
+          : exportToCode(componentStore.root, codeFormat as CodeFormat)
+        : exportToText(componentStore.root, {
+            format: textFormat,
+            width: canvasStore.width,
+            height: canvasStore.height,
+            includeMetadata: true,
+          });
 
     const extension = mode === 'code' ? getCodeExtension(codeFormat) : '.txt';
     const filename = `tui-design${extension}`;
@@ -74,9 +74,7 @@ export function ExportPanel() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
-          Export
-        </h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase mb-3">Export</h2>
 
         {/* Mode Selection */}
         <div className="flex gap-2 mb-4">
@@ -119,7 +117,9 @@ export function ExportPanel() {
             <label className="text-sm font-medium mb-2 block">Text Format</label>
             <select
               value={textFormat}
-              onChange={(e) => setTextFormat(e.target.value as 'text' | 'ansi' | 'ansi256' | 'trueColor')}
+              onChange={(e) =>
+                setTextFormat(e.target.value as 'text' | 'ansi' | 'ansi256' | 'trueColor')
+              }
               className="w-full px-3 py-2 bg-secondary border border-border rounded text-sm"
             >
               <option value="text">Plain Text</option>
@@ -233,9 +233,10 @@ function CodeOutput({ format }: { format: string }) {
   const componentStore = useComponentStore();
   const canvasStore = useCanvasStore();
 
-  const output = format === 'html'
-    ? exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height)
-    : exportToCode(componentStore.root, format as CodeFormat);
+  const output =
+    format === 'html'
+      ? exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height)
+      : exportToCode(componentStore.root, format as CodeFormat);
 
   return (
     <pre className="text-xs font-mono bg-secondary p-4 rounded overflow-auto border border-border">

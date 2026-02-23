@@ -86,13 +86,13 @@ export interface LayoutProps {
 }
 
 export interface GradientStop {
-  color: string;    // hex color, e.g. "#ff0000"
+  color: string; // hex color, e.g. "#ff0000"
   position: number; // 0–100 percentage
 }
 
 export interface GradientConfig {
   type: 'linear';
-  angle: number;  // degrees: 0=top→bottom, 90=left→right, 180=bottom→top, 270=right→left
+  angle: number; // degrees: 0=top→bottom, 90=left→right, 180=bottom→top, 270=right→left
   stops: GradientStop[];
 }
 
@@ -112,7 +112,7 @@ export interface StyleProps {
   borderCorners?: boolean; // false = replace corners with line characters
 
   // Colors
-  color?: string;        // Text/foreground color
+  color?: string; // Text/foreground color
   backgroundColor?: string;
   backgroundGradient?: GradientConfig;
 
@@ -139,7 +139,7 @@ export interface StyleProps {
 }
 
 export interface EventHandlers {
-  onFocus?: string;      // Function name to call
+  onFocus?: string; // Function name to call
   onBlur?: string;
   onClick?: string;
   onSubmit?: string;

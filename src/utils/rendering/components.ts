@@ -9,20 +9,30 @@ import { generateAnsiCodes } from './ansi';
 /**
  * Render a component to a character canvas
  */
-export function renderComponent(node: ComponentNode, width: number, height: number, colorMode: 'ansi16' | 'ansi256' | 'trueColor' = 'ansi16'): string[] {
+export function renderComponent(
+  node: ComponentNode,
+  width: number,
+  height: number,
+  colorMode: 'ansi16' | 'ansi256' | 'trueColor' = 'ansi16'
+): string[] {
   const canvas = new CharCanvas(width, height);
 
   // Generate style code (foreground + text decoration only; background handled separately for gradients)
-  const hasGradient = !!(node.style.backgroundGradient && node.style.backgroundGradient.stops.length >= 2);
+  const hasGradient = !!(
+    node.style.backgroundGradient && node.style.backgroundGradient.stops.length >= 2
+  );
 
-  const style = generateAnsiCodes({
-    color: node.style.color,
-    backgroundColor: hasGradient ? undefined : node.style.backgroundColor,
-    bold: node.style.bold,
-    italic: node.style.italic,
-    underline: node.style.underline,
-    strikethrough: node.style.strikethrough,
-  }, colorMode);
+  const style = generateAnsiCodes(
+    {
+      color: node.style.color,
+      backgroundColor: hasGradient ? undefined : node.style.backgroundColor,
+      bold: node.style.bold,
+      italic: node.style.italic,
+      underline: node.style.underline,
+      strikethrough: node.style.strikethrough,
+    },
+    colorMode
+  );
 
   // Render based on component type
   let content: string[] = [];
@@ -32,7 +42,7 @@ export function renderComponent(node: ComponentNode, width: number, height: numb
       content = renderText(node, width, height);
       break;
     case 'Button':
-      content = renderButton(node, width, height);
+      content = renderButton(node, width);
       break;
     case 'TextInput':
       content = renderTextInput(node, width, height);
@@ -72,10 +82,10 @@ export function renderComponent(node: ComponentNode, width: number, height: numb
       bottom: node.style.borderBottom !== false,
       left: node.style.borderLeft !== false,
       right: node.style.borderRight !== false,
-      topStyle:    node.style.borderTopStyle,
-      rightStyle:  node.style.borderRightStyle,
+      topStyle: node.style.borderTopStyle,
+      rightStyle: node.style.borderRightStyle,
       bottomStyle: node.style.borderBottomStyle,
-      leftStyle:   node.style.borderLeftStyle,
+      leftStyle: node.style.borderLeftStyle,
       corners: node.style.borderCorners !== false,
     };
     content = renderBox(content, width, height, borderConfig);
@@ -95,7 +105,9 @@ export function renderComponent(node: ComponentNode, width: number, height: numb
 
 function renderText(node: ComponentNode, width: number, height: number): string[] {
   const text = (node.props.content as string) || '';
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const lines = wrapText(text, contentArea.width);
   const aligned = alignText(lines.slice(0, contentArea.height), contentArea.width, 'left');
@@ -108,10 +120,12 @@ function renderText(node: ComponentNode, width: number, height: number): string[
   return aligned;
 }
 
-function renderButton(node: ComponentNode, width: number, height: number): string[] {
+function renderButton(node: ComponentNode, width: number): string[] {
   const label = (node.props.label as string) || 'Button';
-  const iconLeft = (node.props.iconLeftEnabled && node.props.iconLeft) ? (node.props.iconLeft as string) : '';
-  const iconRight = (node.props.iconRightEnabled && node.props.iconRight) ? (node.props.iconRight as string) : '';
+  const iconLeft =
+    node.props.iconLeftEnabled && node.props.iconLeft ? (node.props.iconLeft as string) : '';
+  const iconRight =
+    node.props.iconRightEnabled && node.props.iconRight ? (node.props.iconRight as string) : '';
   const number = node.props.number as number | undefined;
   const separated = node.props.separated as boolean;
 
@@ -134,36 +148,44 @@ function renderButton(node: ComponentNode, width: number, height: number): strin
     const rightWidth = width - leftWidth - 3; // -3 for borders and divider
 
     // Determine divider characters based on border style
-    const divTop = node.style.borderStyle === 'single' || node.style.borderStyle === 'rounded' ? '┰' :
-                   node.style.borderStyle === 'double' ? '╦' : '┰';
-    const divBottom = node.style.borderStyle === 'single' || node.style.borderStyle === 'rounded' ? '┴' :
-                      node.style.borderStyle === 'double' ? '╩' : '┴';
+    const divTop =
+      node.style.borderStyle === 'single' || node.style.borderStyle === 'rounded'
+        ? '┰'
+        : node.style.borderStyle === 'double'
+          ? '╦'
+          : '┰';
+    const divBottom =
+      node.style.borderStyle === 'single' || node.style.borderStyle === 'rounded'
+        ? '┴'
+        : node.style.borderStyle === 'double'
+          ? '╩'
+          : '┴';
 
     // Top border: ╭───┰───────────╮
     lines.push(
       borderStyle.topLeft +
-      borderStyle.top.repeat(leftWidth) +
-      divTop +
-      borderStyle.top.repeat(rightWidth) +
-      borderStyle.topRight
+        borderStyle.top.repeat(leftWidth) +
+        divTop +
+        borderStyle.top.repeat(rightWidth) +
+        borderStyle.topRight
     );
 
     // Content: │ + │ Add Agent │
     lines.push(
       borderStyle.left +
-      ` ${leftSection} `.padEnd(leftWidth + 1) +
-      '│' +
-      ` ${rightText} `.padEnd(rightWidth + 1) +
-      borderStyle.right
+        ` ${leftSection} `.padEnd(leftWidth + 1) +
+        '│' +
+        ` ${rightText} `.padEnd(rightWidth + 1) +
+        borderStyle.right
     );
 
     // Bottom border: ╰───┴───────────╯
     lines.push(
       borderStyle.bottomLeft +
-      borderStyle.bottom.repeat(leftWidth) +
-      divBottom +
-      borderStyle.bottom.repeat(rightWidth) +
-      borderStyle.bottomRight
+        borderStyle.bottom.repeat(leftWidth) +
+        divBottom +
+        borderStyle.bottom.repeat(rightWidth) +
+        borderStyle.bottomRight
     );
   } else {
     // Standard button
@@ -179,7 +201,9 @@ function renderButton(node: ComponentNode, width: number, height: number): strin
     lines.push(borderStyle.left + padText(buttonText, contentWidth, 'center') + borderStyle.right);
 
     // Bottom border
-    lines.push(borderStyle.bottomLeft + borderStyle.bottom.repeat(contentWidth) + borderStyle.bottomRight);
+    lines.push(
+      borderStyle.bottomLeft + borderStyle.bottom.repeat(contentWidth) + borderStyle.bottomRight
+    );
   }
 
   return lines;
@@ -188,7 +212,9 @@ function renderButton(node: ComponentNode, width: number, height: number): strin
 function renderTextInput(node: ComponentNode, width: number, height: number): string[] {
   const placeholder = (node.props.placeholder as string) || '';
   const value = (node.props.value as string) || '';
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const displayText = value || placeholder;
   const truncated = truncateText(displayText, contentArea.width - 2);
@@ -205,7 +231,9 @@ function renderTextInput(node: ComponentNode, width: number, height: number): st
 function renderCheckbox(node: ComponentNode, width: number, height: number): string[] {
   const checked = node.props.checked as boolean;
   const label = (node.props.label as string) || 'Checkbox';
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const checkbox = checked ? '[✓]' : '[ ]';
   const text = `${checkbox} ${label}`;
@@ -222,7 +250,9 @@ function renderCheckbox(node: ComponentNode, width: number, height: number): str
 function renderRadio(node: ComponentNode, width: number, height: number): string[] {
   const selected = node.props.selected as boolean;
   const label = (node.props.label as string) || 'Radio';
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const radio = selected ? '(•)' : '( )';
   const text = `${radio} ${label}`;
@@ -239,7 +269,9 @@ function renderRadio(node: ComponentNode, width: number, height: number): string
 function renderSelect(node: ComponentNode, width: number, height: number): string[] {
   const items = (node.props.items as string[]) || [];
   const selected = (node.props.selectedIndex as number) || 0;
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const selectedItem = items[selected] || 'Select...';
   const text = `${truncateText(selectedItem, contentArea.width - 3)} ▼`;
@@ -255,7 +287,9 @@ function renderSelect(node: ComponentNode, width: number, height: number): strin
 function renderProgressBar(node: ComponentNode, width: number, height: number): string[] {
   const value = (node.props.value as number) || 0;
   const max = (node.props.max as number) || 100;
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const percentage = Math.min(100, Math.max(0, (value / max) * 100));
   const barWidth = contentArea.width - 8; // Leave space for percentage
@@ -274,7 +308,9 @@ function renderProgressBar(node: ComponentNode, width: number, height: number): 
 }
 
 function renderSpinner(node: ComponentNode, width: number, height: number): string[] {
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
   const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   const frame = frames[0]; // Static frame for export
 
@@ -291,7 +327,9 @@ function renderSpinner(node: ComponentNode, width: number, height: number): stri
 
 function renderList(node: ComponentNode, width: number, height: number): string[] {
   const items = (node.props.items as string[]) || [];
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const lines: string[] = [];
   for (let i = 0; i < Math.min(items.length, contentArea.height); i++) {
@@ -309,20 +347,26 @@ function renderList(node: ComponentNode, width: number, height: number): string[
 function renderTable(node: ComponentNode, width: number, height: number): string[] {
   const headers = (node.props.headers as string[]) || ['Column 1', 'Column 2'];
   const rows = (node.props.rows as string[][]) || [];
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const colWidth = Math.floor(contentArea.width / headers.length);
   const lines: string[] = [];
 
   // Header
-  const headerLine = headers.map(h => padText(truncateText(h, colWidth), colWidth, 'left')).join('');
+  const headerLine = headers
+    .map((h) => padText(truncateText(h, colWidth), colWidth, 'left'))
+    .join('');
   lines.push(headerLine.slice(0, contentArea.width).padEnd(contentArea.width));
   lines.push('─'.repeat(contentArea.width));
 
   // Rows
   for (let i = 0; i < Math.min(rows.length, contentArea.height - 2); i++) {
     const row = rows[i] || [];
-    const rowLine = row.map(cell => padText(truncateText(String(cell), colWidth), colWidth, 'left')).join('');
+    const rowLine = row
+      .map((cell) => padText(truncateText(String(cell), colWidth), colWidth, 'left'))
+      .join('');
     lines.push(rowLine.slice(0, contentArea.width).padEnd(contentArea.width));
   }
 
@@ -334,7 +378,9 @@ function renderTable(node: ComponentNode, width: number, height: number): string
 }
 
 function renderContainer(node: ComponentNode, width: number, height: number): string[] {
-  const contentArea = node.style.border ? getContentArea(width, height, { style: 'single' }) : { width, height };
+  const contentArea = node.style.border
+    ? getContentArea(width, height, { style: 'single' })
+    : { width, height };
 
   const lines: string[] = [];
   for (let i = 0; i < contentArea.height; i++) {

@@ -10,7 +10,7 @@ import { dragStore } from '../../hooks/useDragAndDrop';
 
 export function ComponentPalette() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(CATEGORIES.map(c => c.id))
+    new Set(CATEGORIES.map((c) => c.id))
   );
   const [search, setSearch] = useState('');
   const componentStore = useComponentStore();
@@ -100,9 +100,10 @@ export function ComponentPalette() {
           const isExpanded = expandedCategories.has(category.id);
           const allComponents = getComponentsByCategory(category.id);
           const components = query
-            ? allComponents.filter(c =>
-                c.name.toLowerCase().includes(query) ||
-                c.description.toLowerCase().includes(query)
+            ? allComponents.filter(
+                (c) =>
+                  c.name.toLowerCase().includes(query) ||
+                  c.description.toLowerCase().includes(query)
               )
             : allComponents;
 
@@ -157,9 +158,7 @@ export function ComponentPalette() {
                           <IconComponent className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-xs truncate">
-                            {component.name}
-                          </div>
+                          <div className="font-medium text-xs truncate">{component.name}</div>
                           <div className="text-[10px] text-muted-foreground truncate leading-tight">
                             {component.description}
                           </div>

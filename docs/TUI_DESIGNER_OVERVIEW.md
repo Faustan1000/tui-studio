@@ -41,12 +41,14 @@ This project includes comprehensive planning documentation:
 TUI Designer is a **visual design tool** for building Terminal User Interface applications. Think "Figma for TUIs" - drag-and-drop components, see live preview, export to multiple frameworks.
 
 ### The Problem
+
 - Building TUIs requires writing lots of boilerplate code
 - Hard to visualize layouts before running
 - No standard design tools for terminal UIs
 - Difficult to maintain consistency across screens
 
 ### The Solution
+
 - **Visual editor** with drag-and-drop components
 - **Live terminal preview** showing actual TUI rendering
 - **Multi-framework export** (OpenTUI, Ink, BubbleTea, Blessed, Textual)
@@ -58,6 +60,7 @@ TUI Designer is a **visual design tool** for building Terminal User Interface ap
 ## 🏗️ Architecture Overview
 
 ### Tech Stack
+
 ```
 Frontend:   React 19 + TypeScript
 Build:      Vite 7
@@ -72,30 +75,35 @@ Editor:     Monaco Editor
 ### Core Systems
 
 **1. Component System**
+
 - Component tree with hierarchy
 - Layout engine (Flexbox, Grid, Absolute)
 - Style system (borders, colors, text)
 - Event handlers
 
 **2. Layer System** (Figma-inspired)
+
 - Pages → Frames → Layers
 - Visibility/lock controls
 - Groups and organization
 - Search and filtering
 
 **3. Component Library** (Figma-inspired)
+
 - Master components
 - Instances with overrides
 - Variants (Primary, Secondary, etc.)
 - Library import/export
 
 **4. Live Preview**
+
 - OpenTUI renderer
 - Terminal simulation
 - Interaction preview
 - Multiple terminal sizes
 
 **5. Code Generation**
+
 - OpenTUI (React/TypeScript)
 - Ink (React/TypeScript)
 - BubbleTea (Go)
@@ -107,6 +115,7 @@ Editor:     Monaco Editor
 ## 📦 Key Features
 
 ### Core Editor (Weeks 1-12)
+
 - ✅ Drag-and-drop component placement
 - ✅ Property editing with live updates
 - ✅ Automatic layout calculation
@@ -116,6 +125,7 @@ Editor:     Monaco Editor
 - ✅ Keyboard shortcuts
 
 ### Layers & Organization (Weeks 13-14)
+
 - ✅ Page management
 - ✅ Frame/artboard system
 - ✅ Hierarchical layer tree
@@ -124,6 +134,7 @@ Editor:     Monaco Editor
 - ✅ Layer search
 
 ### Component Library (Weeks 15-16)
+
 - ✅ Create reusable components
 - ✅ Component instances
 - ✅ Property overrides
@@ -132,6 +143,7 @@ Editor:     Monaco Editor
 - ✅ Component categories
 
 ### Export & Templates (Week 10)
+
 - ✅ Multi-framework code generation
 - ✅ Ready-made templates
 - ✅ Project save/load
@@ -175,18 +187,21 @@ Editor:     Monaco Editor
 ## 🚀 Implementation Timeline
 
 ### **Phase 0: Setup** (Week 1)
+
 - Initialize project
 - Install dependencies
 - Configure tooling
 - Create file structure
 
 ### **Phase 1: Data Model** (Week 2)
+
 - Type definitions
 - Zustand stores
 - Component library definitions
 - Utility functions
 
 ### **Phase 2: Basic Editor** (Week 3-4)
+
 - Layout structure
 - Component palette
 - Canvas with grid
@@ -195,6 +210,7 @@ Editor:     Monaco Editor
 - Toolbar
 
 ### **Phase 3: Property Editing** (Week 5)
+
 - Property panel
 - Property inputs
 - Layout editor
@@ -202,6 +218,7 @@ Editor:     Monaco Editor
 - Real-time updates
 
 ### **Phase 4: Layout Engine** (Week 6)
+
 - Flexbox calculator
 - Grid calculator
 - Absolute positioning
@@ -209,6 +226,7 @@ Editor:     Monaco Editor
 - Layout debugging
 
 ### **Phase 5: Live Preview** (Week 7)
+
 - OpenTUI integration
 - Component mapping
 - Interaction simulation
@@ -216,6 +234,7 @@ Editor:     Monaco Editor
 - Split view
 
 ### **Phase 6: Code Generation** (Week 8-9)
+
 - Export store
 - OpenTUI generator
 - Ink generator
@@ -224,12 +243,14 @@ Editor:     Monaco Editor
 - Code formatting
 
 ### **Phase 7: Templates** (Week 10)
+
 - Template system
 - Built-in templates
 - Template gallery
 - Example projects
 
 ### **Phase 8: Advanced Features** (Week 11-12)
+
 - Keyboard shortcuts
 - Component presets
 - Theme system
@@ -238,6 +259,7 @@ Editor:     Monaco Editor
 - Project management
 
 ### **Phase 9: Layers System** (Week 13-14) 🎨 NEW
+
 - Layer data model
 - Layer panel UI
 - Page management
@@ -245,6 +267,7 @@ Editor:     Monaco Editor
 - Layer operations
 
 ### **Phase 10: Component Library** (Week 15-16) 🎨 NEW
+
 - Component library data
 - Component panel UI
 - Component creation
@@ -260,23 +283,27 @@ Editor:     Monaco Editor
 ### Week-by-Week Focus
 
 **Weeks 1-4**: Foundation
+
 - Get something on screen quickly
 - Basic drag-and-drop working
 - Can place and see components
 
 **Weeks 5-8**: Core Functionality
+
 - Property editing complete
 - Layout engine working
 - Live preview functional
 - First code export
 
 **Weeks 9-12**: Polish & Features
+
 - Templates and examples
 - Advanced editing features
 - Project save/load
 - Performance optimization
 
 **Weeks 13-16**: Professional Features
+
 - Figma-style layers
 - Component library system
 - Collaboration features
@@ -294,6 +321,7 @@ Editor:     Monaco Editor
 ## 🎯 Success Criteria
 
 ### MVP (Week 12)
+
 - ✅ Can design a login form visually
 - ✅ Live preview shows correct rendering
 - ✅ Export generates working OpenTUI code
@@ -301,6 +329,7 @@ Editor:     Monaco Editor
 - ✅ 5+ templates available
 
 ### V1.1 (Week 16)
+
 - ✅ Can organize designs with pages and layers
 - ✅ Can create reusable components
 - ✅ Can use component instances with overrides
@@ -312,12 +341,15 @@ Editor:     Monaco Editor
 ## 🎬 Getting Started
 
 ### Step 1: Read the Docs
+
 1. Read this overview (you are here!)
 2. Read the [Implementation Plan](./TUI_DESIGNER_IMPLEMENTATION_PLAN.md)
 3. Skim the [Code Examples](./TUI_DESIGNER_CODE_EXAMPLE.md)
 
 ### Step 2: Set Up Project
+
 Follow [Quick Start Guide](./TUI_DESIGNER_QUICKSTART.md):
+
 ```bash
 npm create vite@latest tui-designer -- --template react-ts
 cd tui-designer
@@ -326,18 +358,21 @@ npm install
 ```
 
 ### Step 3: Build Phase 0
+
 - Week 1: Complete project setup
 - Get dev server running
 - Build basic three-column layout
 - Verify everything works
 
 ### Step 4: Build Phase 1
+
 - Week 2: Implement data model
 - Create all TypeScript types
 - Build Zustand stores
 - Test tree operations
 
 ### Step 5: Keep Building
+
 - Follow phase-by-phase plan
 - Test each phase before moving on
 - Build example projects to validate
@@ -348,12 +383,14 @@ npm install
 ## 🔗 Inspiration & References
 
 ### Similar Tools
+
 - **Figma** - Visual design, components, layers
 - **ASCII Motion** - ASCII art editor (this project's codebase!)
 - **Builder.io** - Visual development platform
 - **Framer** - Interactive design tool
 
 ### TUI Frameworks
+
 - **OpenTUI** (React) - https://opentui.js.org/
 - **Ink** (React) - https://github.com/vadimdemedes/ink
 - **BubbleTea** (Go) - https://github.com/charmbracelet/bubbletea
@@ -361,6 +398,7 @@ npm install
 - **Textual** (Python) - https://github.com/Textualize/textual
 
 ### Technical References
+
 - React DnD: https://react-dnd.github.io/react-dnd/
 - Zustand: https://github.com/pmndrs/zustand
 - Flexbox spec: https://www.w3.org/TR/css-flexbox-1/
@@ -371,30 +409,35 @@ npm install
 ## 💡 Key Design Decisions
 
 ### Why React + TypeScript?
+
 - Large ecosystem and community
 - Type safety prevents bugs
 - Fast development with hot reload
 - Easy to hire developers
 
 ### Why Zustand (not Redux)?
+
 - Simpler API, less boilerplate
 - Better TypeScript support
 - Smaller bundle size
 - Still supports DevTools
 
 ### Why OpenTUI for Preview?
+
 - Modern, actively maintained
 - React-based (matches our stack)
 - Good documentation
 - Supports latest terminal features
 
 ### Why Multi-framework Export?
+
 - Different projects use different stacks
 - Go, Python, Node.js all popular for CLIs
 - Users can choose their preferred language
 - Larger potential user base
 
 ### Why Component Library System?
+
 - Professional designers expect this (Figma standard)
 - Enables design systems for TUIs
 - Dramatically improves workflow
@@ -405,6 +448,7 @@ npm install
 ## 📊 Market Analysis
 
 ### Target Users
+
 1. **Frontend developers** building CLI tools
 2. **DevOps engineers** creating admin panels
 3. **System administrators** building monitoring tools
@@ -412,6 +456,7 @@ npm install
 5. **Open source maintainers** improving CLI UX
 
 ### Competitive Advantage
+
 - **First visual TUI designer** in the market
 - **Multi-framework support** (not locked in)
 - **Modern UX** (Figma-quality experience)
@@ -419,6 +464,7 @@ npm install
 - **Open source core** (community contributions)
 
 ### Monetization (Future)
+
 - **Free tier**: Core editor, basic features
 - **Pro tier**: Advanced features, collaboration, cloud storage
 - **Enterprise**: On-premise, SSO, support
@@ -429,6 +475,7 @@ npm install
 ## 🤝 Contributing
 
 ### How to Contribute
+
 1. Read the implementation plan
 2. Pick a phase/task
 3. Follow the file structure
@@ -437,6 +484,7 @@ npm install
 6. Submit PR with description
 
 ### Areas Needing Help
+
 - Component library definitions
 - Code generators for more frameworks
 - Templates and examples
@@ -449,6 +497,7 @@ npm install
 ## 📅 Roadmap Beyond V1.1
 
 ### V2.0 (6 months)
+
 - Cloud storage and sync
 - Real-time collaboration
 - Version history
@@ -457,6 +506,7 @@ npm install
 - Plugin system
 
 ### V3.0 (12 months)
+
 - AI layout suggestions
 - Convert screenshots to TUI designs
 - Auto-generate from wireframes

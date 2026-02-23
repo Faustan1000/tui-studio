@@ -5,10 +5,7 @@ import type { ComponentNode } from '../types';
 /**
  * Find a component node by ID in a tree
  */
-export function findNodeById(
-  root: ComponentNode | null,
-  id: string
-): ComponentNode | null {
+export function findNodeById(root: ComponentNode | null, id: string): ComponentNode | null {
   if (!root) return null;
   if (root.id === id) return root;
 
@@ -23,10 +20,7 @@ export function findNodeById(
 /**
  * Find the parent of a node
  */
-export function findParentNode(
-  root: ComponentNode | null,
-  targetId: string
-): ComponentNode | null {
+export function findParentNode(root: ComponentNode | null, targetId: string): ComponentNode | null {
   if (!root) return null;
 
   for (const child of root.children) {
@@ -41,10 +35,7 @@ export function findParentNode(
 /**
  * Get all ancestors of a node (from root to parent)
  */
-export function getAncestors(
-  root: ComponentNode | null,
-  targetId: string
-): ComponentNode[] {
+export function getAncestors(root: ComponentNode | null, targetId: string): ComponentNode[] {
   const ancestors: ComponentNode[] = [];
 
   function traverse(node: ComponentNode | null, path: ComponentNode[]): boolean {

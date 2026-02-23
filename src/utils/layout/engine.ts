@@ -15,7 +15,12 @@ export class LayoutEngine {
    * Calculate layout for the entire component tree.
    * When responsive=true the root node fills the canvas, ignoring its props.width/height.
    */
-  calculateLayout(root: ComponentNode | null, canvasWidth: number, canvasHeight: number, responsive = false): void {
+  calculateLayout(
+    root: ComponentNode | null,
+    canvasWidth: number,
+    canvasHeight: number,
+    responsive = false
+  ): void {
     this.layouts.clear();
     this.debugInfo.clear();
     this.responsive = responsive;
@@ -51,7 +56,7 @@ export class LayoutEngine {
    */
   getNodesWithWarnings(): string[] {
     return Array.from(this.debugInfo.entries())
-      .filter(([_, info]) => info.warnings.length > 0)
+      .filter(([, info]) => info.warnings.length > 0)
       .map(([id]) => id);
   }
 
@@ -93,7 +98,18 @@ export class LayoutEngine {
     }
 
     // Leaf components always use their intrinsic height unless explicitly overridden
-    const leafTypes = ['Button', 'TextInput', 'Checkbox', 'Radio', 'Toggle', 'Select', 'Spinner', 'ProgressBar', 'Text', 'Breadcrumb'];
+    const leafTypes = [
+      'Button',
+      'TextInput',
+      'Checkbox',
+      'Radio',
+      'Toggle',
+      'Select',
+      'Spinner',
+      'ProgressBar',
+      'Text',
+      'Breadcrumb',
+    ];
     if (leafTypes.includes(node.type) && typeof node.props.height !== 'number') {
       height = this.calculateAutoHeight(node);
     }
@@ -125,11 +141,19 @@ export class LayoutEngine {
     }
   }
 
-  private calculateChildLayouts(container: ComponentNode, containerWidth: number, containerHeight: number): void {
+  private calculateChildLayouts(
+    container: ComponentNode,
+    containerWidth: number,
+    containerHeight: number
+  ): void {
     let childLayouts: Map<string, ComputedLayout>;
 
     // Force List components to always use column direction
-    if (container.type === 'List' && container.layout.type === 'flexbox' && container.layout.direction !== 'column') {
+    if (
+      container.type === 'List' &&
+      container.layout.type === 'flexbox' &&
+      container.layout.direction !== 'column'
+    ) {
       container = {
         ...container,
         layout: {
@@ -151,7 +175,7 @@ export class LayoutEngine {
         break;
       default:
         // Stack children vertically for 'none' layout
-        childLayouts = this.calculateStackLayout(container, containerWidth, containerHeight);
+        childLayouts = this.calculateStackLayout(container, containerWidth);
         break;
     }
 
@@ -160,7 +184,7 @@ export class LayoutEngine {
     if (!containerLayout) return;
 
     childLayouts.forEach((layout, childId) => {
-      const child = container.children.find(c => c.id === childId);
+      const child = container.children.find((c) => c.id === childId);
       if (child) {
         // CRITICAL FIX: Child layout positions are relative to container
         // Convert to absolute positions by adding container's position
@@ -191,15 +215,14 @@ export class LayoutEngine {
 
   private calculateStackLayout(
     container: ComponentNode,
-    containerWidth: number,
-    containerHeight: number
+    containerWidth: number
   ): Map<string, ComputedLayout> {
     const layouts = new Map<string, ComputedLayout>();
     const padding = typeof container.layout.padding === 'number' ? container.layout.padding : 0;
 
     let currentY = padding;
 
-    container.children.forEach(child => {
+    container.children.forEach((child) => {
       let width = containerWidth - padding * 2;
       let height = 3; // default height
 
@@ -237,17 +260,18 @@ export class LayoutEngine {
       const border = node.style.border ? 2 : 0;
 
       let maxRightEdge = 0;
-      node.children.forEach(child => {
+      node.children.forEach((child) => {
         const childX = typeof child.layout.x === 'number' ? child.layout.x : 0;
-        const childWidth = typeof child.props.width === 'number'
-          ? child.props.width
-          : this.calculateAutoWidth(child);
+        const childWidth =
+          typeof child.props.width === 'number'
+            ? child.props.width
+            : this.calculateAutoWidth(child);
         const rightEdge = childX + childWidth;
         maxRightEdge = Math.max(maxRightEdge, rightEdge);
       });
 
       // Return the maximum right edge plus padding and border
-      return Math.max(maxRightEdge + (padding * 2), 10) + border;
+      return Math.max(maxRightEdge + padding * 2, 10) + border;
     }
 
     // Special case for Menu and List components (items in props, not children)
@@ -265,7 +289,10 @@ export class LayoutEngine {
         let totalWidth = padding * 2;
 
         items.forEach((item, index) => {
-          const itemData = typeof item === 'string' ? { label: item, icon: '', hotkey: '', separator: false } : item;
+          const itemData =
+            typeof item === 'string'
+              ? { label: item, icon: '', hotkey: '', separator: false }
+              : item;
           const icon = itemData.icon ? `${itemData.icon} ` : '';
           const hotkey = itemData.hotkey ? ` ${itemData.hotkey}` : '';
           const itemWidth = icon.length + itemData.label.length + hotkey.length;
@@ -275,7 +302,7 @@ export class LayoutEngine {
           if (index < items.length - 1) {
             if (itemData.separator) {
               // gap + │ + gap
-              totalWidth += (gap * 2) + 1;
+              totalWidth += gap * 2 + 1;
             } else {
               // just gap
               totalWidth += gap;
@@ -288,7 +315,7 @@ export class LayoutEngine {
         // Vertical menu/list - use widest item
         let maxWidth = 0;
 
-        items.forEach(item => {
+        items.forEach((item) => {
           const itemData = typeof item === 'string' ? { label: item, icon: '', hotkey: '' } : item;
           const icon = itemData.icon ? `${itemData.icon} ` : '';
           const hotkey = itemData.hotkey ? `   ${itemData.hotkey}` : '';
@@ -306,7 +333,7 @@ export class LayoutEngine {
           maxWidth = Math.max(maxWidth, itemWidth);
         });
 
-        return maxWidth + (padding * 2) + border;
+        return maxWidth + padding * 2 + border;
       }
     }
 
@@ -337,9 +364,10 @@ export class LayoutEngine {
 
         node.children.forEach((child, index) => {
           // Get child width (recursive for auto-sized children)
-          const childWidth = typeof child.props.width === 'number'
-            ? child.props.width
-            : this.calculateAutoWidth(child);
+          const childWidth =
+            typeof child.props.width === 'number'
+              ? child.props.width
+              : this.calculateAutoWidth(child);
 
           totalWidth += childWidth;
 
@@ -356,15 +384,16 @@ export class LayoutEngine {
       if (node.layout.type === 'flexbox' && node.layout.direction === 'column') {
         let maxWidth = 0;
 
-        node.children.forEach(child => {
-          const childWidth = typeof child.props.width === 'number'
-            ? child.props.width
-            : this.calculateAutoWidth(child);
+        node.children.forEach((child) => {
+          const childWidth =
+            typeof child.props.width === 'number'
+              ? child.props.width
+              : this.calculateAutoWidth(child);
 
           maxWidth = Math.max(maxWidth, childWidth);
         });
 
-        return maxWidth + (padding * 2) + border;
+        return maxWidth + padding * 2 + border;
       }
 
       // For other layouts, use a reasonable default
@@ -375,19 +404,24 @@ export class LayoutEngine {
     switch (node.type) {
       case 'Button': {
         const label = (node.props.label as string) || 'Button';
-        const iconLeft = (node.props.iconLeftEnabled && node.props.iconLeft) ? (node.props.iconLeft as string) : '';
-        const iconRight = (node.props.iconRightEnabled && node.props.iconRight) ? (node.props.iconRight as string) : '';
+        const iconLeft =
+          node.props.iconLeftEnabled && node.props.iconLeft ? (node.props.iconLeft as string) : '';
+        const iconRight =
+          node.props.iconRightEnabled && node.props.iconRight
+            ? (node.props.iconRight as string)
+            : '';
         const number = node.props.number as number | undefined;
         const separated = node.props.separated as boolean;
         const padding = typeof node.layout.padding === 'number' ? node.layout.padding : 1;
 
-        let contentWidth = label.length + (padding * 2); // padding on both sides
+        let contentWidth = label.length + padding * 2; // padding on both sides
 
         // Add left icon/key
         if (iconLeft) {
           if (separated) {
             // Separated layout: " icon │ label " or " icon N │ label "
-            const leftSection = number !== undefined ? iconLeft.length + String(number).length + 1 : iconLeft.length;
+            const leftSection =
+              number !== undefined ? iconLeft.length + String(number).length + 1 : iconLeft.length;
             contentWidth += leftSection + 5; // +5 for " │ " and spaces
           } else {
             // Inline: " icon label "
@@ -403,11 +437,12 @@ export class LayoutEngine {
         // Add border width if border is enabled
         return node.style.border ? contentWidth + 2 : contentWidth;
       }
-      case 'Text':
+      case 'Text': {
         const content = (node.props.content as string) || '';
         const lines = content.split('\n');
-        const maxLineLength = Math.max(...lines.map(l => l.length), 10);
+        const maxLineLength = Math.max(...lines.map((l) => l.length), 10);
         return node.style.border ? maxLineLength + 2 : maxLineLength;
+      }
       default:
         return 20;
     }
@@ -420,17 +455,18 @@ export class LayoutEngine {
       const border = node.style.border ? 2 : 0;
 
       let maxBottomEdge = 0;
-      node.children.forEach(child => {
+      node.children.forEach((child) => {
         const childY = typeof child.layout.y === 'number' ? child.layout.y : 0;
-        const childHeight = typeof child.props.height === 'number'
-          ? child.props.height
-          : this.calculateAutoHeight(child);
+        const childHeight =
+          typeof child.props.height === 'number'
+            ? child.props.height
+            : this.calculateAutoHeight(child);
         const bottomEdge = childY + childHeight;
         maxBottomEdge = Math.max(maxBottomEdge, bottomEdge);
       });
 
       // Return the maximum bottom edge plus padding and border
-      return Math.max(maxBottomEdge + (padding * 2), 3) + border;
+      return Math.max(maxBottomEdge + padding * 2, 3) + border;
     }
 
     // Special case for Menu and List components (items in props, not children)
@@ -466,7 +502,7 @@ export class LayoutEngine {
         return totalHeight + border;
       } else {
         // Horizontal menu - height is 1 line
-        return 1 + (padding * 2) + border;
+        return 1 + padding * 2 + border;
       }
     }
 
@@ -487,9 +523,10 @@ export class LayoutEngine {
 
         node.children.forEach((child, index) => {
           // Get child height (recursive for auto-sized children)
-          const childHeight = typeof child.props.height === 'number'
-            ? child.props.height
-            : this.calculateAutoHeight(child);
+          const childHeight =
+            typeof child.props.height === 'number'
+              ? child.props.height
+              : this.calculateAutoHeight(child);
 
           totalHeight += childHeight;
 
@@ -507,14 +544,15 @@ export class LayoutEngine {
         let maxHeight = 0;
 
         node.children.forEach((child) => {
-          const childHeight = typeof child.props.height === 'number'
-            ? child.props.height
-            : this.calculateAutoHeight(child);
+          const childHeight =
+            typeof child.props.height === 'number'
+              ? child.props.height
+              : this.calculateAutoHeight(child);
 
           maxHeight = Math.max(maxHeight, childHeight);
         });
 
-        return maxHeight + (padding * 2) + border;
+        return maxHeight + padding * 2 + border;
       }
 
       // For other layouts, use a reasonable default
@@ -534,10 +572,11 @@ export class LayoutEngine {
       case 'Spinner':
       case 'ProgressBar':
         return node.style.border ? 3 : 1;
-      case 'Text':
+      case 'Text': {
         const content = (node.props.content as string) || '';
         const contentHeight = content.split('\n').length;
         return node.style.border ? contentHeight + 2 : contentHeight;
+      }
       case 'Breadcrumb':
         return 1;
       default:
@@ -554,8 +593,8 @@ export class LayoutEngine {
 
     // Check for overflow
     if (parentLayout) {
-      const overflowX = (layout.x + layout.width) - (parentLayout.x + parentLayout.width);
-      const overflowY = (layout.y + layout.height) - (parentLayout.y + parentLayout.height);
+      const overflowX = layout.x + layout.width - (parentLayout.x + parentLayout.width);
+      const overflowY = layout.y + layout.height - (parentLayout.y + parentLayout.height);
 
       if (overflowX > 0) {
         warnings.push({ type: 'overflow', axis: 'x', amount: overflowX });
@@ -577,7 +616,7 @@ export class LayoutEngine {
       this.debugInfo.set(node.id, {
         nodeId: node.id,
         warnings,
-        overflow: warnings.some(w => w.type === 'overflow'),
+        overflow: warnings.some((w) => w.type === 'overflow'),
       });
     }
   }

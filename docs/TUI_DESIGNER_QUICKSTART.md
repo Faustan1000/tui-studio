@@ -47,10 +47,7 @@ Update `tailwind.config.js`:
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class'],
-  content: [
-    './index.html',
-    './src/**/*.{js,ts,jsx,tsx}',
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
@@ -84,7 +81,7 @@ export default {
     },
   },
   plugins: [],
-}
+};
 ```
 
 Update `src/index.css`:
@@ -187,12 +184,7 @@ src/
 Create `src/types/components.ts`:
 
 ```typescript
-export type ComponentType =
-  | 'Box'
-  | 'TextInput'
-  | 'Button'
-  | 'Text'
-  | 'List';
+export type ComponentType = 'Box' | 'TextInput' | 'Button' | 'Text' | 'List';
 
 export interface ComponentNode {
   id: string;
@@ -295,9 +287,7 @@ export function EditorLayout({ palette, canvas, properties }: EditorLayoutProps)
   return (
     <div className="flex h-screen w-screen bg-background">
       {/* Left Sidebar - Component Palette */}
-      <div className="w-64 border-r border-border bg-card">
-        {palette}
-      </div>
+      <div className="w-64 border-r border-border bg-card">{palette}</div>
 
       {/* Center - Canvas */}
       <div className="flex-1 flex flex-col">
@@ -307,15 +297,11 @@ export function EditorLayout({ palette, canvas, properties }: EditorLayoutProps)
         </div>
 
         {/* Canvas */}
-        <div className="flex-1 overflow-auto">
-          {canvas}
-        </div>
+        <div className="flex-1 overflow-auto">{canvas}</div>
       </div>
 
       {/* Right Sidebar - Properties */}
-      <div className="w-80 border-l border-border bg-card">
-        {properties}
-      </div>
+      <div className="w-80 border-l border-border bg-card">{properties}</div>
     </div>
   );
 }
@@ -341,9 +327,7 @@ const COMPONENTS = [
 export function ComponentPalette() {
   return (
     <div className="p-4">
-      <h2 className="text-sm font-semibold mb-4 text-muted-foreground">
-        Components
-      </h2>
+      <h2 className="text-sm font-semibold mb-4 text-muted-foreground">Components</h2>
 
       <div className="space-y-2">
         {COMPONENTS.map((component) => (
@@ -354,9 +338,7 @@ export function ComponentPalette() {
             <component.icon className="w-5 h-5 text-muted-foreground" />
             <div className="flex-1">
               <div className="font-medium text-sm">{component.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {component.description}
-              </div>
+              <div className="text-xs text-muted-foreground">{component.description}</div>
             </div>
           </button>
         ))}
@@ -390,12 +372,7 @@ export function Canvas() {
         <div className="absolute inset-0 pointer-events-none opacity-20">
           <svg width="100%" height="100%">
             <defs>
-              <pattern
-                id="grid"
-                width="8"
-                height="16"
-                patternUnits="userSpaceOnUse"
-              >
+              <pattern id="grid" width="8" height="16" patternUnits="userSpaceOnUse">
                 <rect width="8" height="16" fill="none" stroke="currentColor" strokeWidth="0.5" />
               </pattern>
             </defs>
@@ -425,9 +402,7 @@ import React from 'react';
 export function PropertyPanel() {
   return (
     <div className="p-4">
-      <h2 className="text-sm font-semibold mb-4 text-muted-foreground">
-        Properties
-      </h2>
+      <h2 className="text-sm font-semibold mb-4 text-muted-foreground">Properties</h2>
 
       <div className="text-sm text-muted-foreground text-center py-8">
         Select a component to edit its properties
@@ -451,7 +426,9 @@ import { PropertyPanel } from './components/properties/PropertyPanel';
 
 function App() {
   return (
-    <div className="dark"> {/* Force dark mode */}
+    <div className="dark">
+      {' '}
+      {/* Force dark mode */}
       <EditorLayout
         palette={<ComponentPalette />}
         canvas={<Canvas />}
@@ -475,6 +452,7 @@ npm run dev
 Open http://localhost:5173
 
 You should see:
+
 - Left sidebar with component palette
 - Center canvas with grid
 - Right sidebar for properties
@@ -525,15 +503,19 @@ Refer to the main `TUI_DESIGNER_IMPLEMENTATION_PLAN.md` for detailed phases.
 ## 🐛 Troubleshooting
 
 **Problem**: Tailwind styles not working
+
 - **Solution**: Make sure `index.css` is imported in `main.tsx`
 
 **Problem**: TypeScript errors
+
 - **Solution**: Check `tsconfig.json` has correct paths and includes
 
 **Problem**: Dark mode not applying
+
 - **Solution**: Verify the `dark` class is on root div in `App.tsx`
 
 **Problem**: Components not showing
+
 - **Solution**: Check browser console for errors, verify imports
 
 ---

@@ -11,9 +11,9 @@ interface StyleEditorProps {
 }
 
 const sectionLabel = 'text-[9px] text-muted-foreground uppercase tracking-wide';
-const fieldLabel   = 'text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide';
-const inputCls     = 'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
-const selectCls    = 'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+const fieldLabel = 'text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide';
+const selectCls =
+  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
 
 function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -32,7 +32,11 @@ function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v: boole
 // ─── Collapsible section ──────────────────────────────────────────────────────
 
 function Section({
-  id, label, open, onToggle, children,
+  id,
+  label,
+  open,
+  onToggle,
+  children,
 }: {
   id: string;
   label: string;
@@ -67,10 +71,30 @@ function Section({
 type BorderStyleValue = 'single' | 'double' | 'rounded' | 'bold';
 
 const BORDER_SIDES = [
-  { key: 'borderTop'    as const, styleKey: 'borderTopStyle'    as const, icon: '↑', chars: { single:'─', double:'═', bold:'━', rounded:'─' } },
-  { key: 'borderRight'  as const, styleKey: 'borderRightStyle'  as const, icon: '→', chars: { single:'│', double:'║', bold:'┃', rounded:'│' } },
-  { key: 'borderBottom' as const, styleKey: 'borderBottomStyle' as const, icon: '↓', chars: { single:'─', double:'═', bold:'━', rounded:'─' } },
-  { key: 'borderLeft'   as const, styleKey: 'borderLeftStyle'   as const, icon: '←', chars: { single:'│', double:'║', bold:'┃', rounded:'│' } },
+  {
+    key: 'borderTop' as const,
+    styleKey: 'borderTopStyle' as const,
+    icon: '↑',
+    chars: { single: '─', double: '═', bold: '━', rounded: '─' },
+  },
+  {
+    key: 'borderRight' as const,
+    styleKey: 'borderRightStyle' as const,
+    icon: '→',
+    chars: { single: '│', double: '║', bold: '┃', rounded: '│' },
+  },
+  {
+    key: 'borderBottom' as const,
+    styleKey: 'borderBottomStyle' as const,
+    icon: '↓',
+    chars: { single: '─', double: '═', bold: '━', rounded: '─' },
+  },
+  {
+    key: 'borderLeft' as const,
+    styleKey: 'borderLeftStyle' as const,
+    icon: '←',
+    chars: { single: '│', double: '║', bold: '┃', rounded: '│' },
+  },
 ];
 
 function BorderSidesGrid({
@@ -84,23 +108,21 @@ function BorderSidesGrid({
 
   return (
     <div className="grid grid-cols-2 gap-1">
-      {BORDER_SIDES.map(({ key, styleKey, icon, chars }) => {
-        const isActive   = component.style[key] !== false;
-        const sideStyle  = (component.style[styleKey] ?? globalStyle) as BorderStyleValue;
-        const activeChar = chars[sideStyle] ?? chars.single;
+      {BORDER_SIDES.map(({ key, styleKey, icon }) => {
+        const isActive = component.style[key] !== false;
+        const sideStyle = (component.style[styleKey] ?? globalStyle) as BorderStyleValue;
 
         return (
           <div key={key} className="flex items-center gap-1">
             <span className="text-[10px] text-muted-foreground font-mono w-4 text-center flex-shrink-0">
               {icon}
             </span>
-            <div className={`flex-1 py-0.5 px-1.5 rounded border flex items-center gap-1 transition-colors ${
-              isActive ? 'bg-input border-border/50' : 'bg-input/40 border-border/20'
-            }`}>
-              <Checkbox
-                checked={isActive}
-                onChange={(v) => updateStyle({ [key]: v })}
-              />
+            <div
+              className={`flex-1 py-0.5 px-1.5 rounded border flex items-center gap-1 transition-colors ${
+                isActive ? 'bg-input border-border/50' : 'bg-input/40 border-border/20'
+              }`}
+            >
+              <Checkbox checked={isActive} onChange={(v) => updateStyle({ [key]: v })} />
               <select
                 value={sideStyle}
                 disabled={!isActive}
@@ -127,9 +149,13 @@ export function StyleEditor({ component }: StyleEditorProps) {
   const [open, setOpen] = useState<Set<string>>(new Set(['border', 'colors']));
 
   const toggle = (id: string) =>
-    setOpen(prev => {
+    setOpen((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
 
@@ -152,10 +178,10 @@ export function StyleEditor({ component }: StyleEditorProps) {
             disabled={!component.style.border}
             className={selectCls + ' disabled:opacity-40'}
           >
-            <option value="single">Single  ─ │</option>
-            <option value="double">Double  ═ ║</option>
+            <option value="single">Single ─ │</option>
+            <option value="double">Double ═ ║</option>
             <option value="rounded">Rounded ╭ ╮</option>
-            <option value="bold">Bold    ━ ┃</option>
+            <option value="bold">Bold ━ ┃</option>
           </select>
         </div>
 
@@ -196,19 +222,28 @@ export function StyleEditor({ component }: StyleEditorProps) {
         <ColorPicker
           label="Background"
           value={component.style.backgroundColor}
-          onChange={(color) => updateStyle({ backgroundColor: color, backgroundGradient: undefined })}
+          onChange={(color) =>
+            updateStyle({ backgroundColor: color, backgroundGradient: undefined })
+          }
           gradient={component.style.backgroundGradient}
-          onGradientChange={(g) => updateStyle({ backgroundGradient: g, backgroundColor: g ? undefined : component.style.backgroundColor })}
+          onGradientChange={(g) =>
+            updateStyle({
+              backgroundGradient: g,
+              backgroundColor: g ? undefined : component.style.backgroundColor,
+            })
+          }
         />
 
         {/* Text style buttons */}
         <div className="flex items-center gap-1">
-          {([
-            { key: 'bold',          label: 'B', title: 'Bold',          cls: 'font-bold' },
-            { key: 'italic',        label: 'I', title: 'Italic',        cls: 'italic' },
-            { key: 'underline',     label: 'U', title: 'Underline',     cls: 'underline' },
-            { key: 'strikethrough', label: 'S', title: 'Strikethrough', cls: 'line-through' },
-          ] as const).map(({ key, label, title, cls }) => (
+          {(
+            [
+              { key: 'bold', label: 'B', title: 'Bold', cls: 'font-bold' },
+              { key: 'italic', label: 'I', title: 'Italic', cls: 'italic' },
+              { key: 'underline', label: 'U', title: 'Underline', cls: 'underline' },
+              { key: 'strikethrough', label: 'S', title: 'Strikethrough', cls: 'line-through' },
+            ] as const
+          ).map(({ key, label, title, cls }) => (
             <button
               key={key}
               type="button"
@@ -232,13 +267,14 @@ export function StyleEditor({ component }: StyleEditorProps) {
           </span>
           <input
             type="range"
-            min="0" max="1" step="0.1"
+            min="0"
+            max="1"
+            step="0.1"
             value={component.style.opacity ?? 1}
             onChange={(e) => updateStyle({ opacity: parseFloat(e.target.value) })}
             className="w-full h-1 accent-primary"
           />
         </div>
-
       </Section>
     </div>
   );

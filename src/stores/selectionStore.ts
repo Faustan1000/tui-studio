@@ -32,9 +32,7 @@ export const useSelectionStore = create<SelectionState>((set, get) => ({
   // Select
   select: (id, addToSelection = false) => {
     set((state) => {
-      const newSelectedIds = addToSelection
-        ? new Set(state.selectedIds)
-        : new Set<string>();
+      const newSelectedIds = addToSelection ? new Set(state.selectedIds) : new Set<string>();
 
       if (newSelectedIds.has(id)) {
         newSelectedIds.delete(id);

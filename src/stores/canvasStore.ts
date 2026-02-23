@@ -11,7 +11,7 @@ interface CanvasState {
   sizeMode: CanvasSizeMode;
 
   // View
-  zoom: number;    // 1.0 = 100%
+  zoom: number; // 1.0 = 100%
   panX: number;
   panY: number;
 

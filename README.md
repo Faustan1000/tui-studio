@@ -40,30 +40,30 @@ Open `http://localhost:5173`.
 
 ## Keyboard Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
-| Command Palette | `Cmd/Ctrl+P` |
-| Save | `Cmd/Ctrl+S` |
-| Open | `Cmd/Ctrl+O` |
-| Export | `Cmd/Ctrl+E` |
-| Copy | `Cmd/Ctrl+C` |
-| Paste | `Cmd/Ctrl+V` |
-| Delete | `Backspace` / `Delete` |
-| Undo | `Cmd/Ctrl+Z` |
-| Redo | `Cmd/Ctrl+Shift+Z` / `Cmd/Ctrl+Y` |
+| Action          | Shortcut                          |
+| --------------- | --------------------------------- |
+| Command Palette | `Cmd/Ctrl+P`                      |
+| Save            | `Cmd/Ctrl+S`                      |
+| Open            | `Cmd/Ctrl+O`                      |
+| Export          | `Cmd/Ctrl+E`                      |
+| Copy            | `Cmd/Ctrl+C`                      |
+| Paste           | `Cmd/Ctrl+V`                      |
+| Delete          | `Backspace` / `Delete`            |
+| Undo            | `Cmd/Ctrl+Z`                      |
+| Redo            | `Cmd/Ctrl+Shift+Z` / `Cmd/Ctrl+Y` |
 
 **Component hotkeys** (when not typing):
 
-| Key | Component | Key | Component |
-|-----|-----------|-----|-----------|
-| `b` | Button | `t` | Tabs |
-| `r` | Box | `l` | List |
-| `k` | Checkbox | `e` | Tree |
-| `a` | Radio | `m` | Menu |
-| `s` | Select | `i` | TextInput |
-| `o` | Toggle | `p` | ProgressBar |
-| `n` | Spinner | `y` | Text |
-| `j` | Spacer | | |
+| Key | Component | Key | Component   |
+| --- | --------- | --- | ----------- |
+| `b` | Button    | `t` | Tabs        |
+| `r` | Box       | `l` | List        |
+| `k` | Checkbox  | `e` | Tree        |
+| `a` | Radio     | `m` | Menu        |
+| `s` | Select    | `i` | TextInput   |
+| `o` | Toggle    | `p` | ProgressBar |
+| `n` | Spinner   | `y` | Text        |
+| `j` | Spacer    |     |             |
 
 ## File Format
 
@@ -79,14 +79,14 @@ Projects are saved as `.tui` files (JSON):
 
 ## Export Frameworks
 
-| Framework | Language |
-|-----------|----------|
-| [Ink](https://github.com/vadimdemedes/ink) | TypeScript / React |
-| [BubbleTea](https://github.com/charmbracelet/bubbletea) | Go |
-| [Blessed](https://github.com/chjj/blessed) | JavaScript |
-| [Textual](https://github.com/Textualize/textual) | Python |
-| [OpenTUI](https://opentui.js.org/) | TypeScript |
-| [Tview](https://github.com/rivo/tview) | Go |
+| Framework                                               | Language           |
+| ------------------------------------------------------- | ------------------ |
+| [Ink](https://github.com/vadimdemedes/ink)              | TypeScript / React |
+| [BubbleTea](https://github.com/charmbracelet/bubbletea) | Go                 |
+| [Blessed](https://github.com/chjj/blessed)              | JavaScript         |
+| [Textual](https://github.com/Textualize/textual)        | Python             |
+| [OpenTUI](https://opentui.js.org/)                      | TypeScript         |
+| [Tview](https://github.com/rivo/tview)                  | Go                 |
 
 ## Tech Stack
 

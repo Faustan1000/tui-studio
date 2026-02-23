@@ -52,7 +52,14 @@ export class CharCanvas {
   /**
    * Fill a rectangle with a character
    */
-  fill(x: number, y: number, width: number, height: number, char: string = ' ', style?: string): void {
+  fill(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    char: string = ' ',
+    style?: string
+  ): void {
     for (let row = y; row < y + height && row < this.height; row++) {
       if (row < 0) continue;
       for (let col = x; col < x + width && col < this.width; col++) {
@@ -86,10 +93,17 @@ export class CharCanvas {
    * or per row (vertical), based on the gradient angle.
    * `textStyle` is an optional additional ANSI style prefix (e.g. foreground color) to combine.
    */
-  fillGradient(x: number, y: number, width: number, height: number, gradient: GradientConfig, textStyle: string = ''): void {
+  fillGradient(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    gradient: GradientConfig,
+    textStyle: string = ''
+  ): void {
     // Determine whether we interpolate along columns (horizontal-ish) or rows (vertical-ish)
     const angle = ((gradient.angle % 360) + 360) % 360;
-    const horizontal = angle >= 45 && angle < 135 || angle >= 225 && angle < 315;
+    const horizontal = (angle >= 45 && angle < 135) || (angle >= 225 && angle < 315);
 
     for (let row = y; row < y + height && row < this.height; row++) {
       if (row < 0) continue;
