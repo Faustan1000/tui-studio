@@ -558,6 +558,125 @@ const emitSpinner: Emitter = (node, indent, ctx) => {
   return `${IND.repeat(indent)}yield StudioSpinner(${pyStr(text)}, id=${pyStr(widgetId(node))})\n`;
 };
 
+// ── Data widgets: List, Table, Tree ───────────────────────────────────────────
+
+interface Item {
+  label: string;
+  icon: string;
+  hotkey: string;
+  expanded: boolean;
+  children: unknown[];
+}
+
+/** Items are either plain strings or { label, icon, hotkey, expanded, children }. */
+function toItem(raw: unknown): Item {
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    return {
+      label: String(o.label ?? ''),
+      icon: o.icon ? String(o.icon) : '',
+      hotkey: o.hotkey ? String(o.hotkey) : '',
+      expanded: Boolean(o.expanded),
+      children: Array.isArray(o.children) ? o.children : [],
+    };
+  }
+  return { label: String(raw ?? ''), icon: '', hotkey: '', expanded: false, children: [] };
+}
+
+/** Python identifier fragment for this widget (used for local variable names). */
+function pyVar(node: ComponentNode): string {
+  return widgetId(node);
+}
+
+/** Selectable list. Rendered as a ListView with "icon label  hotkey" rows. */
+const emitList: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const id = widgetId(node);
+  const items = (Array.isArray(p.items) ? p.items : []).map(toItem);
+  const selected = typeof p.selectedIndex === 'number' ? p.selectedIndex : 0;
+
+  const decl = commonDeclarations(node, ctx);
+  if (!cssSize(p.width)) decl.unshift('width: auto;');
+  if (!cssSize(p.height)) decl.unshift('height: auto;');
+  addRule(ctx, node, decl);
+  const fg = cssColor(node.style.color, ctx);
+  if (fg) ctx.css.push(`#${id} > ListItem {\n    color: ${fg};\n}`);
+
+  needImport(ctx, 'textual.widgets', 'ListView');
+  needImport(ctx, 'textual.widgets', 'ListItem');
+  needImport(ctx, 'textual.widgets', 'Label');
+
+  const sp = IND.repeat(indent);
+  const rows = items.map((it) => {
+    let text = escapeMarkup(`${it.icon ? it.icon + ' ' : ''}${it.label}`);
+    if (it.hotkey) text += `  [dim]${escapeMarkup(it.hotkey)}[/dim]`;
+    return `${sp}${IND}ListItem(Label(${pyStr(text)})),\n`;
+  });
+  const args =
+    items.length && selected >= 0 && selected < items.length ? `initial_index=${selected}, ` : '';
+
+  addHandler(ctx, node, 'ListView.Selected', node.events.onSelect, 'on_list_selected');
+  if (!rows.length) return `${sp}yield ListView(id=${pyStr(id)})\n`;
+  return `${sp}yield ListView(\n${rows.join('')}${sp}${IND}${args}id=${pyStr(id)},\n${sp})\n`;
+};
+
+/** Data table: columns and rows are filled in on_mount (DataTable has no constructor data). */
+const emitTable: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const id = widgetId(node);
+  const columns = (Array.isArray(p.columns) ? p.columns : []).map((c) => String(c ?? ''));
+  const rows = (Array.isArray(p.rows) ? p.rows : []).map((r) => (Array.isArray(r) ? r : []));
+
+  const decl = commonDeclarations(node, ctx);
+  if (!cssSize(p.width)) decl.unshift('width: auto;');
+  addRule(ctx, node, decl);
+
+  needImport(ctx, 'textual.widgets', 'DataTable');
+  const v = pyVar(node);
+  const cell = (c: unknown) => pyStr(escapeMarkup(String(c ?? '')));
+  ctx.mount.push(`${v} = self.query_one(${pyStr('#' + id)}, DataTable)`);
+  if (columns.length) ctx.mount.push(`${v}.add_columns(${columns.map(cell).join(', ')})`);
+  if (columns.length && rows.length) {
+    const body = rows.map((r) => `(${columns.map((_, i) => cell(r[i])).join(', ')},)`);
+    ctx.mount.push(`${v}.add_rows([${body.join(', ')}])`);
+  }
+  return `${IND.repeat(indent)}yield DataTable(id=${pyStr(id)})\n`;
+};
+
+/** Tree with several top-level items: hide Textual's single root and add items under it. */
+const emitTree: Emitter = (node, indent, ctx) => {
+  const id = widgetId(node);
+  const decl = commonDeclarations(node, ctx);
+  if (!cssSize(node.props.width)) decl.unshift('width: auto;');
+  if (!cssSize(node.props.height)) decl.unshift('height: auto;');
+  addRule(ctx, node, decl);
+
+  needImport(ctx, 'textual.widgets', 'Tree');
+  const v = pyVar(node);
+  ctx.mount.push(`${v} = self.query_one(${pyStr('#' + id)}, Tree)`);
+  ctx.mount.push(`${v}.show_root = False`);
+  ctx.mount.push(`${v}.root.expand()`);
+
+  let counter = 0;
+  const add = (raw: unknown, parent: string) => {
+    const it = toItem(raw);
+    const label = pyStr(escapeMarkup(`${it.icon ? it.icon + ' ' : ''}${it.label}`));
+    if (it.children.length === 0) {
+      ctx.mount.push(`${parent}.add_leaf(${label})`);
+      return;
+    }
+    const name = `${v}_${++counter}`;
+    ctx.mount.push(`${name} = ${parent}.add(${label}${it.expanded ? ', expand=True' : ''})`);
+    it.children.forEach((c) => add(c, name));
+  };
+  (Array.isArray(node.props.items) ? node.props.items : []).forEach((i) => add(i, `${v}.root`));
+
+  if (node.events.onSelect) {
+    addHandler(ctx, node, 'Tree.NodeSelected', node.events.onSelect, 'on_tree_selected');
+  }
+  return `${IND.repeat(indent)}yield Tree(${pyStr('Tree')}, id=${pyStr(id)})\n`;
+};
+
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Checkbox: emitCheckbox,
   Radio: emitRadio,
@@ -565,6 +684,9 @@ const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Toggle: emitToggleSwitch,
   ProgressBar: emitProgressBar,
   Spinner: emitSpinner,
+  List: emitList,
+  Table: emitTable,
+  Tree: emitTree,
   Box: emitBox,
   Text: emitText,
   Spacer: emitSpacer,
