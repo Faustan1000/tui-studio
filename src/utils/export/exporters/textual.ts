@@ -16,6 +16,8 @@ interface Ctx {
   handlers: string[];
   /** Python imports needed by the generated code: module -> names. */
   imports: Map<string, Set<string>>;
+  /** Statements for the generated on_mount method (widget state set after mounting). */
+  mount: string[];
   /** Generated widget subclasses (module level, before the App class). */
   classes: string[];
   /** Dedupe key -> generated class name. */
@@ -501,11 +503,35 @@ const emitToggleSwitch: Emitter = (node, indent, ctx) => {
   );
 };
 
+/**
+ * Progress bar: value/max shown as bar + percentage like the editor. Textual only accepts
+ * progress after mounting, so it is set in on_mount.
+ */
+const emitProgressBar: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const id = widgetId(node);
+  const max = typeof p.max === 'number' && p.max > 0 ? p.max : 100;
+  const value = typeof p.value === 'number' ? Math.min(max, Math.max(0, p.value)) : 0;
+
+  addRule(ctx, node, commonDeclarations(node, ctx));
+  // The bar stretches to fill the width the editor gives the component.
+  if (cssSize(p.width)) ctx.css.push(`#${id} Bar {\n    width: 1fr;\n}`);
+  const color = cssColor(node.style.color, ctx);
+  if (color) {
+    ctx.css.push(`#${id} Bar > .bar--bar,\n#${id} Bar > .bar--complete {\n    color: ${color};\n}`);
+  }
+
+  needImport(ctx, 'textual.widgets', 'ProgressBar');
+  ctx.mount.push(`self.query_one(${pyStr('#' + id)}, ProgressBar).update(progress=${value})`);
+  return `${IND.repeat(indent)}yield ProgressBar(total=${max}, show_eta=False, id=${pyStr(id)})\n`;
+};
+
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Checkbox: emitCheckbox,
   Radio: emitRadio,
   Select: emitSelect,
   Toggle: emitToggleSwitch,
+  ProgressBar: emitProgressBar,
   Box: emitBox,
   Text: emitText,
   Spacer: emitSpacer,
@@ -545,6 +571,7 @@ export function exportToTextual(root: ComponentNode): string {
     palette,
     handlers: [],
     imports: new Map(),
+    mount: [],
     classes: [],
     classNames: new Map(),
   };
@@ -560,6 +587,9 @@ export function exportToTextual(root: ComponentNode): string {
     .join('\n');
 
   const handlers = ctx.handlers.length ? '\n' + ctx.handlers.join('\n') : '';
+  const mount = ctx.mount.length
+    ? `\n${IND}def on_mount(self) -> None:\n${ctx.mount.map((l) => `${IND}${IND}${l}\n`).join('')}`
+    : '';
   const compose = body || `${IND}${IND}yield Static("Empty screen")\n`;
   if (!body) needImport(ctx, 'textual.widgets', 'Static');
 
@@ -574,7 +604,7 @@ ${indentedCss}
     """
 
     def compose(self) -> ComposeResult:
-${compose}${handlers}
+${compose}${mount}${handlers}
 
 if __name__ == "__main__":
     MyApp().run()
