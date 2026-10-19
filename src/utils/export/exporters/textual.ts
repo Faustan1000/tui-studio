@@ -14,6 +14,8 @@ interface Ctx {
   palette: Record<string, string>;
   /** Generated event handler methods (class body, already indented). */
   handlers: string[];
+  /** Python imports needed by the generated code: module -> names. */
+  imports: Map<string, Set<string>>;
 }
 
 type Emitter = (node: ComponentNode, indent: number, ctx: Ctx) => string;
@@ -131,13 +133,24 @@ function addHandler(
 ) {
   const name = methodName(typeof rawName === 'string' && rawName ? rawName : fallback, ctx);
   ctx.handlers.push(
-    `${IND}@on(${message}, "#${widgetId(node)}")
-` +
-      `${IND}def ${name}(self, event: ${message}) -> None:
-` +
-      `${IND}${IND}pass
-`
+    `${IND}@on(${message}, "#${widgetId(node)}")\n` +
+      `${IND}def ${name}(self, event: ${message}) -> None:\n` +
+      `${IND}${IND}pass\n`
   );
+  needImport(ctx, 'textual', 'on');
+}
+
+/** Record a Python import so only what the generated code uses is imported. */
+function needImport(ctx: Ctx, module: string, name: string) {
+  if (!ctx.imports.has(module)) ctx.imports.set(module, new Set());
+  ctx.imports.get(module)!.add(name);
+}
+
+function renderImports(ctx: Ctx): string {
+  return [...ctx.imports.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([module, names]) => `from ${module} import ${[...names].sort().join(', ')}`)
+    .join('\n');
 }
 
 function addRule(ctx: Ctx, node: ComponentNode, declarations: string[]) {
@@ -155,6 +168,7 @@ function emitChildren(node: ComponentNode, indent: number, ctx: Ctx): string {
 const emitBox: Emitter = (node, indent, ctx) => {
   const sp = IND.repeat(indent);
   const widget = node.layout.direction === 'row' ? 'Horizontal' : 'Vertical';
+  needImport(ctx, 'textual.containers', widget);
 
   const decl = commonDeclarations(node, ctx);
   // Textual containers default to 1fr; stay content-sized unless a size is set.
@@ -173,6 +187,7 @@ const emitText: Emitter = (node, indent, ctx) => {
   const align = node.props.align;
   if (align === 'center' || align === 'right') decl.push(`text-align: ${align};`);
   addRule(ctx, node, decl);
+  needImport(ctx, 'textual.widgets', 'Static');
   const content = pyStr(node.props.content ?? '');
   return `${IND.repeat(indent)}yield Static(${content}, markup=False, id=${pyStr(widgetId(node))})\n`;
 };
@@ -185,6 +200,7 @@ const emitSpacer: Emitter = (node, indent, ctx) => {
   decl.unshift(`height: ${cssSize(node.props.height) ?? '1'};`);
   decl.unshift(`width: ${cssSize(node.props.width) ?? '1'};`);
   addRule(ctx, node, decl);
+  needImport(ctx, 'textual.widgets', 'Static');
   return `${IND.repeat(indent)}yield Static("", id=${pyStr(widgetId(node))})\n`;
 };
 
@@ -200,8 +216,53 @@ const emitTextInput: Emitter = (node, indent, ctx) => {
   if (node.props.disabled) args.push('disabled=True');
   args.push(`id=${pyStr(widgetId(node))}`);
 
+  needImport(ctx, 'textual.widgets', 'Input');
   addHandler(ctx, node, 'Input.Changed', node.events.onChange, 'on_input_changed');
   return `${IND.repeat(indent)}yield Input(${args.join(', ')})\n`;
+};
+
+/**
+ * Button. The label combines the optional left/right icons; a "separated" icon
+ * (with optional number) gets a "│" divider since Textual cannot draw a split border.
+ */
+const emitButton: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const iconLeft = p.iconLeftEnabled && p.iconLeft ? String(p.iconLeft) : '';
+  const iconRight = p.iconRightEnabled && p.iconRight ? String(p.iconRight) : '';
+  const label = String(p.label ?? 'Button');
+
+  let text: string;
+  if (p.separated && iconLeft) {
+    const left = typeof p.number === 'number' ? `${iconLeft} ${p.number}` : iconLeft;
+    text = `${left} │ ${label}${iconRight ? ' ' + iconRight : ''}`;
+  } else {
+    text = `${iconLeft ? iconLeft + ' ' : ''}${label}${iconRight ? ' ' + iconRight : ''}`;
+  }
+
+  // Textual's Button is 3 rows tall with its own padding; the editor's padding
+  // is only the space around the label, so replace it.
+  const decl = commonDeclarations(node, ctx).filter((l) => !l.startsWith('padding:'));
+  if (node.style.border) {
+    decl.push('padding: 0 1;');
+  } else {
+    // Without a border the button is a single line of text.
+    const fixedHeight = decl.some((l) => l.startsWith('height:') && l !== 'height: auto;');
+    decl.splice(0, decl.length, ...decl.filter((l) => l !== 'height: auto;'));
+    decl.unshift('border: none;', 'min-width: 0;', 'padding: 0 1;');
+    if (!fixedHeight) decl.unshift('height: 1;');
+  }
+  addRule(ctx, node, decl);
+
+  needImport(ctx, 'textual.widgets', 'Button');
+  addHandler(ctx, node, 'Button.Pressed', node.events.onClick, 'on_button_pressed');
+
+  const args = [
+    // Button labels are Rich markup: escape "[" so user text is shown literally.
+    pyStr(text.replace(/\[/g, '\\[')),
+  ];
+  if (p.disabled) args.push('disabled=True');
+  args.push(`id=${pyStr(widgetId(node))}`);
+  return `${IND.repeat(indent)}yield Button(${args.join(', ')})\n`;
 };
 
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
@@ -209,17 +270,14 @@ const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Text: emitText,
   Spacer: emitSpacer,
   TextInput: emitTextInput,
-  // Existing simple widgets (to be reworked one by one).
-  Button: (node, indent, ctx) => {
-    addRule(ctx, node, commonDeclarations(node, ctx));
-    return `${IND.repeat(indent)}yield Button(${pyStr(node.props.label ?? 'Button')}, id=${pyStr(widgetId(node))})\n`;
-  },
+  Button: emitButton,
 };
 
 function emitNode(node: ComponentNode, indent: number, ctx: Ctx): string {
   const emitter = EMITTERS[node.type];
   if (emitter) return emitter(node, indent, ctx);
   if (node.children.length > 0) return emitBox(node, indent, ctx);
+  needImport(ctx, 'textual.widgets', 'Static');
   return `${IND.repeat(indent)}yield Static(${pyStr(`[${node.type}]`)}, markup=False)  # TODO: ${node.type} not exported yet\n`;
 }
 
@@ -242,7 +300,9 @@ function screenRule(root: ComponentNode, ctx: Ctx): string {
 export function exportToTextual(root: ComponentNode): string {
   const themeName = (root.props.theme as keyof typeof THEMES) || 'default';
   const palette = (THEMES[themeName] ?? THEMES.default) as unknown as Record<string, string>;
-  const ctx: Ctx = { css: [], palette, handlers: [] };
+  const ctx: Ctx = { css: [], palette, handlers: [], imports: new Map() };
+  needImport(ctx, 'textual.app', 'App');
+  needImport(ctx, 'textual.app', 'ComposeResult');
 
   const rootRule = screenRule(root, ctx);
   const body = emitChildren(root, 2, ctx);
@@ -253,11 +313,10 @@ export function exportToTextual(root: ComponentNode): string {
     .join('\n');
 
   const handlers = ctx.handlers.length ? '\n' + ctx.handlers.join('\n') : '';
-  const onImport = ctx.handlers.length ? 'from textual import on\n' : '';
+  const compose = body || `${IND}${IND}yield Static("Empty screen")\n`;
+  if (!body) needImport(ctx, 'textual.widgets', 'Static');
 
-  return `${onImport}from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Input, Static
+  return `${renderImports(ctx)}
 
 
 class MyApp(App):
@@ -266,10 +325,7 @@ ${indentedCss}
     """
 
     def compose(self) -> ComposeResult:
-${body || `${IND}${IND}yield Static("Empty screen")\n`}
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        pass
-${handlers}
+${compose}${handlers}
 
 if __name__ == "__main__":
     MyApp().run()
