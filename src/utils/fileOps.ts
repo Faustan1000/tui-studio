@@ -1,7 +1,8 @@
 // Save and open .tui files
 
 import { useComponentStore } from '../stores/componentStore';
-import { useThemeStore } from '../stores/themeStore';
+import { parseTuiFile, MAX_TUI_FILE_BYTES } from './tuiValidation';
+import { useThemeStore, THEMES } from '../stores/themeStore';
 import { useSelectionStore } from '../stores/selectionStore';
 
 /** Build the JSON payload + suggested filename from current store state. */
@@ -57,16 +58,12 @@ export async function saveTuiData(json: string, filename: string): Promise<void>
 export async function openTuiFile(): Promise<void> {
   const load = (text: string) => {
     try {
-      const data = JSON.parse(text);
-      if (data.version === '1' && data.tree) {
-        useComponentStore.getState().setRoot(data.tree);
-        if (data.meta?.theme) useThemeStore.getState().setTheme(data.meta.theme);
-        useSelectionStore.getState().clearSelection();
-      } else {
-        alert('Invalid .tui file');
-      }
-    } catch {
-      alert('Invalid .tui file');
+      const { tree, theme } = parseTuiFile(text, Object.keys(THEMES));
+      useComponentStore.getState().setRoot(tree);
+      if (theme) useThemeStore.getState().setTheme(theme as Parameters<ReturnType<typeof useThemeStore.getState>['setTheme']>[0]);
+      useSelectionStore.getState().clearSelection();
+    } catch (err) {
+      alert(`Invalid .tui file: ${err instanceof Error ? err.message : 'unknown error'}`);
     }
   };
 
@@ -76,7 +73,9 @@ export async function openTuiFile(): Promise<void> {
         types: [{ description: 'TUI Studio File', accept: { 'application/json': ['.tui'] } }],
         multiple: false,
       });
-      load(await (await fileHandle.getFile()).text());
+      const file = await fileHandle.getFile();
+      if (file.size > MAX_TUI_FILE_BYTES) return alert('Invalid .tui file: File is too large');
+      load(await file.text());
     } catch (err) {
       if ((err as Error).name !== 'AbortError') alert('Failed to open file');
     }
@@ -86,7 +85,9 @@ export async function openTuiFile(): Promise<void> {
     input.accept = '.tui,application/json';
     input.onchange = async () => {
       const file = input.files?.[0];
-      if (file) load(await file.text());
+      if (!file) return;
+      if (file.size > MAX_TUI_FILE_BYTES) return alert('Invalid .tui file: File is too large');
+      load(await file.text());
     };
     input.click();
   }
