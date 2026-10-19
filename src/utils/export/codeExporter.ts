@@ -3,6 +3,27 @@
 import type { ComponentNode } from '../../types';
 import { exportToRatatui } from './exporters/ratatui';
 import { exportToTextual } from './exporters/textual';
+import { TEXTUAL_RUNTIME_FILENAME, TEXTUAL_RUNTIME_SOURCE } from './api/textualRuntime';
+
+export interface ExportFile {
+  path: string;
+  content: string;
+}
+
+/**
+ * Export design as the files a project needs. Most formats are a single file; Textual also
+ * ships its runtime (ui_runtime.py) next to the generated ui.py.
+ */
+export function exportToFiles(root: ComponentNode | null, format: string): ExportFile[] {
+  if (!root) return [];
+  if (format === 'textual') {
+    return [
+      { path: 'ui.py', content: exportToTextual(root) },
+      { path: TEXTUAL_RUNTIME_FILENAME, content: TEXTUAL_RUNTIME_SOURCE },
+    ];
+  }
+  return [{ path: 'export.txt', content: exportToCode(root, format) }];
+}
 
 /**
  * Export design to framework-specific code

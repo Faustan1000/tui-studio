@@ -6,6 +6,7 @@
 
 import type { ComponentNode, ComponentType } from '../../../types';
 import { THEMES } from '../../../stores/themeStore';
+import { API_SPEC } from '../api/spec';
 
 interface Ctx {
   /** Collected CSS rules, in document order. */
@@ -26,6 +27,8 @@ interface Ctx {
   bindings: [string, string, string][];
   /** Generated App action methods (class body, already indented). */
   actions: string[];
+  /** Components with a code name: they become attributes of the generated `Ui` class. */
+  handles: { tag: string; cls: string; args: string }[];
 }
 
 type Emitter = (node: ComponentNode, indent: number, ctx: Ctx) => string;
@@ -41,7 +44,7 @@ export function pyStr(s: unknown): string {
 
 /** Widget id that is valid in Textual CSS (must not start with a digit). */
 export function widgetId(node: ComponentNode): string {
-  return 'n_' + node.id.replace(/[^a-zA-Z0-9_]/g, '_');
+  return node.tag ?? '_n_' + node.id.replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
 /** Resolve a color name / hex into something Textual CSS understands. */
@@ -133,7 +136,28 @@ function methodName(raw: string, ctx: Ctx): string {
   return name;
 }
 
-/** Register a Textual message handler bound to one widget. */
+/** How a Textual message is reported to the program through `Ui._emit`. */
+const EVENT_API: Record<string, { name: string; value?: string }> = {
+  'Button.Pressed': { name: 'click' },
+  'Input.Changed': { name: 'change', value: 'event.value' },
+  'Input.Submitted': { name: 'submit', value: 'event.value' },
+  'Checkbox.Changed': { name: 'change', value: 'event.value' },
+  'RadioButton.Changed': { name: 'change', value: 'event.value' },
+  'Switch.Changed': { name: 'change', value: 'event.value' },
+  'Select.Changed': {
+    name: 'change',
+    value: 'None if event.value == Select.BLANK else event.value',
+  },
+  'ListView.Selected': { name: 'select', value: 'event.list_view.index' },
+  'OptionList.OptionSelected': { name: 'select', value: 'event.option_index' },
+  'Tabs.TabActivated': { name: 'change', value: 'int(event.tab.id.rsplit("__", 1)[-1])' },
+  'Tree.NodeSelected': { name: 'select', value: 'str(event.node.label)' },
+};
+
+/**
+ * Register a Textual message handler bound to one widget. For components with a code name
+ * it forwards the interaction to the program (`ui.<tag>.on_<event>`); others stay stubs.
+ */
 function addHandler(
   ctx: Ctx,
   node: ComponentNode,
@@ -142,10 +166,15 @@ function addHandler(
   fallback: string
 ) {
   const name = methodName(typeof rawName === 'string' && rawName ? rawName : fallback, ctx);
+  const api = EVENT_API[message];
+  const body =
+    node.tag && api
+      ? `self.ui._emit(${pyStr(node.tag)}, ${pyStr(api.name)}${api.value ? ', ' + api.value : ''})`
+      : 'pass';
   ctx.handlers.push(
     `${IND}@on(${message}, "#${widgetId(node)}")\n` +
       `${IND}def ${name}(self, event: ${message}) -> None:\n` +
-      `${IND}${IND}pass\n`
+      `${IND}${IND}${body}\n`
   );
   needImport(ctx, 'textual', 'on');
 }
@@ -240,6 +269,7 @@ const emitTextInput: Emitter = (node, indent, ctx) => {
 
   needImport(ctx, 'textual.widgets', 'Input');
   addHandler(ctx, node, 'Input.Changed', node.events.onChange, 'on_input_changed');
+  if (node.tag) addHandler(ctx, node, 'Input.Submitted', undefined, 'on_input_submitted');
   return `${IND.repeat(indent)}yield Input(${args.join(', ')})\n`;
 };
 
@@ -406,12 +436,17 @@ function emitRadioGroup(
   ctx: Ctx
 ): string {
   const sp = IND.repeat(indent);
-  const id = `${widgetId(radios[0])}_group`;
+  const id = `${widgetId(radios[0])}__group`;
   const decl = ['border: none;', 'padding: 0;', 'background: transparent;', 'width: auto;'];
   if (horizontal) decl.push('layout: horizontal;');
   ctx.css.push(`#${id} {\n${decl.map((l) => `    ${l}`).join('\n')}\n}`);
   needImport(ctx, 'textual.widgets', 'RadioSet');
-  const body = radios.map((r) => emitRadio(r, indent + 1, ctx)).join('');
+  const body = radios
+    .map((r) => {
+      registerApi(r, ctx);
+      return emitRadio(r, indent + 1, ctx);
+    })
+    .join('');
   return `${sp}with RadioSet(id=${pyStr(id)}):\n${body}`;
 }
 
@@ -490,20 +525,20 @@ const emitToggleSwitch: Emitter = (node, indent, ctx) => {
   const labelLines = ['margin-left: 1;', ...text];
   labelLines.unshift(node.style.border ? 'height: 3;' : 'height: 1;');
   if (node.style.border) labelLines.push('content-align: left middle;');
-  rule(`#${id}_group`, [
+  rule(`#${id}__group`, [
     ...(cssSize(p.width) ? [] : ['width: auto;']),
     ...(cssSize(p.height) ? [] : ['height: auto;']),
     ...group,
   ]);
   rule(`#${id}`, sw);
-  rule(`#${id}_label`, labelLines);
+  rule(`#${id}__label`, labelLines);
 
   needImport(ctx, 'textual.containers', 'Horizontal');
   needImport(ctx, 'textual.widgets', 'Label');
   return (
-    `${sp}with Horizontal(id=${pyStr(id + '_group')}):\n` +
+    `${sp}with Horizontal(id=${pyStr(id + '__group')}):\n` +
     `${sp}${IND}yield Switch(${args.join(', ')})\n` +
-    `${sp}${IND}yield Label(${pyStr(escapeMarkup(label))}, id=${pyStr(id + '_label')})\n`
+    `${sp}${IND}yield Label(${pyStr(escapeMarkup(label))}, id=${pyStr(id + '__label')})\n`
   );
 };
 
@@ -669,13 +704,13 @@ const emitTree: Emitter = (node, indent, ctx) => {
       ctx.mount.push(`${parent}.add_leaf(${label})`);
       return;
     }
-    const name = `${v}_${++counter}`;
+    const name = `${v}__${++counter}`;
     ctx.mount.push(`${name} = ${parent}.add(${label}${it.expanded ? ', expand=True' : ''})`);
     it.children.forEach((c) => add(c, name));
   };
   (Array.isArray(node.props.items) ? node.props.items : []).forEach((i) => add(i, `${v}.root`));
 
-  if (node.events.onSelect) {
+  if (node.events.onSelect || node.tag) {
     addHandler(ctx, node, 'Tree.NodeSelected', node.events.onSelect, 'on_tree_selected');
   }
   return `${IND.repeat(indent)}yield Tree(${pyStr('Tree')}, id=${pyStr(id)})\n`;
@@ -732,12 +767,12 @@ const emitMenu: Emitter = (node, indent, ctx) => {
   const fg = cssColor(node.style.color, ctx);
   if (fg) indexedRule(ctx, `#${id} > .option-list--option`, [`color: ${fg};`]);
   const options = items.map(
-    (it, i) => `${sp}${IND}Option(${pyStr(itemMarkup(it))}, id=${pyStr(`${id}_${i}`)}),\n`
+    (it, i) => `${sp}${IND}Option(${pyStr(itemMarkup(it))}, id=${pyStr(`${id}__${i}`)}),\n`
   );
   if (items.length && selected >= 0 && selected < items.length) {
     ctx.mount.push(`self.query_one(${pyStr('#' + id)}, OptionList).highlighted = ${selected}`);
   }
-  if (node.events.onSelect) {
+  if (node.events.onSelect || node.tag) {
     addHandler(ctx, node, 'OptionList.OptionSelected', node.events.onSelect, 'on_menu_selected');
   }
   if (!options.length) return `${sp}yield OptionList(id=${pyStr(id)})\n`;
@@ -766,15 +801,15 @@ const emitTabs: Emitter = (node, indent, ctx) => {
     const icon = it.icon ? it.icon + ' ' : '';
     const hotkey = it.hotkey ? ' ' + it.hotkey : '';
     const text = escapeMarkup(`${icon}${it.label || 'Tab'}${status ? ' ●' : ''}${hotkey}`);
-    return `${sp}${IND}Tab(${pyStr(text)}, id=${pyStr(`${id}_${i}`)}),\n`;
+    return `${sp}${IND}Tab(${pyStr(text)}, id=${pyStr(`${id}__${i}`)}),\n`;
   });
   const args: string[] = [];
   if (tabs.length) {
     const index = Math.min(Math.max(active, 0), tabs.length - 1);
-    args.push(`active=${pyStr(`${id}_${index}`)}`);
+    args.push(`active=${pyStr(`${id}__${index}`)}`);
   }
   args.push(`id=${pyStr(id)}`);
-  if (node.events.onChange) {
+  if (node.events.onChange || node.tag) {
     addHandler(ctx, node, 'Tabs.TabActivated', node.events.onChange, 'on_tab_activated');
   }
   return `${sp}yield Tabs(\n${rows.join('')}${sp}${IND}${args.join(', ')},\n${sp})\n`;
@@ -847,11 +882,18 @@ const emitModal: Emitter = (node, _indent, ctx) => {
   needImport(ctx, 'textual.containers', widget);
   const lines = [
     `class ${name}(ModalScreen):`,
-    `${IND}BINDINGS = [("escape", "app.pop_screen", "Close")]`,
+    `${IND}BINDINGS = [("escape", "dismiss", "Close")]`,
     '',
     `${IND}def compose(self) -> ComposeResult:`,
     `${IND}${IND}with ${widget}(id=${pyStr(widgetId(node))}) as dialog:`,
-    ...(title ? [`${IND}${IND}${IND}dialog.border_title = ${pyStr(title)}`] : []),
+    // With a code name the title can be changed at runtime (`ui.<tag>.title = ...`).
+    ...(title || node.tag
+      ? [
+          `${IND}${IND}${IND}dialog.border_title = ${
+            node.tag ? `self.app.ui[${pyStr(node.tag)}].title` : pyStr(title)
+          }`,
+        ]
+      : []),
   ];
   let code = lines.join('\n') + '\n';
   code += body || (title ? '' : `${IND}${IND}${IND}pass\n`);
@@ -859,6 +901,7 @@ const emitModal: Emitter = (node, _indent, ctx) => {
     code += `\n${IND}def on_mount(self) -> None:\n${innerMount.map((l) => `${IND}${IND}${l}\n`).join('')}`;
   }
   ctx.classes.push(code);
+  if (node.tag) ctx.classNames.set(`modal:${node.tag}`, name);
 
   const key = number <= 12 ? `f${number}` : '';
   if (key) ctx.bindings.push([key, `show_modal_${number}`, title || `Modal ${number}`]);
@@ -890,12 +933,130 @@ const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Button: emitButton,
 };
 
+// ── Program access: handles for components with a code name ───────────────────
+
+const pyList = (items: unknown[]) => JSON.stringify(items.map((i) => String(i ?? '')));
+const pyBool = (v: unknown) => (v ? 'True' : 'False');
+
+/**
+ * Components with a code name become attributes of the generated `Ui` class, so the
+ * program can read/write them, change their state and listen to their events.
+ * The runtime classes are in ui_runtime.py; which states a component supports comes from
+ * the shared API spec.
+ */
+function registerApi(node: ComponentNode, ctx: Ctx) {
+  const tag = node.tag;
+  if (!tag || node.type === 'Screen') return;
+  const p = node.props;
+  const kw: string[] = [];
+  let cls = 'ContainerHandle';
+
+  switch (node.type) {
+    case 'Text':
+      cls = 'TextHandle';
+      kw.push(`text=${pyStr(p.content ?? '')}`);
+      break;
+    case 'Spinner':
+      cls = 'SpinnerHandle';
+      kw.push(`label=${pyStr(p.label ?? p.text ?? 'Loading...')}`);
+      break;
+    case 'Button':
+      cls = 'ButtonHandle';
+      kw.push(`label=${pyStr(p.label ?? '')}`);
+      break;
+    case 'TextInput':
+      cls = 'InputHandle';
+      kw.push(`value=${pyStr(p.value ?? '')}`, `placeholder=${pyStr(p.placeholder ?? '')}`);
+      break;
+    case 'Checkbox':
+    case 'Radio':
+      cls = 'CheckHandle';
+      kw.push(`checked=${pyBool(p.checked)}`, `label=${pyStr(p.label ?? '')}`);
+      break;
+    case 'Toggle':
+      cls = 'CheckHandle';
+      kw.push(`checked=${pyBool(p.checked ?? p.value)}`, `label=${pyStr(p.label ?? '')}`);
+      if (p.label) kw.push(`label_id=${pyStr(tag + '__label')}`);
+      break;
+    case 'Select': {
+      cls = 'SelectHandle';
+      const options = (Array.isArray(p.options) ? p.options : []).map(String);
+      const value = options.includes(String(p.value ?? '')) ? String(p.value) : options[0];
+      kw.push(`value=${value === undefined ? 'None' : pyStr(value)}`, `options=${pyList(options)}`);
+      break;
+    }
+    case 'ProgressBar': {
+      cls = 'ProgressHandle';
+      const max = typeof p.max === 'number' && p.max > 0 ? p.max : 100;
+      kw.push(`value=${typeof p.value === 'number' ? p.value : 0}`, `max=${max}`);
+      break;
+    }
+    case 'Table': {
+      cls = 'TableHandle';
+      const rows = (Array.isArray(p.rows) ? p.rows : []).map((r) => (Array.isArray(r) ? r : []));
+      kw.push(
+        `columns=${pyList(Array.isArray(p.columns) ? p.columns : [])}`,
+        `rows=${JSON.stringify(rows.map((r) => r.map((c) => String(c ?? ''))))}`
+      );
+      break;
+    }
+    case 'List': {
+      cls = 'ListHandle';
+      const items = (Array.isArray(p.items) ? p.items : []).map((i) => toItem(i).label);
+      kw.push(
+        `items=${pyList(items)}`,
+        `selected=${typeof p.selectedIndex === 'number' ? p.selectedIndex : 0}`
+      );
+      break;
+    }
+    case 'Tree':
+      cls = 'TreeHandle';
+      break;
+    case 'Menu':
+      // A horizontal menu is a row of labels without selection events.
+      if (!(node.layout.type === 'flexbox' && node.layout.direction === 'row')) {
+        cls = 'MenuHandle';
+        kw.push(`selected=${typeof p.selectedIndex === 'number' ? p.selectedIndex : 0}`);
+      }
+      break;
+    case 'Tabs': {
+      cls = 'TabsHandle';
+      const count = Array.isArray(p.tabs) ? p.tabs.length : 0;
+      const active = typeof p.activeTab === 'number' ? p.activeTab : 0;
+      kw.push(`active=${Math.min(Math.max(active, 0), Math.max(count - 1, 0))}`);
+      break;
+    }
+    case 'Modal': {
+      cls = 'ModalHandle';
+      const screen = ctx.classNames.get(`modal:${tag}`);
+      if (!screen) return; // hidden modals are not exported
+      kw.push(`screen=${screen}`, `title=${pyStr(p.title ?? '')}`);
+      break;
+    }
+    default:
+      break;
+  }
+
+  const states = API_SPEC[node.type].states.map((s) => pyStr(s)).join(', ');
+  ctx.handles.push({ tag, cls, args: [`states=(${states},)`, ...kw].join(', ') });
+  needImport(ctx, 'ui_runtime', cls);
+}
+
 function emitNode(node: ComponentNode, indent: number, ctx: Ctx): string {
+  // Document order for the attributes of `Ui`; a modal needs its generated class first.
+  if (node.type !== 'Modal') registerApi(node, ctx);
   const emitter = EMITTERS[node.type];
-  if (emitter) return emitter(node, indent, ctx);
-  if (node.children.length > 0) return emitBox(node, indent, ctx);
-  needImport(ctx, 'textual.widgets', 'Static');
-  return `${IND.repeat(indent)}yield Static(${pyStr(`[${node.type}]`)}, markup=False)  # TODO: ${node.type} not exported yet\n`;
+  let out: string;
+  if (emitter) {
+    out = emitter(node, indent, ctx);
+  } else if (node.children.length > 0) {
+    out = emitBox(node, indent, ctx);
+  } else {
+    needImport(ctx, 'textual.widgets', 'Static');
+    out = `${IND.repeat(indent)}yield Static(${pyStr(`[${node.type}]`)}, markup=False)  # TODO: ${node.type} not exported yet\n`;
+  }
+  if (node.type === 'Modal') registerApi(node, ctx);
+  return out;
 }
 
 // ── Screen / entry point ──────────────────────────────────────────────────────
@@ -927,9 +1088,12 @@ export function exportToTextual(root: ComponentNode): string {
     classNames: new Map(),
     bindings: [],
     actions: [],
+    handles: [],
   };
-  needImport(ctx, 'textual.app', 'App');
   needImport(ctx, 'textual.app', 'ComposeResult');
+  needImport(ctx, 'ui_runtime', 'StudioApp');
+  needImport(ctx, 'ui_runtime', 'StudioUi');
+  needImport(ctx, 'ui_runtime', 'LogPanel');
 
   const rootRule = screenRule(root, ctx);
   const body = emitChildren(root, 2, ctx);
@@ -943,7 +1107,9 @@ export function exportToTextual(root: ComponentNode): string {
   const mount = ctx.mount.length
     ? `\n${IND}def on_mount(self) -> None:\n${ctx.mount.map((l) => `${IND}${IND}${l}\n`).join('')}`
     : '';
-  const compose = body || `${IND}${IND}yield Static("Empty screen")\n`;
+  const compose =
+    (body || `${IND}${IND}yield Static("Empty screen")\n`) +
+    `${IND}${IND}yield LogPanel(id="_ui_log")\n`;
   if (!body) needImport(ctx, 'textual.widgets', 'Static');
 
   const classes = ctx.classes.map((c) => c.trimEnd() + '\n\n\n').join('');
@@ -957,10 +1123,22 @@ export function exportToTextual(root: ComponentNode): string {
     : '';
   const actions = ctx.actions.map((a) => '\n' + a).join('');
 
+  const attrs = ctx.handles.map((h) => `${IND}${h.tag}: ${h.cls}\n`).join('');
+  const inits = ctx.handles
+    .map((h) => `${IND}${IND}self.${h.tag} = ${h.cls}(self, ${pyStr(h.tag)}, ${h.args})\n`)
+    .join('');
+  const uiClass =
+    `class Ui(StudioUi):\n` +
+    `${IND}"""Your program's access to the components that have a code name."""\n\n` +
+    `${attrs}${attrs ? '\n' : ''}` +
+    `${IND}def __init__(self) -> None:\n` +
+    `${IND}${IND}super().__init__(MyApp)\n` +
+    inits;
+
   return `${renderImports(ctx)}
 
 
-${classes}class MyApp(App):
+${classes}class MyApp(StudioApp):
     CSS = """
 ${indentedCss}
     """
@@ -968,7 +1146,9 @@ ${bindings}
     def compose(self) -> ComposeResult:
 ${compose}${mount}${handlers}${actions}
 
+${uiClass}
+
 if __name__ == "__main__":
-    MyApp().run()
+    Ui().run()
 `;
 }

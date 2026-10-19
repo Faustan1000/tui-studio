@@ -1,6 +1,7 @@
 // Validation for untrusted .tui files before they reach the stores
 
 import type { ComponentNode, ComponentType } from '../types/components';
+import { validateTag } from './apiTag';
 
 export const MAX_TUI_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_TREE_DEPTH = 50;
@@ -51,7 +52,11 @@ function sanitize(v: unknown, depth = 0): unknown {
   return v;
 }
 
-function validateNode(raw: unknown, depth: number, state: { count: number; ids: Set<string> }) {
+function validateNode(
+  raw: unknown,
+  depth: number,
+  state: { count: number; ids: Set<string>; tags: Set<string> }
+) {
   if (depth > MAX_TREE_DEPTH) throw new Error(`Tree deeper than ${MAX_TREE_DEPTH} levels`);
   if (++state.count > MAX_TREE_NODES) throw new Error(`More than ${MAX_TREE_NODES} components`);
   if (!isPlainObject(raw)) throw new Error('Component is not an object');
@@ -61,16 +66,25 @@ function validateNode(raw: unknown, depth: number, state: { count: number; ids: 
   if (state.ids.has(raw.id)) throw new Error(`Duplicate component id "${raw.id}"`);
   state.ids.add(raw.id);
 
+  if (raw.tag !== undefined) {
+    if (typeof raw.tag !== 'string') throw new Error(`Component "${raw.id}": tag must be text`);
+    const problem = validateTag(raw.tag, state.tags);
+    if (problem) throw new Error(`Component "${raw.id}": invalid code name (${problem})`);
+    if (raw.tag) state.tags.add(raw.tag);
+  }
+
   if (typeof raw.type !== 'string' || !COMPONENT_TYPES.has(raw.type))
     throw new Error(`Unknown component type "${String(raw.type)}"`);
   if (typeof raw.name !== 'string' || raw.name.length > 500)
     throw new Error('Component has an invalid name');
   for (const key of ['props', 'style', 'events'] as const) {
-    if (!isPlainObject(raw[key])) throw new Error(`Component "${raw.id}": "${key}" must be an object`);
+    if (!isPlainObject(raw[key]))
+      throw new Error(`Component "${raw.id}": "${key}" must be an object`);
   }
   if (!isPlainObject(raw.layout) || !LAYOUT_TYPES.has(raw.layout.type as string))
     throw new Error(`Component "${raw.id}": invalid layout`);
-  if (!Array.isArray(raw.children)) throw new Error(`Component "${raw.id}": children must be an array`);
+  if (!Array.isArray(raw.children))
+    throw new Error(`Component "${raw.id}": children must be an array`);
   for (const key of ['locked', 'hidden', 'collapsed'] as const) {
     if (raw[key] !== undefined && typeof raw[key] !== 'boolean')
       throw new Error(`Component "${raw.id}": "${key}" must be a boolean`);
@@ -91,11 +105,13 @@ export function parseTuiFile(text: string, validThemes: readonly string[]): Vali
   try {
     data = sanitize(JSON.parse(text));
   } catch (e) {
-    throw new Error(e instanceof Error && e.message.includes('deeply') ? e.message : 'Not valid JSON');
+    throw new Error(
+      e instanceof Error && e.message.includes('deeply') ? e.message : 'Not valid JSON'
+    );
   }
   if (!isPlainObject(data) || data.version !== '1') throw new Error('Unsupported file version');
 
-  validateNode(data.tree, 0, { count: 0, ids: new Set() });
+  validateNode(data.tree, 0, { count: 0, ids: new Set(), tags: new Set() });
 
   let theme: string | undefined;
   if (isPlainObject(data.meta) && data.meta.theme !== undefined) {

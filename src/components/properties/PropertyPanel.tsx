@@ -15,6 +15,8 @@ import { useSelectionStore, useComponentStore } from '../../stores';
 import { LayoutEditor, NumericInput } from './LayoutEditor';
 import { StyleEditor } from './StyleEditor';
 import { ColorPicker } from './ColorPicker';
+import type { ComponentNode } from '../../types';
+import { collectTags, suggestTag, validateTag } from '../../utils/apiTag';
 
 // Collapsible Section Component
 function Section({
@@ -47,6 +49,66 @@ function Section({
         {action}
       </button>
       {isOpen && <div className="px-3 py-2 space-y-2">{children}</div>}
+    </div>
+  );
+}
+
+// Code name of a component: shows up unchanged as the identifier in exported code.
+// The draft is checked while typing and only saved (Enter / blur) when it is valid.
+function ApiNameField({ component }: { component: ComponentNode }) {
+  const componentStore = useComponentStore();
+  const [draft, setDraft] = useState(component.tag ?? '');
+
+  useEffect(() => {
+    setDraft(component.tag ?? '');
+  }, [component.id, component.tag]);
+
+  const taken = collectTags(componentStore.root, component.id);
+  const error = validateTag(draft, taken);
+
+  const commit = () => {
+    if (error) return;
+    const next = draft || undefined;
+    if (next !== component.tag) componentStore.updateComponent(component.id, { tag: next });
+  };
+
+  return (
+    <div className="px-3 py-2 border-b border-border/30">
+      <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">
+        Code name
+      </label>
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={draft}
+          spellCheck={false}
+          placeholder="e.g. submit_btn"
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => (error ? setDraft(component.tag ?? '') : commit())}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setDraft(component.tag ?? '');
+          }}
+          className={`flex-1 min-w-0 px-1.5 py-0.5 bg-input border rounded text-[11px] font-mono focus:outline-hidden ${
+            error ? 'border-destructive' : 'border-border/50 focus:border-primary'
+          }`}
+        />
+        <button
+          type="button"
+          title="Suggest a name from the layer name"
+          onClick={() => setDraft(suggestTag(component.name, taken))}
+          className="px-1.5 py-0.5 text-[10px] border border-border/50 rounded hover:bg-accent transition-colors"
+        >
+          Auto
+        </button>
+      </div>
+      {error ? (
+        <div className="text-[9px] text-destructive mt-0.5">{error}</div>
+      ) : (
+        <div className="text-[9px] text-muted-foreground mt-0.5">
+          Used as the name in exported code
+        </div>
+      )}
     </div>
   );
 }
@@ -95,6 +157,8 @@ export function PropertyPanel() {
           </button>
         </div>
       </div>
+
+      <ApiNameField component={selectedComponent} />
 
       {/* Tabs */}
       <div className="flex border-b border-border/30">

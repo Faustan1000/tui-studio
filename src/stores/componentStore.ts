@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import type { ComponentNode } from '../types';
 import { findNodeById, findParentNode, flattenTree, cloneNode } from '../utils/treeUtils';
 import { generateComponentId } from '../utils/idGenerator';
+import { collectTags } from '../utils/apiTag';
 
 interface ComponentState {
   // Tree
@@ -84,6 +85,8 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
       id,
       children: [],
     };
+    // Tags must stay unique: a pasted component keeps its tag only if nobody uses it.
+    if (newComponent.tag && collectTags(newRoot).has(newComponent.tag)) delete newComponent.tag;
 
     // If parent is a container and has explicit height/width, change to auto so it fits children
     if (['Box', 'Grid'].includes(parent.type)) {
@@ -210,10 +213,12 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
     const cloned = cloneNode(component);
     cloned.id = generateComponentId();
     cloned.name = `${cloned.name} Copy`;
+    delete cloned.tag; // tags are unique, so a copy starts without one
 
     // Assign new IDs to all descendants
     function reassignIds(node: ComponentNode) {
       node.id = generateComponentId();
+      delete node.tag;
       node.children.forEach(reassignIds);
     }
     cloned.children.forEach(reassignIds);

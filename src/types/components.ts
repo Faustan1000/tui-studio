@@ -38,6 +38,13 @@ export interface ComponentNode {
   events: EventHandlers;
   children: ComponentNode[];
 
+  /**
+   * Optional code name chosen by the user (e.g. "submit_btn"). It is used verbatim as the
+   * identifier in exported code, so it must be unique and a valid identifier
+   * (see utils/apiTag.ts).
+   */
+  tag?: string;
+
   // Metadata
   locked: boolean;
   hidden: boolean;

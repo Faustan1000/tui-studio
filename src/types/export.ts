@@ -53,9 +53,8 @@ export interface TextualExportSettings extends ExportSettings {
   includeCSS: boolean;
 }
 
-export interface RatatuiExportSettings extends ExportSettings {
-  // Rust/Ratatui specific settings (no useAsyncIO — that is a Python concept)
-}
+// Rust/Ratatui specific settings (no useAsyncIO — that is a Python concept)
+export type RatatuiExportSettings = ExportSettings;
 
 // Project export
 export interface ProjectExportData {
