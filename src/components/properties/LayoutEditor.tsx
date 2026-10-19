@@ -60,9 +60,9 @@ interface LayoutEditorProps {
 }
 
 const input =
-  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
 const select =
-  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
 const label = 'text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide';
 
 // ─── Edge editor (padding & margin) ──────────────────────────────────────────
@@ -136,7 +136,7 @@ function EdgeEditor({
 
       {!individual ? (
         <div className="flex items-center gap-1">
-          <Maximize2 size={12} className="text-muted-foreground flex-shrink-0" />
+          <Maximize2 size={12} className="text-muted-foreground shrink-0" />
           <NumericInput value={uniform} onChange={setAll} min={0} className={input} />
         </div>
       ) : (

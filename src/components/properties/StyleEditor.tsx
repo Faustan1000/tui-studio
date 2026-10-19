@@ -13,14 +13,14 @@ interface StyleEditorProps {
 const sectionLabel = 'text-[9px] text-muted-foreground uppercase tracking-wide';
 const fieldLabel = 'text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide';
 const selectCls =
-  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+  'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
 
 function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+      className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center transition-colors ${
         checked ? 'bg-primary border-primary' : 'bg-input border-border/50 hover:border-primary/50'
       }`}
     >
@@ -53,7 +53,7 @@ function Section({
       >
         <ChevronDown
           size={10}
-          className={`text-muted-foreground transition-transform flex-shrink-0 ${open ? '' : '-rotate-90'}`}
+          className={`text-muted-foreground transition-transform shrink-0 ${open ? '' : '-rotate-90'}`}
         />
         <span className={`${sectionLabel} group-hover:text-foreground transition-colors`}>
           {label}
@@ -114,7 +114,7 @@ function BorderSidesGrid({
 
         return (
           <div key={key} className="flex items-center gap-1">
-            <span className="text-[10px] text-muted-foreground font-mono w-4 text-center flex-shrink-0">
+            <span className="text-[10px] text-muted-foreground font-mono w-4 text-center shrink-0">
               {icon}
             </span>
             <div
@@ -127,7 +127,7 @@ function BorderSidesGrid({
                 value={sideStyle}
                 disabled={!isActive}
                 onChange={(e) => updateStyle({ [styleKey]: e.target.value as BorderStyleValue })}
-                className="flex-1 min-w-0 bg-transparent text-[11px] font-mono text-muted-foreground focus:outline-none disabled:opacity-30 cursor-pointer"
+                className="flex-1 min-w-0 bg-transparent text-[11px] font-mono text-muted-foreground focus:outline-hidden disabled:opacity-30 cursor-pointer"
               >
                 <option value="single">─ single</option>
                 <option value="double">{icon === '↑' || icon === '↓' ? '═' : '║'} double</option>

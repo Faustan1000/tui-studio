@@ -34,7 +34,7 @@ function CanvasSizeControl() {
       <select
         value={canvasStore.sizeMode}
         onChange={(e) => canvasStore.setSizeMode(e.target.value as any)}
-        className="px-2 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none"
+        className="px-2 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-hidden"
       >
         <option value="default">Default (80×25)</option>
         <option value="responsive">Responsive</option>
@@ -48,7 +48,7 @@ function CanvasSizeControl() {
             onChange={setCols}
             min={10}
             max={200}
-            className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none text-center"
+            className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-hidden text-center"
           />
           <span className="text-[10px] text-muted-foreground/60">×</span>
           <NumericInput
@@ -56,7 +56,7 @@ function CanvasSizeControl() {
             onChange={setRows}
             min={10}
             max={100}
-            className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-none text-center"
+            className="w-14 px-1.5 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-hidden text-center"
           />
           <button
             onClick={handleApply}
@@ -771,7 +771,7 @@ const ComponentRenderer = memo(
                     );
                   }
                   return (
-                    <span key={i} className="flex-shrink-0 flex items-start">
+                    <span key={i} className="shrink-0 flex items-start">
                       {content}
                       {i < items.length - 1 &&
                         (itemData.separator ? (

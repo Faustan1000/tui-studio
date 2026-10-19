@@ -154,7 +154,7 @@ function VisualProperties({ component }: { component: import('../../types').Comp
                   width: v === 'auto' || v === '' ? 'auto' : isNaN(Number(v)) ? 'auto' : Number(v),
                 });
               }}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
           <div>
@@ -170,7 +170,7 @@ function VisualProperties({ component }: { component: import('../../types').Comp
                   height: v === 'auto' || v === '' ? 'auto' : isNaN(Number(v)) ? 'auto' : Number(v),
                 });
               }}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
         </div>
@@ -260,7 +260,7 @@ function TextContentEditor({ component }: { component: import('../../types').Com
           value={(component.props.content as string) || ''}
           onChange={(e) => componentStore.updateProps(component.id, { content: e.target.value })}
           rows={3}
-          className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] font-mono resize-none focus:border-primary focus:outline-none"
+          className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] font-mono resize-none focus:border-primary focus:outline-hidden"
         />
       </div>
     </div>
@@ -403,7 +403,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               type="text"
               value={(component.props.label as string) || ''}
               onChange={(e) => componentStore.updateProps(component.id, { label: e.target.value })}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
           <div className="flex items-center gap-1.5">
@@ -429,7 +429,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
                 componentStore.updateProps(component.id, { iconLeft: e.target.value })
               }
               disabled={!component.props.iconLeftEnabled}
-              className="flex-1 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none disabled:opacity-50"
+              className="flex-1 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden disabled:opacity-50"
               placeholder="+"
             />
             <div
@@ -463,7 +463,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
                 componentStore.updateProps(component.id, { iconRight: e.target.value })
               }
               disabled={!component.props.iconRightEnabled}
-              className="flex-1 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none disabled:opacity-50"
+              className="flex-1 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden disabled:opacity-50"
               placeholder="→"
             />
             <div
@@ -523,7 +523,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
             onChange={(e) =>
               componentStore.updateProps(component.id, { placeholder: e.target.value })
             }
-            className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+            className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
           />
         </div>
       )}
@@ -539,7 +539,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               type="text"
               value={(component.props.label as string) || ''}
               onChange={(e) => componentStore.updateProps(component.id, { label: e.target.value })}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
           <div className="flex items-center gap-1.5">
@@ -578,7 +578,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               onChange={(e) =>
                 componentStore.updateProps(component.id, { checkedIcon: e.target.value })
               }
-              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-none"
+              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-hidden"
             />
             <GlyphPicker
               onInsert={(g) => componentStore.updateProps(component.id, { checkedIcon: g })}
@@ -594,7 +594,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               onChange={(e) =>
                 componentStore.updateProps(component.id, { uncheckedIcon: e.target.value })
               }
-              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-none"
+              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-hidden"
             />
             <GlyphPicker
               onInsert={(g) => componentStore.updateProps(component.id, { uncheckedIcon: g })}
@@ -614,7 +614,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               type="text"
               value={(component.props.label as string) || ''}
               onChange={(e) => componentStore.updateProps(component.id, { label: e.target.value })}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
           <div className="flex items-center gap-1.5">
@@ -653,7 +653,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               onChange={(e) =>
                 componentStore.updateProps(component.id, { selectedIcon: e.target.value })
               }
-              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-none"
+              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-hidden"
             />
             <GlyphPicker
               onInsert={(g) => componentStore.updateProps(component.id, { selectedIcon: g })}
@@ -669,7 +669,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               onChange={(e) =>
                 componentStore.updateProps(component.id, { unselectedIcon: e.target.value })
               }
-              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-none"
+              className="w-8 px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] text-center font-mono focus:border-primary focus:outline-hidden"
             />
             <GlyphPicker
               onInsert={(g) => componentStore.updateProps(component.id, { unselectedIcon: g })}
@@ -689,7 +689,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               value={(component.props.value as number) ?? 0}
               onChange={(v) => componentStore.updateProps(component.id, { value: v })}
               min={0}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
           <div>
@@ -700,7 +700,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               value={(component.props.max as number) ?? 100}
               onChange={(v) => componentStore.updateProps(component.id, { max: v })}
               min={1}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
         </>
@@ -717,7 +717,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               type="text"
               value={(component.props.value as string) || ''}
               onChange={(e) => componentStore.updateProps(component.id, { value: e.target.value })}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
             />
           </div>
           <div>
@@ -737,7 +737,7 @@ function ComponentProps({ component }: { component: import('../../types').Compon
               }
               rows={5}
               placeholder="Option 1&#10;Option 2&#10;Option 3"
-              className="w-full px-2 py-1 bg-input border border-border/50 rounded text-[11px] font-mono resize-none focus:border-primary focus:outline-none"
+              className="w-full px-2 py-1 bg-input border border-border/50 rounded text-[11px] font-mono resize-none focus:border-primary focus:outline-hidden"
             />
           </div>
         </>
@@ -993,7 +993,7 @@ function TableEditor({
   };
 
   const inputCls =
-    'px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none w-full min-w-0';
+    'px-1 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden w-full min-w-0';
 
   return (
     <div className="space-y-2">
@@ -1106,7 +1106,7 @@ function BreadcrumbEditor({
   };
 
   const inputCls =
-    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
 
   return (
     <div className="space-y-2">
@@ -1158,7 +1158,7 @@ function BreadcrumbEditor({
               />
               <button
                 onClick={() => removeItem(i)}
-                className="text-muted-foreground hover:text-destructive flex-shrink-0"
+                className="text-muted-foreground hover:text-destructive shrink-0"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -1195,7 +1195,7 @@ function ListItemsEditor({
   };
 
   const inputCls =
-    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
 
   return (
     <div className="space-y-2">
@@ -1236,7 +1236,7 @@ function ListItemsEditor({
               />
               <button
                 onClick={() => removeItem(i)}
-                className="text-muted-foreground hover:text-destructive flex-shrink-0"
+                className="text-muted-foreground hover:text-destructive shrink-0"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -1289,7 +1289,7 @@ function MenuItemRow({
   const [colorsOpen, setColorsOpen] = useState(false);
   const d = normalizeMenuItem(item);
   const inputCls =
-    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
 
   return (
     <div className="p-1.5 bg-accent/30 rounded space-y-1">
@@ -1316,7 +1316,7 @@ function MenuItemRow({
         />
         <button
           onClick={onRemove}
-          className="text-muted-foreground hover:text-destructive flex-shrink-0"
+          className="text-muted-foreground hover:text-destructive shrink-0"
         >
           <Trash2 className="w-3 h-3" />
         </button>
@@ -1418,13 +1418,13 @@ function MenuItemsEditor({
   };
 
   const inputCls =
-    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none';
+    'px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
 
   return (
     <div className="space-y-2">
       {/* Global style selector */}
       <div className="flex items-center gap-2">
-        <span className="text-[9px] text-muted-foreground uppercase tracking-wide flex-shrink-0">
+        <span className="text-[9px] text-muted-foreground uppercase tracking-wide shrink-0">
           Style
         </span>
         <div className="flex bg-input rounded overflow-hidden border border-border/50">
@@ -1463,7 +1463,7 @@ function MenuItemsEditor({
       </div>
       {items.length > 0 && (
         <div className="flex items-center gap-2">
-          <label className="text-[9px] text-muted-foreground uppercase tracking-wide flex-shrink-0">
+          <label className="text-[9px] text-muted-foreground uppercase tracking-wide shrink-0">
             Selected
           </label>
           <select

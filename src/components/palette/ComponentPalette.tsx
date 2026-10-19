@@ -91,7 +91,7 @@ export function ComponentPalette() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search components..."
-          className="w-full pl-6 pr-2 py-1 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-none"
+          className="w-full pl-6 pr-2 py-1 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
         />
       </div>
 
@@ -155,7 +155,7 @@ export function ComponentPalette() {
                         className="w-full px-2 py-1 rounded border border-border hover:bg-accent hover:border-accent-foreground transition-colors flex items-center gap-2 text-left cursor-move"
                       >
                         {IconComponent && (
-                          <IconComponent className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                          <IconComponent className="w-3 h-3 text-muted-foreground shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-xs truncate">{component.name}</div>

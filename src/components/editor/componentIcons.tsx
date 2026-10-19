@@ -23,7 +23,7 @@ import type { ComponentType } from '../../types';
 
 // Map component types to their icons
 export function getComponentIcon(type: ComponentType) {
-  const iconProps = { className: 'w-3.5 h-3.5 flex-shrink-0' };
+  const iconProps = { className: 'w-3.5 h-3.5 shrink-0' };
 
   switch (type) {
     // Layout

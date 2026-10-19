@@ -43,7 +43,7 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
 
   return (
     <div
-      className="w-1 flex-shrink-0 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors group relative"
+      className="w-1 shrink-0 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors group relative"
       onMouseDown={handleMouseDown}
     >
       <div className="absolute inset-y-0 -left-1 -right-1" />
@@ -66,13 +66,13 @@ export function EditorLayout({ toolbar, leftSidebar, canvas, rightSidebar }: Edi
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden">
       {/* Top Toolbar */}
-      <div className="flex-shrink-0 border-b border-border">{toolbar}</div>
+      <div className="shrink-0 border-b border-border">{toolbar}</div>
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <div
-          className="flex-shrink-0 border-r border-border bg-card overflow-y-auto"
+          className="shrink-0 border-r border-border bg-card overflow-y-auto"
           style={{ width: leftWidth }}
         >
           {leftSidebar}
@@ -87,7 +87,7 @@ export function EditorLayout({ toolbar, leftSidebar, canvas, rightSidebar }: Edi
 
         {/* Right Sidebar - Properties */}
         <div
-          className="flex-shrink-0 border-l border-border bg-card overflow-y-auto"
+          className="shrink-0 border-l border-border bg-card overflow-y-auto"
           style={{ width: rightWidth }}
         >
           {rightSidebar}

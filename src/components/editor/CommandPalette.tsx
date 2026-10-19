@@ -197,7 +197,7 @@ export function CommandPalette({ isOpen, onClose, onAddComponent }: CommandPalet
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-start justify-center pt-32 z-[9999]"
+      className="fixed inset-0 bg-black/50 flex items-start justify-center pt-32 z-9999"
       onClick={onClose}
     >
       <div
@@ -213,7 +213,7 @@ export function CommandPalette({ isOpen, onClose, onAddComponent }: CommandPalet
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Type a command or component name..."
-            className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground"
+            className="flex-1 bg-transparent border-none outline-hidden text-sm placeholder:text-muted-foreground"
           />
         </div>
 
@@ -270,7 +270,7 @@ export function CommandPalette({ isOpen, onClose, onAddComponent }: CommandPalet
                             index === selectedIndex ? 'bg-accent' : ''
                           }`}
                         >
-                          <Icon size={18} className="text-muted-foreground flex-shrink-0" />
+                          <Icon size={18} className="text-muted-foreground shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium">{cmd.label}</div>
                             {cmd.description && (

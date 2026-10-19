@@ -31,7 +31,7 @@ export function LeftSidebar() {
           <Layers className="w-4 h-4" />
           Layers
           {nodesWithWarnings.length > 0 && activeTab !== 'layers' && (
-            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0" />
+            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 shrink-0" />
           )}
         </button>
         <button
@@ -55,7 +55,7 @@ export function LeftSidebar() {
 
       {/* Warning summary — layers tab only */}
       {activeTab === 'layers' && nodesWithWarnings.length > 0 && (
-        <div className="flex-shrink-0 border-t border-yellow-500/30 bg-yellow-950/20 px-3 py-2">
+        <div className="shrink-0 border-t border-yellow-500/30 bg-yellow-950/20 px-3 py-2">
           <div className="flex items-center gap-1.5 text-yellow-500 text-xs font-semibold mb-1">
             <AlertTriangle className="w-3.5 h-3.5" />
             {nodesWithWarnings.length} Layout Warning{nodesWithWarnings.length !== 1 ? 's' : ''}

@@ -150,7 +150,7 @@ function SaveDialog({ onClose }: { onClose: () => void }) {
             if (e.key === 'Enter') handleSave();
             if (e.key === 'Escape') onClose();
           }}
-          className="w-full px-3 py-1.5 bg-input border border-border rounded-lg text-sm focus:border-primary focus:outline-none mb-4"
+          className="w-full px-3 py-1.5 bg-input border border-border rounded-lg text-sm focus:border-primary focus:outline-hidden mb-4"
         />
         {'showSaveFilePicker' in window ? (
           <p className="text-[11px] text-muted-foreground mb-4">A folder picker will open next.</p>
@@ -244,7 +244,7 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
         className="bg-card border border-border rounded-xl shadow-2xl p-6 w-[480px] max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-sm font-semibold mb-4 flex-shrink-0">Changelog</h2>
+        <h2 className="text-sm font-semibold mb-4 shrink-0">Changelog</h2>
 
         <div className="overflow-y-auto flex-1 space-y-5 pr-1">
           {CHANGELOG.map((release) => (
@@ -257,7 +257,7 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
                 {release.changes.map((change, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
                     <span
-                      className={`flex-shrink-0 mt-px px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wide ${TYPE_BADGE[change.type]}`}
+                      className={`shrink-0 mt-px px-1.5 py-px rounded text-[9px] font-medium uppercase tracking-wide ${TYPE_BADGE[change.type]}`}
                     >
                       {TYPE_LABEL[change.type]}
                     </span>
@@ -271,7 +271,7 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
-        <div className="mt-4 pt-4 border-t border-border flex justify-end flex-shrink-0">
+        <div className="mt-4 pt-4 border-t border-border flex justify-end shrink-0">
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-sm hover:bg-accent rounded-lg transition-colors"
@@ -435,7 +435,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             Appearance
           </p>
           <div className="flex items-center gap-3">
-            <Sun className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Sun className="w-4 h-4 text-muted-foreground shrink-0" />
             <span
               className={`text-sm ${!themeStore.darkMode ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
             >
@@ -446,7 +446,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               role="switch"
               aria-checked={themeStore.darkMode}
               onClick={() => themeStore.toggleDarkMode()}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer focus:outline-none ${
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer focus:outline-hidden ${
                 themeStore.darkMode ? 'bg-primary' : 'bg-input'
               }`}
             >
@@ -461,7 +461,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             >
               Dark
             </span>
-            <Moon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Moon className="w-4 h-4 text-muted-foreground shrink-0" />
           </div>
         </div>
 
@@ -540,7 +540,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               }}
               className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-[9px] font-bold transition-all ${
                 accentPreset === 'custom'
-                  ? 'border-white outline outline-2 outline-offset-2'
+                  ? 'border-white outline-solid outline-2 outline-offset-2'
                   : 'border-border hover:border-border/80'
               }`}
               style={{
@@ -888,7 +888,7 @@ export function Toolbar() {
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="min-w-[3.5rem] text-center text-xs font-medium px-1">
+            <span className="min-w-14 text-center text-xs font-medium px-1">
               {Math.round(canvasStore.zoom * 100)}%
             </span>
             <button
@@ -925,7 +925,7 @@ export function Toolbar() {
             <select
               value={themeStore.currentTheme}
               onChange={(e) => themeStore.setTheme(e.target.value as any)}
-              className="text-xs bg-transparent border-none outline-none cursor-pointer text-foreground"
+              className="text-xs bg-transparent border-none outline-hidden cursor-pointer text-foreground"
               title="Color Theme"
             >
               {THEME_NAMES.map((theme) => (

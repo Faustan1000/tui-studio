@@ -193,7 +193,7 @@ export function ColorPicker({
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           title="Choose color"
-          className="w-5 h-5 rounded-sm border border-border/50 flex-shrink-0 overflow-hidden relative"
+          className="w-5 h-5 rounded-sm border border-border/50 shrink-0 overflow-hidden relative"
         >
           <div
             className="absolute inset-0"
@@ -210,7 +210,7 @@ export function ColorPicker({
           <button
             type="button"
             onClick={() => setIsOpen(!isOpen)}
-            className="flex-1 min-w-0 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] font-mono text-muted-foreground text-left truncate focus:border-primary focus:outline-none"
+            className="flex-1 min-w-0 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] font-mono text-muted-foreground text-left truncate focus:border-primary focus:outline-hidden"
           >
             gradient {gradient!.angle}°
           </button>
@@ -223,16 +223,16 @@ export function ColorPicker({
             onFocus={handleHexFocus}
             onBlur={handleHexBlur}
             onChange={handleHexChange}
-            className="flex-1 min-w-0 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] font-mono focus:border-primary focus:outline-none"
+            className="flex-1 min-w-0 px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] font-mono focus:border-primary focus:outline-hidden"
           />
         )}
 
         {!isGradientActive && (
           <>
-            <span className="text-[11px] font-mono text-foreground/70 flex-shrink-0 w-6 text-right">
+            <span className="text-[11px] font-mono text-foreground/70 shrink-0 w-6 text-right">
               100
             </span>
-            <span className="text-[10px] text-muted-foreground flex-shrink-0">%</span>
+            <span className="text-[10px] text-muted-foreground shrink-0">%</span>
           </>
         )}
 
@@ -242,7 +242,7 @@ export function ColorPicker({
             type="button"
             onClick={handleEyeToggle}
             title={value ? 'Hide color' : 'Restore color'}
-            className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
           >
             {value ? <Eye size={11} /> : <EyeOff size={11} />}
           </button>
@@ -256,7 +256,7 @@ export function ColorPicker({
             if (isGradientActive && onGradientChange) onGradientChange(undefined);
           }}
           title="Remove color"
-          className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
         >
           <Minus size={11} />
         </button>
@@ -309,7 +309,7 @@ export function ColorPicker({
                 className="w-full px-2 py-1.5 text-xs flex items-center gap-2 hover:bg-accent transition-colors text-left border-b border-border"
               >
                 <div
-                  className="w-4 h-4 rounded-sm border border-border flex-shrink-0"
+                  className="w-4 h-4 rounded-sm border border-border shrink-0"
                   style={{
                     background: 'repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 0 0 / 4px 4px',
                   }}
@@ -335,7 +335,7 @@ export function ColorPicker({
                     className={`w-full px-2 py-1.5 text-xs flex items-center gap-2 hover:bg-accent transition-colors text-left ${isActive ? 'bg-accent ring-1 ring-inset ring-primary' : ''}`}
                   >
                     <div
-                      className="w-4 h-4 rounded-sm border border-border flex-shrink-0"
+                      className="w-4 h-4 rounded-sm border border-border shrink-0"
                       style={{ backgroundColor: hex }}
                     />
                     <span>{color.name}</span>
@@ -373,7 +373,7 @@ export function ColorPicker({
                         if (e.key === 'Enter') setIsOpen(false);
                       }}
                       placeholder="#ffffff"
-                      className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[10px] font-mono focus:border-primary focus:outline-none"
+                      className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[10px] font-mono focus:border-primary focus:outline-hidden"
                     />
                   </div>
                 </div>
@@ -467,7 +467,7 @@ function GradientEditor({
               const v = parseInt(e.target.value);
               if (!isNaN(v)) onChange({ ...gradient, angle: ((v % 360) + 360) % 360 });
             }}
-            className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none"
+            className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-hidden"
           />
         </div>
       </div>
@@ -498,11 +498,11 @@ function GradientEditor({
                   type="color"
                   value={stop.color}
                   onChange={(e) => updateStop(origIdx, { color: e.target.value })}
-                  className="w-7 h-6 rounded border border-border cursor-pointer flex-shrink-0 p-0.5 bg-input"
+                  className="w-7 h-6 rounded border border-border cursor-pointer shrink-0 p-0.5 bg-input"
                 />
 
                 {/* Hex display */}
-                <span className="text-[10px] font-mono text-muted-foreground w-14 flex-shrink-0">
+                <span className="text-[10px] font-mono text-muted-foreground w-14 shrink-0">
                   {stop.color.toUpperCase()}
                 </span>
 
@@ -525,10 +525,10 @@ function GradientEditor({
                     const v = parseInt(e.target.value);
                     if (!isNaN(v) && v >= 0 && v <= 100) updateStop(origIdx, { position: v });
                   }}
-                  className="w-9 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none flex-shrink-0"
+                  className="w-9 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-hidden shrink-0"
                 />
 
-                <span className="text-[9px] text-muted-foreground flex-shrink-0">%</span>
+                <span className="text-[9px] text-muted-foreground shrink-0">%</span>
 
                 {/* Delete */}
                 <button
@@ -536,7 +536,7 @@ function GradientEditor({
                   onClick={() => removeStop(origIdx)}
                   disabled={gradient.stops.length <= 2}
                   title="Remove stop"
-                  className="flex-shrink-0 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="shrink-0 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <Trash2 size={10} />
                 </button>
@@ -605,7 +605,7 @@ function RGBSlider({
           const v = parseInt(e.target.value);
           if (!isNaN(v) && v >= 0 && v <= 255) handleChange(v);
         }}
-        className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-none"
+        className="w-12 px-1 py-0.5 bg-input border border-border/50 rounded text-[10px] text-center focus:border-primary focus:outline-hidden"
       />
     </div>
   );

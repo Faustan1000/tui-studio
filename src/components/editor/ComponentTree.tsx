@@ -181,7 +181,7 @@ function ContextMenu({ state, node, onClose }: ContextMenuProps) {
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] w-52 bg-popover border border-border rounded-lg shadow-2xl py-1 text-sm"
+      className="fixed z-9999 w-52 bg-popover border border-border rounded-lg shadow-2xl py-1 text-sm"
       style={{ left: pos.x, top: pos.y }}
     >
       {items.map((item, i) => {
@@ -514,7 +514,7 @@ function TreeNode({
               e.stopPropagation();
               toggleCollapsed();
             }}
-            className="flex-shrink-0 hover:bg-secondary rounded p-0.5"
+            className="shrink-0 hover:bg-secondary rounded p-0.5"
           >
             {node.collapsed ? (
               <ChevronRight className="w-3 h-3" />
@@ -528,9 +528,9 @@ function TreeNode({
 
         {/* Icon & Name */}
         <div className="flex-1 flex items-center gap-2 min-w-0">
-          <span className="text-muted-foreground flex-shrink-0">{getComponentIcon(node.type)}</span>
+          <span className="text-muted-foreground shrink-0">{getComponentIcon(node.type)}</span>
           {warningNodeIds.has(node.id) && (
-            <span title="Layout warning" className="flex-shrink-0">
+            <span title="Layout warning" className="shrink-0">
               <AlertTriangle
                 className="w-3 h-3 text-yellow-500"
                 aria-hidden="true"
@@ -556,7 +556,7 @@ function TreeNode({
                 e.stopPropagation();
               }}
               onClick={(e) => e.stopPropagation()}
-              className="flex-1 min-w-0 text-xs bg-background border border-primary rounded px-1 py-0 outline-none"
+              className="flex-1 min-w-0 text-xs bg-background border border-primary rounded px-1 py-0 outline-hidden"
             />
           ) : (
             <span className="text-xs truncate" onDoubleClick={startEditing}>
