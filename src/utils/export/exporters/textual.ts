@@ -165,7 +165,19 @@ function addRule(ctx: Ctx, node: ComponentNode, declarations: string[]) {
 // ── Emitters ──────────────────────────────────────────────────────────────────
 
 function emitChildren(node: ComponentNode, indent: number, ctx: Ctx): string {
-  return node.children.map((c) => emitNode(c, indent, ctx)).join('');
+  const horizontal = node.layout.direction === 'row';
+  let out = '';
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i];
+    if (child.type === 'Radio') {
+      const group = [child];
+      while (node.children[i + 1]?.type === 'Radio') group.push(node.children[++i]);
+      out += emitRadioGroup(group, horizontal, indent, ctx);
+    } else {
+      out += emitNode(child, indent, ctx);
+    }
+  }
+  return out;
 }
 
 /** Container used for Box (and as the generic container fallback). */
@@ -300,19 +312,34 @@ function toggleClass(
 }
 
 /**
- * Checkbox. Rendered as "[✓] Label" like the editor: Textual's glyphs are replaced via a
- * subclass. Textual always draws the inner glyph (dimmed when unchecked), so a custom
- * unchecked icon cannot be shown exactly.
+ * Shared emitter for Checkbox and RadioButton (both are Textual ToggleButtons).
+ * Rendered like the editor ("[✓] Label" / "(●) Label") by replacing Textual's glyphs via a
+ * subclass. Textual always draws the inner glyph (dimmed when off), so a custom "off"
+ * icon cannot be shown exactly.
  */
-const emitCheckbox: Emitter = (node, indent, ctx) => {
+function emitToggle(
+  node: ComponentNode,
+  indent: number,
+  ctx: Ctx,
+  kind: {
+    base: 'Checkbox' | 'RadioButton';
+    brackets: [string, string];
+    onIcon: string;
+    onColor: string;
+    offColor: string;
+    message: string;
+    handlerFallback: string;
+    defaultLabel: string;
+  }
+): string {
   const p = node.props;
-  const brackets = p.showBrackets !== false;
-  const cls = toggleClass(ctx, 'Checkbox', {
-    left: brackets ? '[' : '',
-    inner: String(p.checkedIcon || '✓'),
-    right: brackets ? ']' : '',
+  const showBrackets = p.showBrackets !== false;
+  const cls = toggleClass(ctx, kind.base, {
+    left: showBrackets ? kind.brackets[0] : '',
+    inner: kind.onIcon,
+    right: showBrackets ? kind.brackets[1] : '',
   });
-  needImport(ctx, 'textual.widgets', 'Checkbox');
+  needImport(ctx, 'textual.widgets', kind.base);
 
   // Single-line, borderless unless the user added a border.
   const labelColor = cssColor(node.style.labelColor, ctx);
@@ -322,23 +349,163 @@ const emitCheckbox: Emitter = (node, indent, ctx) => {
   if (!node.style.border) decl.unshift('border: none;', 'height: auto;', 'padding: 0;');
   addRule(ctx, node, decl);
 
-  const on = cssColor(node.style.checkedColor ?? 'green', ctx);
-  const off = cssColor(node.style.uncheckedColor ?? 'white', ctx);
   const id = widgetId(node);
+  const on = cssColor(kind.onColor, ctx);
+  const off = cssColor(kind.offColor, ctx);
   if (off) ctx.css.push(`#${id} > .toggle--button {\n    color: ${off};\n}`);
   if (on) ctx.css.push(`#${id}.-on > .toggle--button {\n    color: ${on};\n}`);
 
-  const args = [pyStr(escapeMarkup(String(p.label ?? 'Checkbox')))];
+  const args = [pyStr(escapeMarkup(String(p.label ?? kind.defaultLabel)))];
   if (p.checked) args.push('value=True');
   if (p.disabled) args.push('disabled=True');
   args.push(`id=${pyStr(id)}`);
 
-  addHandler(ctx, node, 'Checkbox.Changed', node.events.onChange, 'on_checkbox_changed');
+  addHandler(ctx, node, kind.message, node.events.onChange, kind.handlerFallback);
   return `${IND.repeat(indent)}yield ${cls}(${args.join(', ')})\n`;
+}
+
+const emitCheckbox: Emitter = (node, indent, ctx) =>
+  emitToggle(node, indent, ctx, {
+    base: 'Checkbox',
+    brackets: ['[', ']'],
+    onIcon: String(node.props.checkedIcon || '✓'),
+    onColor: String(node.style.checkedColor ?? 'green'),
+    offColor: String(node.style.uncheckedColor ?? 'white'),
+    message: 'Checkbox.Changed',
+    handlerFallback: 'on_checkbox_changed',
+    defaultLabel: 'Checkbox',
+  });
+
+/** A single radio button; emitChildren wraps consecutive radios in a RadioSet. */
+const emitRadio: Emitter = (node, indent, ctx) =>
+  emitToggle(node, indent, ctx, {
+    base: 'RadioButton',
+    brackets: ['(', ')'],
+    onIcon: String(node.props.selectedIcon || '●'),
+    onColor: String(node.style.selectedColor ?? 'green'),
+    offColor: String(node.style.unselectedColor ?? 'white'),
+    message: 'RadioButton.Changed',
+    handlerFallback: 'on_radio_changed',
+    defaultLabel: 'Option',
+  });
+
+/**
+ * Radios are mutually exclusive only inside a RadioSet, so consecutive sibling radios
+ * are grouped into one. The set's own border/background are reset to stay flat.
+ */
+function emitRadioGroup(
+  radios: ComponentNode[],
+  horizontal: boolean,
+  indent: number,
+  ctx: Ctx
+): string {
+  const sp = IND.repeat(indent);
+  const id = `${widgetId(radios[0])}_group`;
+  const decl = ['border: none;', 'padding: 0;', 'background: transparent;', 'width: auto;'];
+  if (horizontal) decl.push('layout: horizontal;');
+  ctx.css.push(`#${id} {\n${decl.map((l) => `    ${l}`).join('\n')}\n}`);
+  needImport(ctx, 'textual.widgets', 'RadioSet');
+  const body = radios.map((r) => emitRadio(r, indent + 1, ctx)).join('');
+  return `${sp}with RadioSet(id=${pyStr(id)}):\n${body}`;
+}
+
+/**
+ * Dropdown. Textual's Select keeps its border/colors on the inner SelectCurrent, so
+ * visual declarations go there and sizing stays on the Select itself.
+ */
+const emitSelect: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const options = (Array.isArray(p.options) ? p.options : []).map((o) => String(o));
+  const id = widgetId(node);
+
+  const inner: string[] = [];
+  const outer: string[] = [];
+  for (const line of commonDeclarations(node, ctx)) {
+    (/^(color|background|text-style|border):/.test(line) ? inner : outer).push(line);
+  }
+  if (!node.style.border) inner.unshift('border: none;');
+  if (!cssSize(p.width)) outer.unshift('width: auto;');
+  if (outer.length) addRule(ctx, node, outer);
+  if (inner.length) {
+    ctx.css.push(`#${id} > SelectCurrent {\n${inner.map((l) => `    ${l}`).join('\n')}\n}`);
+  }
+
+  needImport(ctx, 'textual.widgets', 'Select');
+  const pairs = options.map((o) => `(${pyStr(escapeMarkup(o))}, ${pyStr(o)})`);
+  const selected = options.includes(String(p.value ?? '')) ? String(p.value) : options[0];
+  const args = [`[${pairs.join(', ')}]`];
+  if (selected !== undefined) args.push('allow_blank=False', `value=${pyStr(selected)}`);
+  else args.push('prompt="Select"');
+  if (p.disabled) args.push('disabled=True');
+  args.push(`id=${pyStr(id)}`);
+
+  addHandler(ctx, node, 'Select.Changed', node.events.onChange, 'on_select_changed');
+  return `${IND.repeat(indent)}yield Select(${args.join(', ')})\n`;
+};
+
+/**
+ * Toggle switch. Textual's Switch has no label, so it is paired with a Label inside a
+ * Horizontal. Border goes to the Switch, text color/style to the Label, the rest to the group.
+ */
+const emitToggleSwitch: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const sp = IND.repeat(indent);
+  const id = widgetId(node);
+  const label = String(p.label ?? '');
+  const on = Boolean(p.checked ?? p.value);
+
+  const group: string[] = [];
+  const text: string[] = [];
+  const sw: string[] = [];
+  for (const line of commonDeclarations(node, ctx)) {
+    if (/^(color|text-style):/.test(line)) text.push(line);
+    else if (line.startsWith('border:')) sw.push(line);
+    else group.push(line);
+  }
+  if (!node.style.border) sw.unshift('border: none;');
+  needImport(ctx, 'textual.widgets', 'Switch');
+
+  const args = [];
+  if (on) args.push('value=True');
+  if (p.disabled) args.push('disabled=True');
+  args.push(`id=${pyStr(id)}`);
+  addHandler(ctx, node, 'Switch.Changed', node.events.onChange, 'on_switch_changed');
+
+  const rule = (selector: string, lines: string[]) => {
+    if (lines.length) ctx.css.push(`${selector} {\n${lines.map((l) => `    ${l}`).join('\n')}\n}`);
+  };
+
+  if (!label) {
+    rule(`#${id}`, [...group, ...sw]);
+    return `${sp}yield Switch(${args.join(', ')})\n`;
+  }
+
+  // Bordered switches are 3 rows tall; center the label vertically against them.
+  const labelLines = ['margin-left: 1;', ...text];
+  labelLines.unshift(node.style.border ? 'height: 3;' : 'height: 1;');
+  if (node.style.border) labelLines.push('content-align: left middle;');
+  rule(`#${id}_group`, [
+    ...(cssSize(p.width) ? [] : ['width: auto;']),
+    ...(cssSize(p.height) ? [] : ['height: auto;']),
+    ...group,
+  ]);
+  rule(`#${id}`, sw);
+  rule(`#${id}_label`, labelLines);
+
+  needImport(ctx, 'textual.containers', 'Horizontal');
+  needImport(ctx, 'textual.widgets', 'Label');
+  return (
+    `${sp}with Horizontal(id=${pyStr(id + '_group')}):\n` +
+    `${sp}${IND}yield Switch(${args.join(', ')})\n` +
+    `${sp}${IND}yield Label(${pyStr(escapeMarkup(label))}, id=${pyStr(id + '_label')})\n`
+  );
 };
 
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Checkbox: emitCheckbox,
+  Radio: emitRadio,
+  Select: emitSelect,
+  Toggle: emitToggleSwitch,
   Box: emitBox,
   Text: emitText,
   Spacer: emitSpacer,
