@@ -16,6 +16,10 @@ interface Ctx {
   handlers: string[];
   /** Python imports needed by the generated code: module -> names. */
   imports: Map<string, Set<string>>;
+  /** Generated widget subclasses (module level, before the App class). */
+  classes: string[];
+  /** Dedupe key -> generated class name. */
+  classNames: Map<string, string>;
 }
 
 type Emitter = (node: ComponentNode, indent: number, ctx: Ctx) => string;
@@ -265,7 +269,76 @@ const emitButton: Emitter = (node, indent, ctx) => {
   return `${IND.repeat(indent)}yield Button(${args.join(', ')})\n`;
 };
 
+/** Rich markup in labels: escape "[" so user text is shown literally. */
+function escapeMarkup(s: string): string {
+  return s.replace(/\[/g, '\\[');
+}
+
+/**
+ * Register (once per distinct look) a subclass of a Textual toggle widget with custom
+ * glyphs, and return its class name.
+ */
+function toggleClass(
+  ctx: Ctx,
+  base: 'Checkbox' | 'RadioButton',
+  glyphs: { left: string; inner: string; right: string }
+): string {
+  const key = `${base}|${glyphs.left}|${glyphs.inner}|${glyphs.right}`;
+  let name = ctx.classNames.get(key);
+  if (!name) {
+    const count = [...ctx.classNames.keys()].filter((k) => k.startsWith(base + '|')).length;
+    name = `Studio${base}${count ? count + 1 : ''}`;
+    ctx.classNames.set(key, name);
+    ctx.classes.push(
+      `class ${name}(${base}):\n` +
+        `${IND}BUTTON_LEFT = ${pyStr(glyphs.left)}\n` +
+        `${IND}BUTTON_INNER = ${pyStr(glyphs.inner)}\n` +
+        `${IND}BUTTON_RIGHT = ${pyStr(glyphs.right)}\n`
+    );
+  }
+  return name;
+}
+
+/**
+ * Checkbox. Rendered as "[✓] Label" like the editor: Textual's glyphs are replaced via a
+ * subclass. Textual always draws the inner glyph (dimmed when unchecked), so a custom
+ * unchecked icon cannot be shown exactly.
+ */
+const emitCheckbox: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const brackets = p.showBrackets !== false;
+  const cls = toggleClass(ctx, 'Checkbox', {
+    left: brackets ? '[' : '',
+    inner: String(p.checkedIcon || '✓'),
+    right: brackets ? ']' : '',
+  });
+  needImport(ctx, 'textual.widgets', 'Checkbox');
+
+  // Single-line, borderless unless the user added a border.
+  const labelColor = cssColor(node.style.labelColor, ctx);
+  let decl = commonDeclarations(node, ctx);
+  if (labelColor)
+    decl = decl.filter((l) => !l.startsWith('color:')).concat(`color: ${labelColor};`);
+  if (!node.style.border) decl.unshift('border: none;', 'height: auto;', 'padding: 0;');
+  addRule(ctx, node, decl);
+
+  const on = cssColor(node.style.checkedColor ?? 'green', ctx);
+  const off = cssColor(node.style.uncheckedColor ?? 'white', ctx);
+  const id = widgetId(node);
+  if (off) ctx.css.push(`#${id} > .toggle--button {\n    color: ${off};\n}`);
+  if (on) ctx.css.push(`#${id}.-on > .toggle--button {\n    color: ${on};\n}`);
+
+  const args = [pyStr(escapeMarkup(String(p.label ?? 'Checkbox')))];
+  if (p.checked) args.push('value=True');
+  if (p.disabled) args.push('disabled=True');
+  args.push(`id=${pyStr(id)}`);
+
+  addHandler(ctx, node, 'Checkbox.Changed', node.events.onChange, 'on_checkbox_changed');
+  return `${IND.repeat(indent)}yield ${cls}(${args.join(', ')})\n`;
+};
+
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
+  Checkbox: emitCheckbox,
   Box: emitBox,
   Text: emitText,
   Spacer: emitSpacer,
@@ -300,7 +373,14 @@ function screenRule(root: ComponentNode, ctx: Ctx): string {
 export function exportToTextual(root: ComponentNode): string {
   const themeName = (root.props.theme as keyof typeof THEMES) || 'default';
   const palette = (THEMES[themeName] ?? THEMES.default) as unknown as Record<string, string>;
-  const ctx: Ctx = { css: [], palette, handlers: [], imports: new Map() };
+  const ctx: Ctx = {
+    css: [],
+    palette,
+    handlers: [],
+    imports: new Map(),
+    classes: [],
+    classNames: new Map(),
+  };
   needImport(ctx, 'textual.app', 'App');
   needImport(ctx, 'textual.app', 'ComposeResult');
 
@@ -316,10 +396,12 @@ export function exportToTextual(root: ComponentNode): string {
   const compose = body || `${IND}${IND}yield Static("Empty screen")\n`;
   if (!body) needImport(ctx, 'textual.widgets', 'Static');
 
+  const classes = ctx.classes.map((c) => c.trimEnd() + '\n\n\n').join('');
+
   return `${renderImports(ctx)}
 
 
-class MyApp(App):
+${classes}class MyApp(App):
     CSS = """
 ${indentedCss}
     """
