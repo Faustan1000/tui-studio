@@ -1,3 +1,4 @@
+# this is a fork from jalonsogo/tui-studio 
 <img src="public/logo-tui-studio_light.svg" alt="TUIStudio" width="64" />
 
 # TUIStudio
