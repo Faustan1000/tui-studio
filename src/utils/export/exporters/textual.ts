@@ -22,6 +22,10 @@ interface Ctx {
   classes: string[];
   /** Dedupe key -> generated class name. */
   classNames: Map<string, string>;
+  /** App key bindings: [key, action, description]. */
+  bindings: [string, string, string][];
+  /** Generated App action methods (class body, already indented). */
+  actions: string[];
 }
 
 type Emitter = (node: ComponentNode, indent: number, ctx: Ctx) => string;
@@ -677,7 +681,196 @@ const emitTree: Emitter = (node, indent, ctx) => {
   return `${IND.repeat(indent)}yield Tree(${pyStr('Tree')}, id=${pyStr(id)})\n`;
 };
 
+// ── Navigation widgets: Menu, Tabs, Breadcrumb ────────────────────────────────
+
+/** "icon label  hotkey" as Rich markup (hotkey dimmed), with user text escaped. */
+function itemMarkup(it: Item): string {
+  let text = escapeMarkup(`${it.icon ? it.icon + ' ' : ''}${it.label}`);
+  if (it.hotkey) text += `  [dim]${escapeMarkup(it.hotkey)}[/dim]`;
+  return text;
+}
+
+function indexedRule(ctx: Ctx, selector: string, lines: string[]) {
+  ctx.css.push(`${selector} {\n${lines.map((l) => `    ${l}`).join('\n')}\n}`);
+}
+
+/**
+ * Menu. Vertical menus are an OptionList; horizontal ones (flexbox row) are a row of
+ * Labels with the selected entry reversed, since Textual has no menu bar widget.
+ */
+const emitMenu: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const sp = IND.repeat(indent);
+  const id = widgetId(node);
+  const items = (Array.isArray(p.items) ? p.items : []).map(toItem);
+  const selected = typeof p.selectedIndex === 'number' ? p.selectedIndex : 0;
+  const horizontal = node.layout.type === 'flexbox' && node.layout.direction === 'row';
+
+  const decl = commonDeclarations(node, ctx);
+  if (!cssSize(p.width)) decl.unshift('width: auto;');
+  if (!cssSize(p.height)) decl.unshift('height: auto;');
+  addRule(ctx, node, decl);
+
+  if (horizontal) {
+    needImport(ctx, 'textual.containers', 'Horizontal');
+    needImport(ctx, 'textual.widgets', 'Label');
+    const gap = typeof node.layout.gap === 'number' ? node.layout.gap : 0;
+    const item = ['padding: 0 1;'];
+    if (gap) item.push(`margin-right: ${gap};`);
+    if (p.menuStyle === 'filled') item.push('background: #ffffff;', 'color: #000000;');
+    indexedRule(ctx, `#${id} > Label`, item);
+    indexedRule(ctx, `#${id} > Label.selected`, ['text-style: reverse;']);
+    const rows = items.map((it, i) => {
+      const cls = i === selected ? ', classes="selected"' : '';
+      return `${sp}${IND}yield Label(${pyStr(itemMarkup(it))}${cls})\n`;
+    });
+    return `${sp}with Horizontal(id=${pyStr(id)}):\n${rows.join('') || `${sp}${IND}pass\n`}`;
+  }
+
+  needImport(ctx, 'textual.widgets', 'OptionList');
+  needImport(ctx, 'textual.widgets.option_list', 'Option');
+  const fg = cssColor(node.style.color, ctx);
+  if (fg) indexedRule(ctx, `#${id} > .option-list--option`, [`color: ${fg};`]);
+  const options = items.map(
+    (it, i) => `${sp}${IND}Option(${pyStr(itemMarkup(it))}, id=${pyStr(`${id}_${i}`)}),\n`
+  );
+  if (items.length && selected >= 0 && selected < items.length) {
+    ctx.mount.push(`self.query_one(${pyStr('#' + id)}, OptionList).highlighted = ${selected}`);
+  }
+  if (node.events.onSelect) {
+    addHandler(ctx, node, 'OptionList.OptionSelected', node.events.onSelect, 'on_menu_selected');
+  }
+  if (!options.length) return `${sp}yield OptionList(id=${pyStr(id)})\n`;
+  return `${sp}yield OptionList(\n${options.join('')}${sp}${IND}id=${pyStr(id)},\n${sp})\n`;
+};
+
+/** Tabs bar: "icon label ● hotkey" per tab, active tab preselected. */
+const emitTabs: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const sp = IND.repeat(indent);
+  const id = widgetId(node);
+  const tabs = (Array.isArray(p.tabs) ? p.tabs : []).map((t) => {
+    const it = toItem(t);
+    const status = Boolean(t && typeof t === 'object' && (t as Record<string, unknown>).status);
+    return { it, status };
+  });
+  const active = typeof p.activeTab === 'number' ? p.activeTab : 0;
+
+  addRule(ctx, node, commonDeclarations(node, ctx));
+  const fg = cssColor(node.style.color, ctx);
+  if (fg) indexedRule(ctx, `#${id} Tab`, [`color: ${fg};`]);
+
+  needImport(ctx, 'textual.widgets', 'Tabs');
+  needImport(ctx, 'textual.widgets', 'Tab');
+  const rows = tabs.map(({ it, status }, i) => {
+    const icon = it.icon ? it.icon + ' ' : '';
+    const hotkey = it.hotkey ? ' ' + it.hotkey : '';
+    const text = escapeMarkup(`${icon}${it.label || 'Tab'}${status ? ' ●' : ''}${hotkey}`);
+    return `${sp}${IND}Tab(${pyStr(text)}, id=${pyStr(`${id}_${i}`)}),\n`;
+  });
+  const args: string[] = [];
+  if (tabs.length) {
+    const index = Math.min(Math.max(active, 0), tabs.length - 1);
+    args.push(`active=${pyStr(`${id}_${index}`)}`);
+  }
+  args.push(`id=${pyStr(id)}`);
+  if (node.events.onChange) {
+    addHandler(ctx, node, 'Tabs.TabActivated', node.events.onChange, 'on_tab_activated');
+  }
+  return `${sp}yield Tabs(\n${rows.join('')}${sp}${IND}${args.join(', ')},\n${sp})\n`;
+};
+
+/** Breadcrumb trail as one Label: "icon label / icon label" with a dimmed separator. */
+const emitBreadcrumb: Emitter = (node, indent, ctx) => {
+  const p = node.props;
+  const decl = commonDeclarations(node, ctx);
+  if (!cssSize(p.width)) decl.unshift('width: auto;');
+  addRule(ctx, node, decl);
+  needImport(ctx, 'textual.widgets', 'Label');
+
+  const sep = escapeMarkup(String(p.separator ?? '/').trim() || '/');
+  const parts = (Array.isArray(p.items) ? p.items : []).map((raw) => {
+    const it = toItem(raw);
+    return escapeMarkup(`${it.icon ? it.icon + ' ' : ''}${it.label}`);
+  });
+  const text = parts.join(` [dim]${sep}[/dim] `);
+  return `${IND.repeat(indent)}yield Label(${pyStr(text)}, id=${pyStr(widgetId(node))})\n`;
+};
+
+// ── Layout widgets: Grid, Modal ───────────────────────────────────────────────
+
+/** CSS grid: children fill the cells in order, like the editor's grid layout. */
+const emitGrid: Emitter = (node, indent, ctx) => {
+  const sp = IND.repeat(indent);
+  const l = node.layout;
+  const decl = commonDeclarations(node, ctx);
+  decl.push(`grid-size: ${l.columns || 2} ${l.rows || 2};`);
+  if (l.columnGap) decl.push(`grid-gutter-horizontal: ${l.columnGap};`);
+  if (l.rowGap) decl.push(`grid-gutter-vertical: ${l.rowGap};`);
+  addRule(ctx, node, decl);
+
+  needImport(ctx, 'textual.containers', 'Grid');
+  const body = emitChildren(node, indent + 1, ctx);
+  return `${sp}with Grid(id=${pyStr(widgetId(node))}):\n${body || `${sp}${IND}pass\n`}`;
+};
+
+/**
+ * Modal dialog. It is an overlay, so it becomes a ModalScreen class that is opened with a
+ * function key (F1, F2, ...) and closed with Escape. Its children's on_mount statements
+ * run inside the modal, because they cannot be queried while the modal is not shown.
+ */
+const emitModal: Emitter = (node, _indent, ctx) => {
+  if (node.hidden) return '';
+  const number = ctx.bindings.filter(([, action]) => action.startsWith('show_modal_')).length + 1;
+  const name = `StudioModal${number}`;
+  const title = String(node.props.title ?? '');
+  const widget = node.layout.direction === 'row' ? 'Horizontal' : 'Vertical';
+
+  if (!ctx.classNames.has('modal-css')) {
+    ctx.classNames.set('modal-css', 'ModalScreen');
+    ctx.css.push(
+      'ModalScreen {\n    align: center middle;\n    background: rgba(0, 0, 0, 0.6);\n}'
+    );
+  }
+  const decl = commonDeclarations(node, ctx);
+  const padding = cssSpacing(node.layout.padding);
+  if (padding && !decl.some((l) => l.startsWith('padding:'))) decl.push(`padding: ${padding};`);
+  addRule(ctx, node, decl);
+
+  const outerMount = ctx.mount;
+  ctx.mount = [];
+  const body = emitChildren(node, 3, ctx);
+  const innerMount = ctx.mount;
+  ctx.mount = outerMount;
+
+  needImport(ctx, 'textual.screen', 'ModalScreen');
+  needImport(ctx, 'textual.containers', widget);
+  const lines = [
+    `class ${name}(ModalScreen):`,
+    `${IND}BINDINGS = [("escape", "app.pop_screen", "Close")]`,
+    '',
+    `${IND}def compose(self) -> ComposeResult:`,
+    `${IND}${IND}with ${widget}(id=${pyStr(widgetId(node))}) as dialog:`,
+    ...(title ? [`${IND}${IND}${IND}dialog.border_title = ${pyStr(title)}`] : []),
+  ];
+  let code = lines.join('\n') + '\n';
+  code += body || (title ? '' : `${IND}${IND}${IND}pass\n`);
+  if (innerMount.length) {
+    code += `\n${IND}def on_mount(self) -> None:\n${innerMount.map((l) => `${IND}${IND}${l}\n`).join('')}`;
+  }
+  ctx.classes.push(code);
+
+  const key = number <= 12 ? `f${number}` : '';
+  if (key) ctx.bindings.push([key, `show_modal_${number}`, title || `Modal ${number}`]);
+  ctx.actions.push(
+    `${IND}def action_show_modal_${number}(self) -> None:\n${IND}${IND}self.push_screen(${name}())\n`
+  );
+  return '';
+};
+
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
+  Grid: emitGrid,
+  Modal: emitModal,
   Checkbox: emitCheckbox,
   Radio: emitRadio,
   Select: emitSelect,
@@ -687,6 +880,9 @@ const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   List: emitList,
   Table: emitTable,
   Tree: emitTree,
+  Menu: emitMenu,
+  Tabs: emitTabs,
+  Breadcrumb: emitBreadcrumb,
   Box: emitBox,
   Text: emitText,
   Spacer: emitSpacer,
@@ -729,6 +925,8 @@ export function exportToTextual(root: ComponentNode): string {
     mount: [],
     classes: [],
     classNames: new Map(),
+    bindings: [],
+    actions: [],
   };
   needImport(ctx, 'textual.app', 'App');
   needImport(ctx, 'textual.app', 'ComposeResult');
@@ -749,6 +947,15 @@ export function exportToTextual(root: ComponentNode): string {
   if (!body) needImport(ctx, 'textual.widgets', 'Static');
 
   const classes = ctx.classes.map((c) => c.trimEnd() + '\n\n\n').join('');
+  const bindings = ctx.bindings.length
+    ? `\n${IND}BINDINGS = [\n${ctx.bindings
+        .map(
+          ([key, action, text]) =>
+            `${IND}${IND}(${pyStr(key)}, ${pyStr(action)}, ${pyStr(text)}),\n`
+        )
+        .join('')}${IND}]\n`
+    : '';
+  const actions = ctx.actions.map((a) => '\n' + a).join('');
 
   return `${renderImports(ctx)}
 
@@ -757,9 +964,9 @@ ${classes}class MyApp(App):
     CSS = """
 ${indentedCss}
     """
-
+${bindings}
     def compose(self) -> ComposeResult:
-${compose}${mount}${handlers}
+${compose}${mount}${handlers}${actions}
 
 if __name__ == "__main__":
     MyApp().run()
