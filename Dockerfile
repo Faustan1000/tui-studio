@@ -7,14 +7,11 @@ COPY . .
 RUN npx vite build
 RUN npm prune --omit=dev && npm cache clean --force
 
-# Stage 2: serve
-FROM nginx:alpine
-RUN apk add --no-cache curl && \
-    rm -rf /var/cache/apk/* /var/log/nginx/* /etc/nginx/conf.d/* && \
-    mkdir -p /var/log/nginx
+# Stage 2: serve (unprivileged, listens on 8080)
+FROM nginxinc/nginx-unprivileged:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/nginx.conf
-EXPOSE 80
+EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost/healthz || exit 1
+    CMD wget -q --spider http://127.0.0.1:8080/healthz || exit 1
 CMD ["nginx", "-g", "daemon off;"]
