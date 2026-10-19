@@ -526,12 +526,45 @@ const emitProgressBar: Emitter = (node, indent, ctx) => {
   return `${IND.repeat(indent)}yield ProgressBar(total=${max}, show_eta=False, id=${pyStr(id)})\n`;
 };
 
+const SPINNER_CLASS = `class StudioSpinner(Static):
+    FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def __init__(self, text: str = "Loading...", **kwargs) -> None:
+        super().__init__(markup=False, **kwargs)
+        self._spinner_text = text
+        self._spinner_frame = 0
+
+    def on_mount(self) -> None:
+        self._tick()
+        self.set_interval(0.08, self._tick)
+
+    def _tick(self) -> None:
+        self.update(self.FRAMES[self._spinner_frame] + " " + self._spinner_text)
+        self._spinner_frame = (self._spinner_frame + 1) % len(self.FRAMES)
+`;
+
+/** Animated braille spinner with a label (Textual's LoadingIndicator fills its container). */
+const emitSpinner: Emitter = (node, indent, ctx) => {
+  const decl = commonDeclarations(node, ctx);
+  if (!cssSize(node.props.width)) decl.unshift('width: auto;');
+  addRule(ctx, node, decl);
+
+  needImport(ctx, 'textual.widgets', 'Static');
+  if (!ctx.classNames.has('StudioSpinner')) {
+    ctx.classNames.set('StudioSpinner', 'StudioSpinner');
+    ctx.classes.push(SPINNER_CLASS);
+  }
+  const text = String(node.props.label ?? node.props.text ?? 'Loading...');
+  return `${IND.repeat(indent)}yield StudioSpinner(${pyStr(text)}, id=${pyStr(widgetId(node))})\n`;
+};
+
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Checkbox: emitCheckbox,
   Radio: emitRadio,
   Select: emitSelect,
   Toggle: emitToggleSwitch,
   ProgressBar: emitProgressBar,
+  Spinner: emitSpinner,
   Box: emitBox,
   Text: emitText,
   Spacer: emitSpacer,
