@@ -12,6 +12,8 @@ interface Ctx {
   css: string[];
   /** ANSI name -> hex for the screen's theme. */
   palette: Record<string, string>;
+  /** Generated event handler methods (class body, already indented). */
+  handlers: string[];
 }
 
 type Emitter = (node: ComponentNode, indent: number, ctx: Ctx) => string;
@@ -105,6 +107,39 @@ function commonDeclarations(node: ComponentNode, ctx: Ctx): string[] {
   return d;
 }
 
+/** Turn an editor handler name (e.g. "handleChange") into a unique Python method name. */
+function methodName(raw: string, ctx: Ctx): string {
+  const base =
+    raw
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/[^a-zA-Z0-9_]/g, '_')
+      .toLowerCase()
+      .replace(/^(\d)/, '_$1') || 'handler';
+  const used = new Set(ctx.handlers.map((h) => /def (\w+)\(/.exec(h)?.[1]));
+  let name = base;
+  for (let i = 2; used.has(name); i++) name = `${base}_${i}`;
+  return name;
+}
+
+/** Register a Textual message handler bound to one widget. */
+function addHandler(
+  ctx: Ctx,
+  node: ComponentNode,
+  message: string,
+  rawName: unknown,
+  fallback: string
+) {
+  const name = methodName(typeof rawName === 'string' && rawName ? rawName : fallback, ctx);
+  ctx.handlers.push(
+    `${IND}@on(${message}, "#${widgetId(node)}")
+` +
+      `${IND}def ${name}(self, event: ${message}) -> None:
+` +
+      `${IND}${IND}pass
+`
+  );
+}
+
 function addRule(ctx: Ctx, node: ComponentNode, declarations: string[]) {
   if (declarations.length === 0) return;
   ctx.css.push(`#${widgetId(node)} {\n${declarations.map((l) => `    ${l}`).join('\n')}\n}`);
@@ -153,19 +188,31 @@ const emitSpacer: Emitter = (node, indent, ctx) => {
   return `${IND.repeat(indent)}yield Static("", id=${pyStr(widgetId(node))})\n`;
 };
 
+/** Single-line input. Textual's Input has a built-in border, so reset it when unbordered. */
+const emitTextInput: Emitter = (node, indent, ctx) => {
+  const decl = commonDeclarations(node, ctx);
+  if (!node.style.border) decl.unshift('border: none;', 'height: 1;');
+  addRule(ctx, node, decl);
+
+  const args: string[] = [];
+  if (node.props.value) args.push(`value=${pyStr(node.props.value)}`);
+  args.push(`placeholder=${pyStr(node.props.placeholder ?? '')}`);
+  if (node.props.disabled) args.push('disabled=True');
+  args.push(`id=${pyStr(widgetId(node))}`);
+
+  addHandler(ctx, node, 'Input.Changed', node.events.onChange, 'on_input_changed');
+  return `${IND.repeat(indent)}yield Input(${args.join(', ')})\n`;
+};
+
 const EMITTERS: Partial<Record<ComponentType, Emitter>> = {
   Box: emitBox,
   Text: emitText,
   Spacer: emitSpacer,
+  TextInput: emitTextInput,
   // Existing simple widgets (to be reworked one by one).
   Button: (node, indent, ctx) => {
     addRule(ctx, node, commonDeclarations(node, ctx));
     return `${IND.repeat(indent)}yield Button(${pyStr(node.props.label ?? 'Button')}, id=${pyStr(widgetId(node))})\n`;
-  },
-  TextInput: (node, indent, ctx) => {
-    addRule(ctx, node, commonDeclarations(node, ctx));
-    const value = node.props.value ? `value=${pyStr(node.props.value)}, ` : '';
-    return `${IND.repeat(indent)}yield Input(${value}placeholder=${pyStr(node.props.placeholder ?? '')}, id=${pyStr(widgetId(node))})\n`;
   },
 };
 
@@ -195,7 +242,7 @@ function screenRule(root: ComponentNode, ctx: Ctx): string {
 export function exportToTextual(root: ComponentNode): string {
   const themeName = (root.props.theme as keyof typeof THEMES) || 'default';
   const palette = (THEMES[themeName] ?? THEMES.default) as unknown as Record<string, string>;
-  const ctx: Ctx = { css: [], palette };
+  const ctx: Ctx = { css: [], palette, handlers: [] };
 
   const rootRule = screenRule(root, ctx);
   const body = emitChildren(root, 2, ctx);
@@ -205,7 +252,10 @@ export function exportToTextual(root: ComponentNode): string {
     .map((l) => (l ? IND + l : l))
     .join('\n');
 
-  return `from textual.app import App, ComposeResult
+  const handlers = ctx.handlers.length ? '\n' + ctx.handlers.join('\n') : '';
+  const onImport = ctx.handlers.length ? 'from textual import on\n' : '';
+
+  return `${onImport}from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, Static
 
@@ -219,7 +269,7 @@ ${indentedCss}
 ${body || `${IND}${IND}yield Static("Empty screen")\n`}
     def on_button_pressed(self, event: Button.Pressed) -> None:
         pass
-
+${handlers}
 
 if __name__ == "__main__":
     MyApp().run()
