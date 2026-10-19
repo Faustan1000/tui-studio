@@ -364,13 +364,13 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           Made by <span className="text-foreground font-medium">Javier Alonso</span>
         </div>
         <a
-          href="https://github.com/jalonsogo/tui-studio"
+          href="https://github.com/Faustan1000/tui-studio"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/80 rounded-lg text-sm font-medium transition-colors"
         >
           <Github className="w-4 h-4" />
-          jalonsogo/tui-studio
+          Faustan1000/tui-studio
         </a>
         <button
           onClick={onClose}

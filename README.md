@@ -29,18 +29,18 @@ A Figma-like visual editor for designing Terminal UI applications. Drag-and-drop
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=jalonsogo%2Ftui-studio&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=Faustan1000%2Ftui-studio&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=jalonsogo/tui-studio&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=jalonsogo/tui-studio&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=jalonsogo/tui-studio&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Faustan1000/tui-studio&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Faustan1000/tui-studio&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Faustan1000/tui-studio&type=date&legend=top-left" />
  </picture>
 </a>
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/jalonsogo/tui-studio.git
+git clone https://github.com/Faustan1000/tui-studio.git
 cd tui-studio
 npm install
 npm run dev
@@ -116,7 +116,7 @@ npm run preview  # Preview production build
 
 ---
 
-**Issues**: [GitHub Issues](https://github.com/jalonsogo/tui-studio/issues)
+**Issues**: [GitHub Issues](https://github.com/Faustan1000/tui-studio/issues)
 
 ## LOLcense
 
