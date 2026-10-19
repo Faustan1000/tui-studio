@@ -14,11 +14,15 @@ export interface ExportFile {
  * Export design as the files a project needs. Most formats are a single file; Textual also
  * ships its runtime (ui_runtime.py) next to the generated ui.py.
  */
-export function exportToFiles(root: ComponentNode | null, format: string): ExportFile[] {
+export function exportToFiles(
+  root: ComponentNode | null,
+  format: string,
+  screens?: readonly ComponentNode[]
+): ExportFile[] {
   if (!root) return [];
   if (format === 'textual') {
     return [
-      { path: 'ui.py', content: exportToTextual(root) },
+      { path: 'ui.py', content: exportToTextual(screens?.length ? screens : root) },
       { path: TEXTUAL_RUNTIME_FILENAME, content: TEXTUAL_RUNTIME_SOURCE },
     ];
   }
@@ -28,7 +32,11 @@ export function exportToFiles(root: ComponentNode | null, format: string): Expor
 /**
  * Export design to framework-specific code
  */
-export function exportToCode(root: ComponentNode | null, format: string): string {
+export function exportToCode(
+  root: ComponentNode | null,
+  format: string,
+  screens?: readonly ComponentNode[]
+): string {
   if (!root) return '';
 
   switch (format) {
@@ -41,7 +49,8 @@ export function exportToCode(root: ComponentNode | null, format: string): string
     case 'blessed':
       return exportToBlessed(root);
     case 'textual':
-      return exportToTextual(root);
+      // Only Textual exports every screen so far; the other formats export the active one.
+      return exportToTextual(screens?.length ? screens : root);
     case 'ratatui':
       return exportToRatatui(root);
     default:

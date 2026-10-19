@@ -5,11 +5,25 @@ import type { ComputedLayout, LayoutDebugInfo } from './types';
 import { calculateFlexboxLayout } from './flexbox';
 import { calculateGridLayout } from './grid';
 import { calculateAbsoluteLayout } from './absolute';
+import { flattenTree } from '../treeUtils';
+import { isShownByNav } from '../navBodies';
 
 export class LayoutEngine {
   private layouts: Map<string, ComputedLayout> = new Map();
   private debugInfo: Map<string, LayoutDebugInfo> = new Map();
   private responsive = false;
+  private nodesById: Map<string, ComponentNode> = new Map();
+
+  /**
+   * Children that take part in the layout. A child with `showWhen` only counts while its
+   * navigation element has the matching item selected; the others are skipped entirely
+   * (they get no layout and are not drawn).
+   */
+  private visible(node: ComponentNode): ComponentNode[] {
+    return node.children.some((c) => c.showWhen)
+      ? node.children.filter((c) => isShownByNav(c, this.nodesById))
+      : node.children;
+  }
 
   /**
    * Calculate layout for the entire component tree.
@@ -24,6 +38,7 @@ export class LayoutEngine {
     this.layouts.clear();
     this.debugInfo.clear();
     this.responsive = responsive;
+    this.nodesById = flattenTree(root);
 
     if (!root) return;
 
@@ -136,7 +151,7 @@ export class LayoutEngine {
     this.checkLayoutIssues(node, nodeLayout, parentLayout);
 
     // Calculate child layouts based on layout type
-    if (node.children.length > 0) {
+    if (this.visible(node).length > 0) {
       this.calculateChildLayouts(node, width, height);
     }
   }
@@ -147,6 +162,10 @@ export class LayoutEngine {
     containerHeight: number
   ): void {
     let childLayouts: Map<string, ComputedLayout>;
+
+    // Bodies of other tabs/menu items are not part of this layout pass.
+    const shown = this.visible(container);
+    if (shown !== container.children) container = { ...container, children: shown };
 
     // Force List components to always use column direction
     if (
@@ -260,7 +279,7 @@ export class LayoutEngine {
       const border = node.style.border ? 2 : 0;
 
       let maxRightEdge = 0;
-      node.children.forEach((child) => {
+      this.visible(node).forEach((child) => {
         const childX = typeof child.layout.x === 'number' ? child.layout.x : 0;
         const childWidth =
           typeof child.props.width === 'number'
@@ -353,7 +372,10 @@ export class LayoutEngine {
     }
 
     // For containers (Stack, Box, Screen, etc.), calculate based on children
-    if (node.children.length > 0 && ['flexbox', 'grid', 'absolute'].includes(node.layout.type)) {
+    if (
+      this.visible(node).length > 0 &&
+      ['flexbox', 'grid', 'absolute'].includes(node.layout.type)
+    ) {
       const padding = typeof node.layout.padding === 'number' ? node.layout.padding : 0;
       const gap = typeof node.layout.gap === 'number' ? node.layout.gap : 0;
       const border = node.style.border ? 2 : 0; // +2 for left and right border
@@ -362,7 +384,7 @@ export class LayoutEngine {
       if (node.layout.type === 'flexbox' && node.layout.direction === 'row') {
         let totalWidth = padding * 2; // left + right padding
 
-        node.children.forEach((child, index) => {
+        this.visible(node).forEach((child, index) => {
           // Get child width (recursive for auto-sized children)
           const childWidth =
             typeof child.props.width === 'number'
@@ -372,7 +394,7 @@ export class LayoutEngine {
           totalWidth += childWidth;
 
           // Add gap between children (not after last child)
-          if (index < node.children.length - 1) {
+          if (index < this.visible(node).length - 1) {
             totalWidth += gap;
           }
         });
@@ -384,7 +406,7 @@ export class LayoutEngine {
       if (node.layout.type === 'flexbox' && node.layout.direction === 'column') {
         let maxWidth = 0;
 
-        node.children.forEach((child) => {
+        this.visible(node).forEach((child) => {
           const childWidth =
             typeof child.props.width === 'number'
               ? child.props.width
@@ -455,7 +477,7 @@ export class LayoutEngine {
       const border = node.style.border ? 2 : 0;
 
       let maxBottomEdge = 0;
-      node.children.forEach((child) => {
+      this.visible(node).forEach((child) => {
         const childY = typeof child.layout.y === 'number' ? child.layout.y : 0;
         const childHeight =
           typeof child.props.height === 'number'
@@ -512,7 +534,10 @@ export class LayoutEngine {
     }
 
     // For containers (Stack, Box, Screen, etc.), calculate based on children
-    if (node.children.length > 0 && ['flexbox', 'grid', 'absolute'].includes(node.layout.type)) {
+    if (
+      this.visible(node).length > 0 &&
+      ['flexbox', 'grid', 'absolute'].includes(node.layout.type)
+    ) {
       const padding = typeof node.layout.padding === 'number' ? node.layout.padding : 0;
       const gap = typeof node.layout.gap === 'number' ? node.layout.gap : 0;
       const border = node.style.border ? 2 : 0; // +2 for top and bottom border
@@ -521,7 +546,7 @@ export class LayoutEngine {
       if (node.layout.type === 'flexbox' && node.layout.direction === 'column') {
         let totalHeight = padding * 2; // top + bottom padding
 
-        node.children.forEach((child, index) => {
+        this.visible(node).forEach((child, index) => {
           // Get child height (recursive for auto-sized children)
           const childHeight =
             typeof child.props.height === 'number'
@@ -531,7 +556,7 @@ export class LayoutEngine {
           totalHeight += childHeight;
 
           // Add gap between children (not after last child)
-          if (index < node.children.length - 1) {
+          if (index < this.visible(node).length - 1) {
             totalHeight += gap;
           }
         });
@@ -543,7 +568,7 @@ export class LayoutEngine {
       if (node.layout.type === 'flexbox' && node.layout.direction === 'row') {
         let maxHeight = 0;
 
-        node.children.forEach((child) => {
+        this.visible(node).forEach((child) => {
           const childHeight =
             typeof child.props.height === 'number'
               ? child.props.height

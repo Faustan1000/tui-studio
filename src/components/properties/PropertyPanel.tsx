@@ -17,6 +17,10 @@ import { StyleEditor } from './StyleEditor';
 import { ColorPicker } from './ColorPicker';
 import type { ComponentNode } from '../../types';
 import { collectTags, suggestTag, validateTag } from '../../utils/apiTag';
+import { getDescendants } from '../../utils/treeUtils';
+import { bodiesOf, collectNavElements, isNavElement, navItemLabels } from '../../utils/navBodies';
+import { COMPONENT_LIBRARY } from '../../constants/components';
+import { layoutEngine } from '../../utils/layout';
 
 // Collapsible Section Component
 function Section({
@@ -55,7 +59,13 @@ function Section({
 
 // Code name of a component: shows up unchanged as the identifier in exported code.
 // The draft is checked while typing and only saved (Enter / blur) when it is valid.
-function ApiNameField({ component }: { component: ComponentNode }) {
+export function ApiNameField({
+  component,
+  label = 'Code name',
+}: {
+  component: ComponentNode;
+  label?: string;
+}) {
   const componentStore = useComponentStore();
   const [draft, setDraft] = useState(component.tag ?? '');
 
@@ -63,7 +73,10 @@ function ApiNameField({ component }: { component: ComponentNode }) {
     setDraft(component.tag ?? '');
   }, [component.id, component.tag]);
 
-  const taken = collectTags(componentStore.root, component.id);
+  const taken = collectTags(
+    componentStore.getScreenRoots().map((s) => s.root),
+    component
+  );
   const error = validateTag(draft, taken);
 
   const commit = () => {
@@ -75,7 +88,7 @@ function ApiNameField({ component }: { component: ComponentNode }) {
   return (
     <div className="px-3 py-2 border-b border-border/30">
       <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">
-        Code name
+        {label}
       </label>
       <div className="flex gap-1">
         <input
@@ -107,6 +120,130 @@ function ApiNameField({ component }: { component: ComponentNode }) {
       ) : (
         <div className="text-[9px] text-muted-foreground mt-0.5">
           Used as the name in exported code
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Per-item bodies for Tabs / Menu / List: a component can be shown only while a navigation
+// element has a given item selected, and navigation elements can create those bodies.
+function NavBodyField({ component }: { component: ComponentNode }) {
+  const componentStore = useComponentStore();
+  const root = componentStore.root;
+  if (component.type === 'Screen') return null;
+
+  const inside = new Set(getDescendants(component).map((n) => n.id));
+  const navs = collectNavElements(root).filter((n) => n.id !== component.id && !inside.has(n.id));
+  const current = component.showWhen;
+  const selectedNav = current ? navs.find((n) => n.id === current.nav) : undefined;
+  const selectClass =
+    'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
+
+  const labelOf = (n: ComponentNode) => n.tag || n.name;
+
+  const createBodies = () => {
+    const parent = componentStore.getParent(component.id);
+    if (!parent) return;
+    const existing = bodiesOf(root, component.id);
+    const def = COMPONENT_LIBRARY.Box;
+    const at = parent.children.findIndex((c) => c.id === component.id) + 1;
+    let offset = 0;
+    // Place bodies below a tab bar, or next to a menu/list (matters in absolute layouts).
+    const computed = layoutEngine.getLayout(component.id);
+    const nx = typeof component.layout.x === 'number' ? component.layout.x : 0;
+    const ny = typeof component.layout.y === 'number' ? component.layout.y : 0;
+    const bodyPos =
+      component.type === 'Tabs'
+        ? { x: nx, y: ny + (computed?.height ?? 3) }
+        : { x: nx + (computed?.width ?? 20) + 1, y: ny };
+    navItemLabels(component).forEach((label, item) => {
+      if (existing.has(item)) return;
+      componentStore.addComponent(
+        parent.id,
+        {
+          type: 'Box',
+          name: `${label} body`,
+          props: { ...def.defaultProps, width: 'fill', height: 'fill' },
+          layout: { ...def.defaultLayout, ...bodyPos },
+          style: { ...def.defaultStyle },
+          events: {},
+          children: [],
+          locked: false,
+          hidden: false,
+          collapsed: false,
+          showWhen: { nav: component.id, item },
+        },
+        at + offset++
+      );
+    });
+  };
+
+  const items = isNavElement(component) ? navItemLabels(component) : [];
+  const missing = isNavElement(component)
+    ? items.length - [...bodiesOf(root, component.id).keys()].filter((i) => i < items.length).length
+    : 0;
+
+  if (navs.length === 0 && !current && !isNavElement(component)) return null;
+
+  return (
+    <div className="px-3 py-2 border-b border-border/30 space-y-1.5">
+      {(navs.length > 0 || current) && (
+        <div>
+          <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">
+            Visible when
+          </label>
+          <select
+            value={current?.nav ?? ''}
+            className={selectClass}
+            onChange={(e) =>
+              componentStore.updateComponent(component.id, {
+                showWhen: e.target.value ? { nav: e.target.value, item: 0 } : undefined,
+              })
+            }
+          >
+            <option value="">Always</option>
+            {navs.map((n) => (
+              <option key={n.id} value={n.id}>
+                {labelOf(n)} ({n.type})
+              </option>
+            ))}
+            {current && !selectedNav && <option value={current.nav}>(missing element)</option>}
+          </select>
+          {selectedNav && current && (
+            <select
+              value={current.item}
+              className={`${selectClass} mt-1`}
+              onChange={(e) =>
+                componentStore.updateComponent(component.id, {
+                  showWhen: { nav: current.nav, item: Number(e.target.value) },
+                })
+              }
+            >
+              {navItemLabels(selectedNav).map((label, i) => (
+                <option key={i} value={i}>
+                  {label} is selected
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+      {isNavElement(component) && (
+        <div>
+          <button
+            type="button"
+            disabled={missing <= 0}
+            onClick={createBodies}
+            className="w-full px-1.5 py-1 text-[10px] border border-border/50 rounded hover:bg-accent transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
+          >
+            {missing > 0
+              ? `Create a body for ${missing} item${missing > 1 ? 's' : ''}`
+              : 'Every item has a body'}
+          </button>
+          <div className="text-[9px] text-muted-foreground mt-0.5">
+            Change the selected item here to edit the body of each entry.
+          </div>
         </div>
       )}
     </div>
@@ -159,6 +296,7 @@ export function PropertyPanel() {
       </div>
 
       <ApiNameField component={selectedComponent} />
+      <NavBodyField component={selectedComponent} />
 
       {/* Tabs */}
       <div className="flex border-b border-border/30">

@@ -35,7 +35,7 @@ from rich.text import Text
 from textual import on
 from textual.app import App
 from textual.containers import Vertical, VerticalScroll
-from textual.screen import ModalScreen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, RichLog, Static
 
 __all__ = [
@@ -50,9 +50,12 @@ __all__ = [
     "MenuHandle",
     "ModalHandle",
     "ProgressHandle",
+    "ScreenHandle",
     "SelectHandle",
     "SpinnerHandle",
     "StudioApp",
+    "StudioModalScreen",
+    "StudioScreen",
     "StudioUi",
     "TableHandle",
     "TabsHandle",
@@ -158,9 +161,17 @@ class _Bridge:
 class Handle:
     """One component of the UI. Subclasses add values and events."""
 
-    def __init__(self, ui: "StudioUi", tag: str, *, states: Iterable[str] = ("active", "hidden")):
+    def __init__(
+        self,
+        ui: "StudioUi",
+        tag: str,
+        *,
+        states: Iterable[str] = ("active", "hidden"),
+        owner: Optional[str] = None,
+    ):
         self._ui = ui
         self.tag = tag
+        self._owner = owner  # key of the screen (or modal) this component lives on
         self._states = tuple(states)
         self._state = "active"
         ui._register(self)
@@ -209,6 +220,15 @@ class Handle:
         self._state = value
         self._ui._bridge.post(self._apply_state)
 
+    def _sync(self) -> None:
+        """Bring a freshly mounted widget up to date with everything the program set."""
+        self._push()
+        if self._state != "active":
+            self._apply_state()
+
+    def _push(self) -> None:
+        """Send all cached values to the widget (overridden by components with values)."""
+
     def _apply_state(self) -> None:
         state = self._state
         for widget in self._interactive_widgets():
@@ -236,7 +256,10 @@ class Handle:
         def run() -> None:
             widget = self._widget(widget_id)
             if widget is None:
-                self._ui.log.warning(f"{self.tag}: not on screen right now, change skipped")
+                # On a screen that is not shown the value is only cached; it is applied
+                # when that screen is mounted.
+                if self._owner is None or self._owner in self._ui._mounted:
+                    self._ui.log.warning(f"{self.tag}: widget not found, change skipped")
                 return
             fn(widget)
 
@@ -318,6 +341,9 @@ class TextHandle(Handle):
         self._text = str(value)
         self._do(lambda w: w.update(self._text))
 
+    def _push(self) -> None:
+        self._do(lambda w: w.update(self._text))
+
 
 class SpinnerHandle(Handle):
     def __init__(self, ui: "StudioUi", tag: str, *, label: str = "Loading...", **kw: Any) -> None:
@@ -333,6 +359,9 @@ class SpinnerHandle(Handle):
         self._label = str(value)
         self._do(lambda w: setattr(w, "_spinner_text", self._label))
 
+    def _push(self) -> None:
+        self._do(lambda w: setattr(w, "_spinner_text", self._label))
+
 
 class ButtonHandle(Handle):
     def __init__(self, ui: "StudioUi", tag: str, *, label: str = "", **kw: Any) -> None:
@@ -346,6 +375,9 @@ class ButtonHandle(Handle):
     @label.setter
     def label(self, value: object) -> None:
         self._label = str(value)
+        self._do(lambda w: setattr(w, "label", _escape(self._label)))
+
+    def _push(self) -> None:
         self._do(lambda w: setattr(w, "label", _escape(self._label)))
 
     def on_click(self, fn: Optional[Callable] = None):
@@ -377,6 +409,14 @@ class InputHandle(_ValueHandle):
     def placeholder(self, value: object) -> None:
         self._placeholder = str(value)
         self._do(lambda w: setattr(w, "placeholder", self._placeholder))
+
+    def _push(self) -> None:
+        def apply(w: Any) -> None:
+            if w.value != self._value:
+                w.value = self._value
+            w.placeholder = self._placeholder
+
+        self._do(apply)
 
     def on_change(self, fn: Optional[Callable] = None):
         return self._register_callback("change", fn)
@@ -427,6 +467,17 @@ class CheckHandle(_ValueHandle):
 
     def on_change(self, fn: Optional[Callable] = None):
         return self._register_callback("change", fn)
+
+    def _push(self) -> None:
+        def apply(w: Any) -> None:
+            if w.value != self._value:
+                w.value = self._value
+
+        self._do(apply)
+        if self._label_id:
+            self._do(lambda w: w.update(_escape(self._label)), self._label_id)
+        else:
+            self._do(lambda w: setattr(w, "label", _escape(self._label)))
 
     def _display_widgets(self) -> list:
         # A toggle is a switch plus a label inside a group: hide the whole group.
@@ -496,6 +547,16 @@ class SelectHandle(_ValueHandle):
     def on_change(self, fn: Optional[Callable] = None):
         return self._register_callback("change", fn)
 
+    def _push(self) -> None:
+        pairs = [(_escape(o), o) for o in self._options]
+
+        def apply(w: Any) -> None:
+            w.set_options(pairs)
+            if self._value is not None:
+                w.value = self._value
+
+        self._do(apply)
+
 
 class ProgressHandle(Handle):
     def __init__(
@@ -524,6 +585,9 @@ class ProgressHandle(Handle):
             raise UiError("max must be greater than 0")
         self._max = value
         self._progress = min(self._progress, value)
+        self._do(lambda w: w.update(total=self._max, progress=self._progress))
+
+    def _push(self) -> None:
         self._do(lambda w: w.update(total=self._max, progress=self._progress))
 
 
@@ -570,6 +634,9 @@ class TableHandle(Handle):
     def _cells(self, row: Iterable[object]) -> list:
         row = list(row)
         return [_escape(str(row[i])) if i < len(row) else "" for i in range(len(self._columns))]
+
+    def _push(self) -> None:
+        self._refill()
 
     def _refill(self) -> None:
         def fill(w: Any) -> None:
@@ -623,6 +690,9 @@ class ListHandle(Handle):
         self._selected = index
         self._do(lambda w: setattr(w, "index", index))
 
+    def _push(self) -> None:
+        self.items = self._items
+
     def on_select(self, fn: Optional[Callable] = None):
         return self._register_callback("select", fn)
 
@@ -644,6 +714,10 @@ class MenuHandle(Handle):
     @selected.setter
     def selected(self, index: int) -> None:
         self._selected = index
+        self._do(lambda w: setattr(w, "highlighted", index))
+
+    def _push(self) -> None:
+        index = self._selected
         self._do(lambda w: setattr(w, "highlighted", index))
 
     def on_select(self, fn: Optional[Callable] = None):
@@ -668,6 +742,10 @@ class TabsHandle(_ValueHandle):
     def active_tab(self, index: int) -> None:
         if self._set_value(index):
             self._do(lambda w: setattr(w, "active", f"{self.tag}__{index}"))
+
+    def _push(self) -> None:
+        index = self._value
+        self._do(lambda w: setattr(w, "active", f"{self.tag}__{index}"))
 
     def on_change(self, fn: Optional[Callable] = None):
         return self._register_callback("change", fn)
@@ -725,6 +803,66 @@ class ModalHandle(Handle):
             self.close()
 
 
+class ScreenHandle:
+    """One screen of the UI: `ui.settings.show()` switches to it."""
+
+    def __init__(self, ui: "StudioUi", tag: str) -> None:
+        self._ui = ui
+        self.tag = tag
+        ui._register(self)
+
+    def __repr__(self) -> str:
+        return f"<ScreenHandle {self.tag!r} active={self.is_active}>"
+
+    @property
+    def is_active(self) -> bool:
+        return self._ui.current_screen == self.tag
+
+    def show(self) -> None:
+        """Switch to this screen (closes open dialogs)."""
+        self._ui.show_screen(self.tag)
+
+    def on_show(self, fn: Optional[Callable] = None):
+        """Called (in a worker thread) every time this screen has been shown."""
+
+        def add(callback: Callable) -> Callable:
+            self._ui._add_callback(self.tag, "show", callback)
+            return callback
+
+        return add if fn is None else add(fn)
+
+    def _on_event(self, name: str, value: Any) -> bool:
+        return True
+
+
+class StudioScreen(Screen):
+    """Base class of the generated screens. Each one has a `KEY` (its code name)."""
+
+    KEY = ""
+
+    def __init__(self) -> None:
+        super().__init__(id=self.KEY)
+
+    def on_mount(self) -> None:
+        # Runs after the generated subclass filled its tables and trees.
+        self.app.ui._screen_ready(self.KEY, self, modal=False)
+
+    def on_unmount(self) -> None:
+        self.app.ui._screen_gone(self.KEY)
+
+
+class StudioModalScreen(ModalScreen):
+    """Base class of the generated dialogs (Modal components)."""
+
+    KEY = ""
+
+    def on_mount(self) -> None:
+        self.app.ui._screen_ready(self.KEY, self, modal=True)
+
+    def on_unmount(self) -> None:
+        self.app.ui._screen_gone(self.KEY)
+
+
 # ── Error dialog and log panel ────────────────────────────────────────────────
 
 
@@ -747,6 +885,8 @@ class LogPanel(RichLog):
         super().__init__(wrap=True, markup=False, highlight=False, **kwargs)
 
     def on_mount(self) -> None:
+        # Every screen has its own panel: it shows the history and keeps the shown/hidden state.
+        self.set_class(self.app.ui._log_shown, "-shown")
         for entry in self.app.ui._log_history:
             self.write(_format_entry(entry))
 
@@ -859,11 +999,35 @@ class StudioApp(App):
         self.ui = ui
 
     def on_mount(self) -> None:
-        # Runs after the generated subclass has filled tables, trees, ... in its on_mount.
         self.ui._app_ready(self)
+        # Textual keeps an empty default screen at the bottom of the stack (switching the
+        # only screen would leave the stack empty), so the first screen goes on top of it.
+        if self.ui._first_screen:
+            self.push_screen(self.ui._create_screen(self.ui._first_screen))
+
+    def show_bodies(self, groups: "dict[int, list[str]]", index: Optional[int]) -> None:
+        """Show the widgets of the selected navigation item, hide those of the others."""
+        if index is None:
+            return
+        for item, widget_ids in groups.items():
+            for widget_id in widget_ids:
+                widget = self.ui._find(widget_id)
+                if widget is not None:
+                    widget.display = item == index
+
+    def _log_panel(self) -> Optional["LogPanel"]:
+        """The log panel of the screen on display (each screen has its own)."""
+        screen = self.ui._live.get(self.ui._current or "") or self.screen
+        try:
+            return screen.query_one(LogPanel)
+        except Exception:  # noqa: BLE001 - no panel mounted (yet)
+            return None
 
     def action_toggle_log(self) -> None:
-        self.query_one(LogPanel).toggle_class("-shown")
+        self.ui._log_shown = not self.ui._log_shown
+        panel = self._log_panel()
+        if panel is not None:
+            panel.set_class(self.ui._log_shown, "-shown")
 
     def show_error(self) -> None:
         """Open the error dialog, or refresh it when it is already open."""
@@ -874,10 +1038,9 @@ class StudioApp(App):
             self.push_screen(ErrorScreen(self.ui))
 
     def write_log(self, entry: ErrorEntry) -> None:
-        try:
-            self.query_one(LogPanel).write(_format_entry(entry))
-        except Exception:  # noqa: BLE001 - log panel not mounted (yet)
-            pass
+        panel = self._log_panel()
+        if panel is not None:
+            panel.write(_format_entry(entry))
 
 
 # ── The Ui object ─────────────────────────────────────────────────────────────
@@ -928,9 +1091,19 @@ class StudioUi:
         self,
         app_class: Callable[..., StudioApp],
         *,
+        screens: Optional["dict[str, Callable[[], Screen]]"] = None,
+        first: Optional[str] = None,
         dialog_levels: Iterable[str] = ("error", "critical"),
     ) -> None:
         self._app_class = app_class
+        self._screens: "dict[str, Callable[[], Screen]]" = dict(screens or {})
+        self._first_screen = first or next(iter(self._screens), "")
+        self._current: Optional[str] = None
+        self._log_shown = False
+        self._mounted: set[str] = set()
+        # Mounted screens and dialogs by key. A new screen is not on Textual's screen stack
+        # yet while it is mounting, so components are looked up here first.
+        self._live: "dict[str, Any]" = {}
         self._app: Optional[StudioApp] = None
         self._handles: dict[str, Handle] = {}
         self._callbacks: dict[tuple[str, str], list[Callable]] = defaultdict(list)
@@ -1041,10 +1214,61 @@ class StudioUi:
                 return self._ready.is_set()
         return False
 
+    # -- screens -------------------------------------------------------------
+
+    @property
+    def current_screen(self) -> Optional[str]:
+        """Code name of the screen that is shown (None before the UI is up)."""
+        return self._current
+
+    def show_screen(self, name: str) -> None:
+        """Switch to a screen by its code name. Open dialogs are closed."""
+        if name not in self._screens:
+            known = ", ".join(self._screens) or "none"
+            raise UiError(f"Unknown screen {name!r}; known screens: {known}")
+
+        def switch() -> None:
+            app = self._app
+            if app is None or self._current == name:
+                return
+            screen = self._create_screen(name)
+            if not any(isinstance(s, StudioScreen) for s in app.screen_stack):
+                app.push_screen(screen)  # the first screen is still being set up
+                return
+            while not isinstance(app.screen, StudioScreen) and len(app.screen_stack) > 1:
+                app.pop_screen()
+            app.switch_screen(screen)
+
+        self._bridge.post(switch)
+
+    def _create_screen(self, name: str) -> Screen:
+        try:
+            return self._screens[name]()
+        except KeyError:
+            raise UiError(f"Unknown screen {name!r}") from None
+
+    def _screen_ready(self, key: str, screen: Any, *, modal: bool) -> None:
+        """A screen or dialog was mounted: bring its components up to date."""
+        self._mounted.add(key)
+        self._live[key] = screen
+        if not modal:
+            self._current = key
+            self._ready.set()  # ready = the first screen is on display
+        for handle in list(self._handles.values()):
+            if getattr(handle, "_owner", None) == key:
+                handle._sync()
+        if not modal:
+            self._emit(key, "show")
+
+    def _screen_gone(self, key: str) -> None:
+        self._mounted.discard(key)
+        self._live.pop(key, None)
+        if self._current == key:
+            self._current = None
+
     def _app_ready(self, app: StudioApp) -> None:
         self._app = app
         self._bridge.attach(app)
-        self._ready.set()
 
     # -- components ----------------------------------------------------------
 
@@ -1067,7 +1291,9 @@ class StudioUi:
         app = self._app
         if app is None:
             return None
-        for screen in reversed(list(app.screen_stack)):
+        screens = list(reversed(list(self._live.values())))
+        screens += [s for s in reversed(list(app.screen_stack)) if s not in screens]
+        for screen in screens:
             try:
                 return screen.query_one(f"#{widget_id}")
             except Exception:  # noqa: BLE001 - NoMatches / not mounted

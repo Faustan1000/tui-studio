@@ -71,14 +71,21 @@ const RESERVED_TAGS: ReadonlySet<string> = new Set([
 // for generated names and "__" for derived ids, so neither can collide with a tag.
 const TAG_PATTERN = /^[A-Za-z][A-Za-z0-9]*(_[A-Za-z0-9]+)*_?$/;
 
-/** All tags used in the tree, optionally ignoring one component (the one being edited). */
-export function collectTags(root: ComponentNode | null, exceptId?: string): Set<string> {
+/**
+ * All tags used in the given tree(s), optionally ignoring one component (the one being
+ * edited). Compared by identity: every screen's root has the id "root".
+ */
+export function collectTags(
+  roots: ComponentNode | readonly ComponentNode[] | null,
+  except?: ComponentNode
+): Set<string> {
   const tags = new Set<string>();
   const walk = (node: ComponentNode) => {
-    if (node.tag && node.id !== exceptId) tags.add(node.tag);
+    if (node.tag && node !== except) tags.add(node.tag);
     node.children.forEach(walk);
   };
-  if (root) walk(root);
+  if (Array.isArray(roots)) roots.forEach(walk);
+  else if (roots) walk(roots as ComponentNode);
   return tags;
 }
 

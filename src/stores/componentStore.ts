@@ -5,11 +5,41 @@ import type { ComponentNode } from '../types';
 import { findNodeById, findParentNode, flattenTree, cloneNode } from '../utils/treeUtils';
 import { generateComponentId } from '../utils/idGenerator';
 import { collectTags } from '../utils/apiTag';
+import { remapShowWhen } from '../utils/navBodies';
+
+/** One screen of the project. For the active screen `root`/history live in the store itself. */
+export interface ScreenEntry {
+  id: string;
+  root: ComponentNode;
+  history: ComponentNode[][];
+  historyIndex: number;
+}
+
+/** A new, empty screen (root of its component tree). */
+export function createScreenRoot(name: string, theme = 'dracula'): ComponentNode {
+  return {
+    id: 'root',
+    type: 'Screen',
+    name,
+    props: { width: 80, height: 24, theme },
+    layout: { type: 'absolute' },
+    style: { border: false },
+    events: {},
+    children: [],
+    locked: false,
+    hidden: false,
+    collapsed: false,
+  };
+}
 
 interface ComponentState {
   // Tree
   root: ComponentNode | null;
   components: Map<string, ComponentNode>; // Flat lookup
+
+  // Screens (the entry of the active screen is only a placeholder; `root` is the live tree)
+  screens: ScreenEntry[];
+  activeScreenId: string;
 
   // History
   history: ComponentNode[][];
@@ -35,6 +65,18 @@ interface ComponentState {
   updateStyle: (id: string, style: Partial<ComponentNode['style']>) => void;
   updateEvents: (id: string, events: Partial<ComponentNode['events']>) => void;
 
+  // Actions - Screens
+  addScreen: (name?: string) => string;
+  switchScreen: (id: string) => void;
+  removeScreen: (id: string) => void;
+  renameScreen: (id: string, name: string) => void;
+  duplicateScreen: (id: string) => string | null;
+  moveScreen: (id: string, delta: number) => void;
+  /** Replace the whole project (opening a file). */
+  loadProject: (screens: { id: string; root: ComponentNode }[], activeId?: string) => void;
+  /** All screens with up-to-date trees, in order. */
+  getScreenRoots: () => { id: string; root: ComponentNode }[];
+
   // Actions - History
   undo: () => void;
   redo: () => void;
@@ -50,6 +92,8 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
   // Initial state
   root: null,
   components: new Map(),
+  screens: [],
+  activeScreenId: '',
   history: [],
   historyIndex: -1,
   maxHistorySize: 50,
@@ -60,6 +104,13 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
       root,
       components: flattenTree(root),
     });
+    // The first root creates the project's first screen.
+    if (root && get().screens.length === 0) {
+      set({
+        screens: [{ id: 'screen-1', root, history: [], historyIndex: -1 }],
+        activeScreenId: 'screen-1',
+      });
+    }
     get().saveHistory();
   },
 
@@ -86,7 +137,12 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
       children: [],
     };
     // Tags must stay unique: a pasted component keeps its tag only if nobody uses it.
-    if (newComponent.tag && collectTags(newRoot).has(newComponent.tag)) delete newComponent.tag;
+    if (newComponent.tag) {
+      const others = get()
+        .screens.filter((s) => s.id !== get().activeScreenId)
+        .map((s) => s.root);
+      if (collectTags([newRoot, ...others]).has(newComponent.tag)) delete newComponent.tag;
+    }
 
     // If parent is a container and has explicit height/width, change to auto so it fits children
     if (['Box', 'Grid'].includes(parent.type)) {
@@ -211,17 +267,21 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
     if (!component || !parent) return null;
 
     const cloned = cloneNode(component);
-    cloned.id = generateComponentId();
+    const idMap = new Map<string, string>([[cloned.id, generateComponentId()]]);
+    cloned.id = idMap.get(cloned.id)!;
     cloned.name = `${cloned.name} Copy`;
     delete cloned.tag; // tags are unique, so a copy starts without one
 
     // Assign new IDs to all descendants
     function reassignIds(node: ComponentNode) {
-      node.id = generateComponentId();
+      idMap.set(node.id, generateComponentId());
+      node.id = idMap.get(node.id)!;
       delete node.tag;
       node.children.forEach(reassignIds);
     }
     cloned.children.forEach(reassignIds);
+    // Bodies of a navigation element inside the copy must follow the copy of that element.
+    remapShowWhen(cloned, idMap);
 
     // Insert after original
     const index = parent.children.findIndex((c) => c.id === id);
@@ -436,6 +496,153 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
         historyIndex: newIndex,
       });
     }
+  },
+
+  // ── Screens ─────────────────────────────────────────────────────────────────
+
+  getScreenRoots: () => {
+    const { screens, activeScreenId, root } = get();
+    return screens.map((s) => ({
+      id: s.id,
+      root: s.id === activeScreenId && root ? root : s.root,
+    }));
+  },
+
+  switchScreen: (id) => {
+    const { screens, activeScreenId, root, history, historyIndex } = get();
+    if (id === activeScreenId || !screens.some((s) => s.id === id)) return;
+
+    // Park the live tree and its history in the screen we are leaving.
+    const parked = screens.map((s) =>
+      s.id === activeScreenId && root ? { ...s, root, history, historyIndex } : s
+    );
+    const target = parked.find((s) => s.id === id)!;
+    const hasHistory = target.history.length > 0;
+    set({
+      screens: parked,
+      activeScreenId: id,
+      root: target.root,
+      components: flattenTree(target.root),
+      history: hasHistory ? target.history : [[cloneNode(target.root)]],
+      historyIndex: hasHistory ? target.historyIndex : 0,
+    });
+  },
+
+  addScreen: (name) => {
+    const { screens, root, activeScreenId } = get();
+    const n = screens.length + 1;
+    const used = new Set(
+      get()
+        .getScreenRoots()
+        .map((s) => s.root.name)
+    );
+    let title = name?.trim() || `Screen ${n}`;
+    for (let i = 2; used.has(title); i++) title = `${name?.trim() || `Screen ${n}`} ${i}`;
+    const theme = (root?.props.theme as string) || 'dracula';
+    let id = `screen-${n}`;
+    for (let i = n + 1; screens.some((s) => s.id === id); i++) id = `screen-${i}`;
+    const entry: ScreenEntry = {
+      id,
+      root: createScreenRoot(title, theme),
+      history: [],
+      historyIndex: -1,
+    };
+    set({ screens: [...screens, entry] });
+    if (!activeScreenId) {
+      set({ activeScreenId: id, root: entry.root, components: flattenTree(entry.root) });
+      get().saveHistory();
+    } else {
+      get().switchScreen(id);
+    }
+    return id;
+  },
+
+  removeScreen: (id) => {
+    const { screens, activeScreenId } = get();
+    if (screens.length <= 1) return;
+    const index = screens.findIndex((s) => s.id === id);
+    if (index < 0) return;
+    if (id === activeScreenId) {
+      get().switchScreen(screens[index === 0 ? 1 : index - 1].id);
+    }
+    set({ screens: get().screens.filter((s) => s.id !== id) });
+  },
+
+  renameScreen: (id, name) => {
+    const title = name.trim();
+    if (!title) return;
+    if (id === get().activeScreenId) {
+      get().updateComponent('root', { name: title });
+      return;
+    }
+    set({
+      screens: get().screens.map((s) =>
+        s.id === id ? { ...s, root: { ...s.root, name: title } } : s
+      ),
+    });
+  },
+
+  duplicateScreen: (id) => {
+    const source = get()
+      .getScreenRoots()
+      .find((s) => s.id === id);
+    if (!source) return null;
+    const idMap = new Map<string, string>();
+    const copy = cloneNode(source.root);
+    copy.name = `${copy.name} Copy`;
+    delete copy.tag; // code names are unique
+    const reassign = (node: ComponentNode) => {
+      if (node !== copy) {
+        idMap.set(node.id, generateComponentId());
+        node.id = idMap.get(node.id)!;
+        delete node.tag;
+      }
+      node.children.forEach(reassign);
+    };
+    reassign(copy);
+    idMap.set(copy.id, copy.id);
+    remapShowWhen(copy, idMap);
+
+    const { screens } = get();
+    let newId = `screen-${screens.length + 1}`;
+    for (let i = screens.length + 2; screens.some((s) => s.id === newId); i++)
+      newId = `screen-${i}`;
+    const at = screens.findIndex((s) => s.id === id) + 1;
+    const entry: ScreenEntry = { id: newId, root: copy, history: [], historyIndex: -1 };
+    set({ screens: [...screens.slice(0, at), entry, ...screens.slice(at)] });
+    get().switchScreen(newId);
+    return newId;
+  },
+
+  moveScreen: (id, delta) => {
+    const { screens } = get();
+    const from = screens.findIndex((s) => s.id === id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= screens.length) return;
+    const next = [...screens];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    set({ screens: next });
+  },
+
+  loadProject: (loaded, activeId) => {
+    if (loaded.length === 0) return;
+    const entries: ScreenEntry[] = loaded.map((s) => ({
+      id: s.id,
+      root: s.root,
+      history: [],
+      historyIndex: -1,
+    }));
+    const active = entries.find((s) => s.id === activeId) ?? entries[0];
+    set({
+      screens: entries,
+      activeScreenId: active.id,
+      root: active.root,
+      components: flattenTree(active.root),
+      history: [],
+      historyIndex: -1,
+    });
+    get().saveHistory();
   },
 
   // Get component

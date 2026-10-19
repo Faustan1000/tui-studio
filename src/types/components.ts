@@ -45,6 +45,12 @@ export interface ComponentNode {
    */
   tag?: string;
 
+  /**
+   * Show this component only while a navigation element (Tabs, Menu or List on the same
+   * screen) has `item` selected. Lets every tab/menu entry have its own body.
+   */
+  showWhen?: { nav: string; item: number };
+
   // Metadata
   locked: boolean;
   hidden: boolean;

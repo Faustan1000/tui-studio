@@ -10,6 +10,14 @@ type CodeFormat = any;
 
 type ExportMode = 'preview' | 'text' | 'code';
 
+/** Trees of all screens, in order (formats that support several screens export all of them). */
+function allScreens() {
+  return useComponentStore
+    .getState()
+    .getScreenRoots()
+    .map((s) => s.root);
+}
+
 export function ExportPanel() {
   const componentStore = useComponentStore();
   const canvasStore = useCanvasStore();
@@ -24,7 +32,7 @@ export function ExportPanel() {
       if (codeFormat === 'html') {
         return exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height);
       }
-      return exportToCode(componentStore.root, codeFormat as CodeFormat);
+      return exportToCode(componentStore.root, codeFormat as CodeFormat, allScreens());
     }
     return exportToText(componentStore.root, {
       format: textFormat,
@@ -44,7 +52,7 @@ export function ExportPanel() {
       mode === 'code'
         ? codeFormat === 'html'
           ? exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height)
-          : exportToCode(componentStore.root, codeFormat as CodeFormat)
+          : exportToCode(componentStore.root, codeFormat as CodeFormat, allScreens())
         : exportToText(componentStore.root, {
             format: textFormat,
             width: canvasStore.width,
@@ -237,7 +245,7 @@ function CodeOutput({ format }: { format: string }) {
   const output =
     format === 'html'
       ? exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height)
-      : exportToCode(componentStore.root, format as CodeFormat);
+      : exportToCode(componentStore.root, format as CodeFormat, allScreens());
 
   return (
     <pre className="text-xs font-mono bg-secondary p-4 rounded overflow-auto border border-border">

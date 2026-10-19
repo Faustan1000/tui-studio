@@ -7,6 +7,7 @@
 import type { ComponentNode, ComponentType } from '../../../types';
 import { THEMES } from '../../../stores/themeStore';
 import { API_SPEC } from '../api/spec';
+import { bodiesOf, navActiveIndex } from '../../navBodies';
 
 interface Ctx {
   /** Collected CSS rules, in document order. */
@@ -29,6 +30,11 @@ interface Ctx {
   actions: string[];
   /** Components with a code name: they become attributes of the generated `Ui` class. */
   handles: { tag: string; cls: string; args: string }[];
+  /** Screen (or modal) that is being emitted: its key, and the root of its tree. */
+  owner: string;
+  root: ComponentNode;
+  /** Generated screen classes (module level, after the widget classes). */
+  screenClasses: string[];
 }
 
 type Emitter = (node: ComponentNode, indent: number, ctx: Ctx) => string;
@@ -154,29 +160,70 @@ const EVENT_API: Record<string, { name: string; value?: string }> = {
   'Tree.NodeSelected': { name: 'select', value: 'str(event.node.label)' },
 };
 
+/** Selected item of a navigation message, used to switch the bodies of that item. */
+const NAV_INDEX: Record<string, string> = {
+  'Tabs.TabActivated': 'int(event.tab.id.rsplit("__", 1)[-1])',
+  'OptionList.OptionHighlighted': 'event.option_index',
+  'ListView.Highlighted': 'event.list_view.index',
+};
+
 /**
  * Register a Textual message handler bound to one widget. For components with a code name
  * it forwards the interaction to the program (`ui.<tag>.on_<event>`); others stay stubs.
+ * `bodies` (a Python dict literal) makes the handler show the body of the selected item.
  */
 function addHandler(
   ctx: Ctx,
   node: ComponentNode,
   message: string,
   rawName: unknown,
-  fallback: string
+  fallback: string,
+  bodies?: string | null
 ) {
   const name = methodName(typeof rawName === 'string' && rawName ? rawName : fallback, ctx);
   const api = EVENT_API[message];
-  const body =
-    node.tag && api
-      ? `self.ui._emit(${pyStr(node.tag)}, ${pyStr(api.name)}${api.value ? ', ' + api.value : ''})`
-      : 'pass';
+  const lines: string[] = [];
+  if (bodies && NAV_INDEX[message]) {
+    lines.push(`self.show_bodies(${bodies}, ${NAV_INDEX[message]})`);
+  }
+  if (node.tag && api) {
+    lines.push(
+      `self.ui._emit(${pyStr(node.tag)}, ${pyStr(api.name)}${api.value ? ', ' + api.value : ''})`
+    );
+  }
+  if (lines.length === 0) lines.push('pass');
   ctx.handlers.push(
     `${IND}@on(${message}, "#${widgetId(node)}")\n` +
       `${IND}def ${name}(self, event: ${message}) -> None:\n` +
-      `${IND}${IND}${body}\n`
+      lines.map((l) => `${IND}${IND}${l}\n`).join('')
   );
   needImport(ctx, 'textual', 'on');
+}
+
+/** Widget that is shown/hidden to show/hide `node` (a toggle's label belongs to its group). */
+function bodyWidgetId(node: ComponentNode): string {
+  const id = widgetId(node);
+  return node.type === 'Toggle' && node.props.label ? `${id}__group` : id;
+}
+
+/**
+ * Bodies of a navigation element as a Python dict `{item: [widget ids]}`, or null when it has
+ * none. Bodies of items that are not selected at the start are hidden by CSS.
+ */
+function bodyGroups(nav: ComponentNode, ctx: Ctx): string | null {
+  const groups = bodiesOf(ctx.root, nav.id);
+  for (const [item, nodes] of groups) {
+    for (const body of nodes) {
+      if (item !== navActiveIndex(nav)) {
+        ctx.css.push(`#${bodyWidgetId(body)} {\n    display: none;\n}`);
+      }
+    }
+  }
+  if (groups.size === 0) return null;
+  const entries = [...groups.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([item, nodes]) => `${item}: [${nodes.map((n) => pyStr(bodyWidgetId(n))).join(', ')}]`);
+  return `{${entries.join(', ')}}`;
 }
 
 /** Record a Python import so only what the generated code uses is imported. */
@@ -655,6 +702,10 @@ const emitList: Emitter = (node, indent, ctx) => {
     items.length && selected >= 0 && selected < items.length ? `initial_index=${selected}, ` : '';
 
   addHandler(ctx, node, 'ListView.Selected', node.events.onSelect, 'on_list_selected');
+  const listBodies = bodyGroups(node, ctx);
+  if (listBodies) {
+    addHandler(ctx, node, 'ListView.Highlighted', undefined, 'on_list_highlighted', listBodies);
+  }
   if (!rows.length) return `${sp}yield ListView(id=${pyStr(id)})\n`;
   return `${sp}yield ListView(\n${rows.join('')}${sp}${IND}${args}id=${pyStr(id)},\n${sp})\n`;
 };
@@ -775,6 +826,17 @@ const emitMenu: Emitter = (node, indent, ctx) => {
   if (node.events.onSelect || node.tag) {
     addHandler(ctx, node, 'OptionList.OptionSelected', node.events.onSelect, 'on_menu_selected');
   }
+  const menuBodies = bodyGroups(node, ctx);
+  if (menuBodies) {
+    addHandler(
+      ctx,
+      node,
+      'OptionList.OptionHighlighted',
+      undefined,
+      'on_menu_highlighted',
+      menuBodies
+    );
+  }
   if (!options.length) return `${sp}yield OptionList(id=${pyStr(id)})\n`;
   return `${sp}yield OptionList(\n${options.join('')}${sp}${IND}id=${pyStr(id)},\n${sp})\n`;
 };
@@ -809,8 +871,9 @@ const emitTabs: Emitter = (node, indent, ctx) => {
     args.push(`active=${pyStr(`${id}__${index}`)}`);
   }
   args.push(`id=${pyStr(id)}`);
-  if (node.events.onChange || node.tag) {
-    addHandler(ctx, node, 'Tabs.TabActivated', node.events.onChange, 'on_tab_activated');
+  const tabBodies = bodyGroups(node, ctx);
+  if (node.events.onChange || node.tag || tabBodies) {
+    addHandler(ctx, node, 'Tabs.TabActivated', node.events.onChange, 'on_tab_activated', tabBodies);
   }
   return `${sp}yield Tabs(\n${rows.join('')}${sp}${IND}${args.join(', ')},\n${sp})\n`;
 };
@@ -872,16 +935,22 @@ const emitModal: Emitter = (node, _indent, ctx) => {
   if (padding && !decl.some((l) => l.startsWith('padding:'))) decl.push(`padding: ${padding};`);
   addRule(ctx, node, decl);
 
+  // The children belong to the modal: their state is synced when the modal is shown.
+  const modalKey = node.tag ?? `_modal_${number}`;
   const outerMount = ctx.mount;
+  const outerOwner = ctx.owner;
   ctx.mount = [];
+  ctx.owner = modalKey;
   const body = emitChildren(node, 3, ctx);
   const innerMount = ctx.mount;
   ctx.mount = outerMount;
+  ctx.owner = outerOwner;
 
-  needImport(ctx, 'textual.screen', 'ModalScreen');
+  needImport(ctx, 'ui_runtime', 'StudioModalScreen');
   needImport(ctx, 'textual.containers', widget);
   const lines = [
-    `class ${name}(ModalScreen):`,
+    `class ${name}(StudioModalScreen):`,
+    `${IND}KEY = ${pyStr(modalKey)}`,
     `${IND}BINDINGS = [("escape", "dismiss", "Close")]`,
     '',
     `${IND}def compose(self) -> ComposeResult:`,
@@ -1038,7 +1107,11 @@ function registerApi(node: ComponentNode, ctx: Ctx) {
   }
 
   const states = API_SPEC[node.type].states.map((s) => pyStr(s)).join(', ');
-  ctx.handles.push({ tag, cls, args: [`states=(${states},)`, ...kw].join(', ') });
+  ctx.handles.push({
+    tag,
+    cls,
+    args: [`states=(${states},)`, `owner=${pyStr(ctx.owner)}`, ...kw].join(', '),
+  });
   needImport(ctx, 'ui_runtime', cls);
 }
 
@@ -1061,7 +1134,8 @@ function emitNode(node: ComponentNode, indent: number, ctx: Ctx): string {
 
 // ── Screen / entry point ──────────────────────────────────────────────────────
 
-function screenRule(root: ComponentNode, ctx: Ctx): string {
+/** Textual CSS of a screen's own styles (the screen is a widget with id `key`). */
+function screenRule(root: ComponentNode, key: string, ctx: Ctx): string {
   const decl: string[] = [];
   const bg = cssColor(root.style.backgroundColor, ctx);
   const fg = cssColor(root.style.color, ctx);
@@ -1072,15 +1146,39 @@ function screenRule(root: ComponentNode, ctx: Ctx): string {
   if (border) decl.push(border);
   const padding = cssSpacing(root.layout.padding);
   if (padding) decl.push(`padding: ${padding};`);
-  return decl.length ? `Screen {\n${decl.map((l) => `    ${l}`).join('\n')}\n}` : '';
+  return decl.length ? `#${key} {\n${decl.map((l) => `    ${l}`).join('\n')}\n}` : '';
 }
 
-export function exportToTextual(root: ComponentNode): string {
+/** Python class name for a screen: "Home" -> HomeScreen, unique within the file. */
+function screenClassName(root: ComponentNode, index: number, used: Set<string>): string {
+  const source = root.tag || root.name;
+  const pascal = source
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join('');
+  // A bare "Screen" would shadow Textual's own class name.
+  const base = /^[A-Za-z]/.test(pascal) && pascal !== 'Screen' ? pascal : `Screen${index + 1}`;
+  let name = base.endsWith('Screen') ? base : `${base}Screen`;
+  for (let i = 2; used.has(name); i++) name = `${base}${i}Screen`;
+  used.add(name);
+  return name;
+}
+
+function paletteOf(root: ComponentNode): Record<string, string> {
   const themeName = (root.props.theme as keyof typeof THEMES) || 'default';
-  const palette = (THEMES[themeName] ?? THEMES.default) as unknown as Record<string, string>;
+  return (THEMES[themeName] ?? THEMES.default) as unknown as Record<string, string>;
+}
+
+/**
+ * Textual app for one or more screens. Every screen becomes a `Screen` class; the first one
+ * is shown at startup and `ui.<screen>.show()` switches between them.
+ */
+export function exportToTextual(input: ComponentNode | readonly ComponentNode[]): string {
+  const roots = (Array.isArray(input) ? input : [input]) as ComponentNode[];
   const ctx: Ctx = {
     css: [],
-    palette,
+    palette: paletteOf(roots[0]),
     handlers: [],
     imports: new Map(),
     mount: [],
@@ -1089,30 +1187,64 @@ export function exportToTextual(root: ComponentNode): string {
     bindings: [],
     actions: [],
     handles: [],
+    owner: '',
+    root: roots[0],
+    screenClasses: [],
   };
   needImport(ctx, 'textual.app', 'ComposeResult');
   needImport(ctx, 'ui_runtime', 'StudioApp');
   needImport(ctx, 'ui_runtime', 'StudioUi');
+  needImport(ctx, 'ui_runtime', 'StudioScreen');
   needImport(ctx, 'ui_runtime', 'LogPanel');
 
-  const rootRule = screenRule(root, ctx);
-  const body = emitChildren(root, 2, ctx);
-  const css = [rootRule, ...ctx.css].filter(Boolean).join('\n\n');
+  // One class per screen. Widgets, CSS and handlers are shared by the whole app.
+  const usedClassNames = new Set<string>();
+  const screens: { key: string; cls: string; tag?: string }[] = [];
+  roots.forEach((root, index) => {
+    const key = root.tag ?? `_screen_${index + 1}`;
+    const cls = screenClassName(root, index, usedClassNames);
+    screens.push({ key, cls, tag: root.tag });
+
+    ctx.palette = paletteOf(root);
+    ctx.root = root;
+    ctx.owner = key;
+    const rule = screenRule(root, key, ctx);
+    if (rule) ctx.css.push(rule);
+
+    // Tables, trees, ... are filled when this screen is mounted, not when the app starts.
+    const outerMount = ctx.mount;
+    ctx.mount = [];
+    const body = emitChildren(root, 2, ctx);
+    const mountLines = ctx.mount;
+    ctx.mount = outerMount;
+    if (!body) needImport(ctx, 'textual.widgets', 'Static');
+
+    let code =
+      `class ${cls}(StudioScreen):\n` +
+      `${IND}KEY = ${pyStr(key)}\n\n` +
+      `${IND}def compose(self) -> ComposeResult:\n` +
+      (body || `${IND}${IND}yield Static("Empty screen")\n`) +
+      `${IND}${IND}yield LogPanel(id="_ui_log")\n`;
+    if (mountLines.length) {
+      code += `\n${IND}def on_mount(self) -> None:\n${mountLines.map((l) => `${IND}${IND}${l}\n`).join('')}`;
+    }
+    ctx.screenClasses.push(code);
+  });
+
+  // A screen with a code name can be shown by the program: ui.<tag>.show()
+  const screenHandles = screens.filter((s) => s.tag);
+  if (screenHandles.length) needImport(ctx, 'ui_runtime', 'ScreenHandle');
+
+  const css = ctx.css.filter(Boolean).join('\n\n');
   const indentedCss = css
     .split('\n')
     .map((l) => (l ? IND + l : l))
     .join('\n');
 
   const handlers = ctx.handlers.length ? '\n' + ctx.handlers.join('\n') : '';
-  const mount = ctx.mount.length
-    ? `\n${IND}def on_mount(self) -> None:\n${ctx.mount.map((l) => `${IND}${IND}${l}\n`).join('')}`
-    : '';
-  const compose =
-    (body || `${IND}${IND}yield Static("Empty screen")\n`) +
-    `${IND}${IND}yield LogPanel(id="_ui_log")\n`;
-  if (!body) needImport(ctx, 'textual.widgets', 'Static');
-
-  const classes = ctx.classes.map((c) => c.trimEnd() + '\n\n\n').join('');
+  const classes = [...ctx.classes, ...ctx.screenClasses]
+    .map((c) => c.trimEnd() + '\n\n\n')
+    .join('');
   const bindings = ctx.bindings.length
     ? `\n${IND}BINDINGS = [\n${ctx.bindings
         .map(
@@ -1123,16 +1255,23 @@ export function exportToTextual(root: ComponentNode): string {
     : '';
   const actions = ctx.actions.map((a) => '\n' + a).join('');
 
-  const attrs = ctx.handles.map((h) => `${IND}${h.tag}: ${h.cls}\n`).join('');
-  const inits = ctx.handles
-    .map((h) => `${IND}${IND}self.${h.tag} = ${h.cls}(self, ${pyStr(h.tag)}, ${h.args})\n`)
-    .join('');
+  const attrs =
+    screenHandles.map((s) => `${IND}${s.tag}: ScreenHandle\n`).join('') +
+    ctx.handles.map((h) => `${IND}${h.tag}: ${h.cls}\n`).join('');
+  const inits =
+    screenHandles
+      .map((s) => `${IND}${IND}self.${s.tag} = ScreenHandle(self, ${pyStr(s.tag)})\n`)
+      .join('') +
+    ctx.handles
+      .map((h) => `${IND}${IND}self.${h.tag} = ${h.cls}(self, ${pyStr(h.tag)}, ${h.args})\n`)
+      .join('');
+  const screenMap = screens.map((s) => `${pyStr(s.key)}: ${s.cls}`).join(', ');
   const uiClass =
     `class Ui(StudioUi):\n` +
-    `${IND}"""Your program's access to the components that have a code name."""\n\n` +
+    `${IND}"""Your program's access to the screens and components that have a code name."""\n\n` +
     `${attrs}${attrs ? '\n' : ''}` +
     `${IND}def __init__(self) -> None:\n` +
-    `${IND}${IND}super().__init__(MyApp)\n` +
+    `${IND}${IND}super().__init__(MyApp, screens={${screenMap}}, first=${pyStr(screens[0].key)})\n` +
     inits;
 
   return `${renderImports(ctx)}
@@ -1142,9 +1281,7 @@ ${classes}class MyApp(StudioApp):
     CSS = """
 ${indentedCss}
     """
-${bindings}
-    def compose(self) -> ComposeResult:
-${compose}${mount}${handlers}${actions}
+${bindings}${handlers}${actions}
 
 ${uiClass}
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Package, Layers, AlertTriangle } from 'lucide-react';
 import { ComponentPalette } from '../palette/ComponentPalette';
 import { ComponentTree } from './ComponentTree';
+import { ScreenList } from './ScreenList';
 import { useComponentStore, useSelectionStore } from '../../stores';
 import { layoutEngine } from '../../utils/layout';
 
@@ -50,6 +51,7 @@ export function LeftSidebar() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {activeTab === 'components' && <ComponentPalette />}
+        {activeTab === 'layers' && <ScreenList />}
         {activeTab === 'layers' && <ComponentTree warningNodeIds={new Set(nodesWithWarnings)} />}
       </div>
 

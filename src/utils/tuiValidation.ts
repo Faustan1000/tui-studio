@@ -64,13 +64,31 @@ function validateNode(
   if (typeof raw.id !== 'string' || raw.id.length === 0 || raw.id.length > 200)
     throw new Error('Component has an invalid id');
   if (state.ids.has(raw.id)) throw new Error(`Duplicate component id "${raw.id}"`);
-  state.ids.add(raw.id);
+  // Every screen's root is called "root"; all other ids must be unique across screens.
+  if (depth > 0) {
+    if (raw.id === 'root') throw new Error('The id "root" is reserved for screens');
+    state.ids.add(raw.id);
+  }
 
   if (raw.tag !== undefined) {
     if (typeof raw.tag !== 'string') throw new Error(`Component "${raw.id}": tag must be text`);
     const problem = validateTag(raw.tag, state.tags);
     if (problem) throw new Error(`Component "${raw.id}": invalid code name (${problem})`);
     if (raw.tag) state.tags.add(raw.tag);
+  }
+
+  if (raw.showWhen !== undefined) {
+    const sw = raw.showWhen;
+    if (
+      !isPlainObject(sw) ||
+      typeof sw.nav !== 'string' ||
+      sw.nav.length === 0 ||
+      sw.nav.length > 200 ||
+      !Number.isInteger(sw.item) ||
+      (sw.item as number) < 0 ||
+      (sw.item as number) > 1000
+    )
+      throw new Error(`Component "${raw.id}": invalid "visible when" setting`);
   }
 
   if (typeof raw.type !== 'string' || !COMPONENT_TYPES.has(raw.type))
@@ -93,8 +111,11 @@ function validateNode(
   raw.children.forEach((c) => validateNode(c, depth + 1, state));
 }
 
+export const MAX_SCREENS = 50;
+
 export interface ValidTuiFile {
-  tree: ComponentNode;
+  screens: { id: string; tree: ComponentNode }[];
+  activeId?: string;
   theme?: string;
 }
 
@@ -109,9 +130,38 @@ export function parseTuiFile(text: string, validThemes: readonly string[]): Vali
       e instanceof Error && e.message.includes('deeply') ? e.message : 'Not valid JSON'
     );
   }
-  if (!isPlainObject(data) || data.version !== '1') throw new Error('Unsupported file version');
+  if (!isPlainObject(data)) throw new Error('Unsupported file version');
 
-  validateNode(data.tree, 0, { count: 0, ids: new Set(), tags: new Set() });
+  // Version 1 files hold a single tree, version 2 a list of screens.
+  let rawScreens: unknown[];
+  if (data.version === '1') {
+    rawScreens = [{ id: 'screen-1', tree: data.tree }];
+  } else if (data.version === '2') {
+    if (!Array.isArray(data.screens) || data.screens.length === 0)
+      throw new Error('File has no screens');
+    if (data.screens.length > MAX_SCREENS) throw new Error(`More than ${MAX_SCREENS} screens`);
+    rawScreens = data.screens;
+  } else {
+    throw new Error('Unsupported file version');
+  }
+
+  // Ids and code names are shared across screens (the exported Ui covers all of them).
+  const state = { count: 0, ids: new Set<string>(), tags: new Set<string>() };
+  const screenIds = new Set<string>();
+  const screens: { id: string; tree: ComponentNode }[] = rawScreens.map((entry) => {
+    if (!isPlainObject(entry) || typeof entry.id !== 'string' || entry.id.length === 0)
+      throw new Error('Screen has an invalid id');
+    if (entry.id.length > 100) throw new Error('Screen has an invalid id');
+    if (screenIds.has(entry.id)) throw new Error(`Duplicate screen id "${entry.id}"`);
+    screenIds.add(entry.id);
+    validateNode(entry.tree, 0, state);
+    const tree = entry.tree as ComponentNode;
+    if (tree.type !== 'Screen') throw new Error('A screen must start with a Screen component');
+    tree.locked ??= false;
+    tree.hidden ??= false;
+    tree.collapsed ??= false;
+    return { id: entry.id, tree };
+  });
 
   let theme: string | undefined;
   if (isPlainObject(data.meta) && data.meta.theme !== undefined) {
@@ -119,9 +169,9 @@ export function parseTuiFile(text: string, validThemes: readonly string[]): Vali
       throw new Error('Unknown theme');
     theme = data.meta.theme;
   }
-  const tree = data.tree as ComponentNode;
-  tree.locked ??= false;
-  tree.hidden ??= false;
-  tree.collapsed ??= false;
-  return { tree, theme };
+  const activeId =
+    isPlainObject(data.meta) && typeof data.meta.activeScreen === 'string'
+      ? data.meta.activeScreen
+      : undefined;
+  return { screens, activeId, theme };
 }

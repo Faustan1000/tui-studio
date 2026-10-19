@@ -7,17 +7,24 @@ import { useSelectionStore } from '../stores/selectionStore';
 
 /** Build the JSON payload + suggested filename from current store state. */
 export function buildTuiData(): { json: string; suggestedName: string } | null {
-  const root = useComponentStore.getState().root;
-  if (!root) return null;
+  const store = useComponentStore.getState();
+  const screens = store.getScreenRoots();
+  if (screens.length === 0) return null;
+  const first = screens[0].root;
   const theme = useThemeStore.getState().currentTheme;
   const data = {
-    version: '1',
-    meta: { name: root.name, theme, savedAt: new Date().toISOString() },
-    tree: root,
+    version: '2',
+    meta: {
+      name: first.name,
+      theme,
+      activeScreen: store.activeScreenId,
+      savedAt: new Date().toISOString(),
+    },
+    screens: screens.map((s) => ({ id: s.id, tree: s.root })),
   };
   return {
     json: JSON.stringify(data, null, 2),
-    suggestedName: `${root.name.toLowerCase().replace(/\s+/g, '-')}.tui`,
+    suggestedName: `${first.name.toLowerCase().replace(/\s+/g, '-')}.tui`,
   };
 }
 
@@ -58,9 +65,15 @@ export async function saveTuiData(json: string, filename: string): Promise<void>
 export async function openTuiFile(): Promise<void> {
   const load = (text: string) => {
     try {
-      const { tree, theme } = parseTuiFile(text, Object.keys(THEMES));
-      useComponentStore.getState().setRoot(tree);
-      if (theme) useThemeStore.getState().setTheme(theme as Parameters<ReturnType<typeof useThemeStore.getState>['setTheme']>[0]);
+      const { screens, activeId, theme } = parseTuiFile(text, Object.keys(THEMES));
+      useComponentStore.getState().loadProject(
+        screens.map((s) => ({ id: s.id, root: s.tree })),
+        activeId
+      );
+      if (theme)
+        useThemeStore
+          .getState()
+          .setTheme(theme as Parameters<ReturnType<typeof useThemeStore.getState>['setTheme']>[0]);
       useSelectionStore.getState().clearSelection();
     } catch (err) {
       alert(`Invalid .tui file: ${err instanceof Error ? err.message : 'unknown error'}`);
