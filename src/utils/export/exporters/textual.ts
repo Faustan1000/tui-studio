@@ -8,6 +8,8 @@ import type { ComponentNode, ComponentType } from '../../../types';
 import { THEMES } from '../../../stores/themeStore';
 import { API_SPEC } from '../api/spec';
 import { bodiesOf, navActiveIndex } from '../../navBodies';
+import { LayoutEngine } from '../../layout/engine';
+import type { ComputedLayout } from '../../layout/types';
 
 interface Ctx {
   /** Collected CSS rules, in document order. */
@@ -37,6 +39,11 @@ interface Ctx {
   screenClasses: string[];
   /** Project screen id -> key of its generated Screen class (its code name). */
   screenKeys: Map<string, string>;
+  /**
+   * Positions the editor's layout engine computes for the screen being exported. Used where
+   * Textual has no equivalent (wrapping, aligning children of different sizes).
+   */
+  layoutOf: (id: string) => ComputedLayout | undefined;
 }
 
 /** A screen of the project: its id (used by links) and the root of its component tree. */
@@ -336,7 +343,7 @@ function hasFreeSpace(node: ComponentNode, ctx: Ctx, horizontal: boolean): boole
 
 /** "space-between" / "space-around" need free space; the editor ignores them otherwise. */
 function spreadMode(node: ComponentNode, ctx: Ctx): 'between' | 'around' | null {
-  if (node.layout.type !== 'flexbox') return null;
+  if (node.layout.type !== 'flexbox' || isWrap(node)) return null;
   const { horizontal, justify } = flexPlan(node);
   if (justify !== 'space-between' && justify !== 'space-around') return null;
   if (!hasFreeSpace(node, ctx, horizontal)) return null;
@@ -349,15 +356,49 @@ function spreadMode(node: ComponentNode, ctx: Ctx): 'between' | 'around' | null 
  * (which is only exact when the children are equally large).
  */
 function alignByMargin(node: ComponentNode, ctx: Ctx): boolean {
-  if (node.layout.type !== 'flexbox' || node === ctx.root) return false;
+  if (node.layout.type !== 'flexbox' || isWrap(node) || node === ctx.root) return false;
   const { horizontal, align } = flexPlan(node);
   if (align !== 'center' && align !== 'end') return false;
-  const prop = horizontal ? 'height' : 'width';
-  if (typeof node.props[prop] !== 'number') return false;
-  const kids = node.children.filter((c) => c.type !== 'Modal');
-  return (
-    kids.length > 0 && kids.every((c) => c.type !== 'Radio' && typeof c.props[prop] === 'number')
+  // A container that follows the terminal size cannot be placed from the editor's size.
+  const size = node.props[horizontal ? 'height' : 'width'];
+  if (typeof size !== 'number' && size !== 'auto' && size !== undefined) return false;
+  if (!ctx.layoutOf(node.id)) return false;
+  // Bodies of other tabs have no position; they are hidden anyway.
+  const kids = node.children.filter(
+    (c) => c.type !== 'Modal' && !(c.showWhen && !ctx.layoutOf(c.id))
   );
+  return kids.length > 0 && kids.every((c) => c.type !== 'Radio' && ctx.layoutOf(c.id));
+}
+
+/** A flexbox that wraps: Textual cannot, so its children are placed from the editor's layout. */
+function isWrap(node: ComponentNode): boolean {
+  return node.layout.type === 'flexbox' && node.layout.wrap === true;
+}
+
+/**
+ * Place a child exactly where the editor's layout engine put it, inside its container.
+ * Offsets count from inside the border and padding of the container.
+ */
+function snapshotRule(
+  child: ComponentNode,
+  parent: ComponentNode,
+  widgetIdOfChild: string,
+  ctx: Ctx
+) {
+  const lk = ctx.layoutOf(child.id);
+  const lc = ctx.layoutOf(parent.id);
+  if (!lk || !lc) return;
+  const pad = typeof parent.layout.padding === 'number' ? parent.layout.padding : 0;
+  const border = parent.style.border ? 1 : 0;
+  const x = Math.floor(lk.x - lc.x - pad - border);
+  const y = Math.floor(lk.y - lc.y - pad - border);
+  const lines = [
+    'position: absolute;',
+    `offset: ${x} ${y};`,
+    `width: ${Math.round(lk.width)};`,
+    `height: ${Math.round(lk.height)};`,
+  ];
+  ctx.css.push(`#${widgetIdOfChild} {\n${lines.map((l) => `    ${l}`).join('\n')}\n}`);
 }
 
 /** Selector id of the widget that holds a node's children (a screen is a widget with its key). */
@@ -372,6 +413,7 @@ function containerId(node: ComponentNode, ctx: Ctx): string {
  */
 function flexDeclarations(node: ComponentNode, ctx: Ctx): string[] {
   if (node.layout.type !== 'flexbox' && node.layout.type !== 'none') return [];
+  if (isWrap(node)) return []; // the children are placed one by one (see snapshotRule)
   const { horizontal, gap, justify, align } = flexPlan(node);
   const selector = `#${containerId(node, ctx)}`;
   const decl: string[] = [];
@@ -466,24 +508,34 @@ function emitChildren(node: ComponentNode, indent: number, ctx: Ctx): string {
     shown.forEach((u) => absoluteRule(u.node, node, u.top, ctx));
   }
 
+  if (isWrap(node)) {
+    shown.forEach((u) => snapshotRule(u.node, node, u.top, ctx));
+  }
+
   if (alignByMargin(node, ctx)) {
-    // Place each child inside the container: offsets count from the content area (inside the
-    // border), the editor's from the outer edge minus the padding.
-    const prop = plan.horizontal ? 'height' : 'width';
+    // Align every child by its own margin, from the position the editor gives it. Offsets
+    // count from inside the container's border and padding.
+    const lc = ctx.layoutOf(node.id)!;
     const pad = typeof node.layout.padding === 'number' ? node.layout.padding : 0;
     const border = node.style.border ? 1 : 0;
-    const inner = (node.props[prop] as number) - 2 * pad;
+    const crossProp = plan.horizontal ? 'height' : 'width';
     // Textual keeps one margin per widget (a second rule replaces it), so the gap to the
     // next child has to be part of the same declaration.
     const gap = spreadMode(node, ctx) ? 0 : plan.gap;
-    shown.forEach((u, i) => {
-      const size = u.node.props[prop] as number;
-      const offset = plan.align === 'center' ? Math.floor((inner - size) / 2) : inner - size;
-      const align = Math.max(0, offset - border);
-      const after = i < shown.length - 1 ? gap : 0;
+    const placed = shown.filter((u) => ctx.layoutOf(u.node.id));
+    placed.forEach((u, i) => {
+      const lk = ctx.layoutOf(u.node.id)!;
+      const offset = plan.horizontal ? lk.y - lc.y : lk.x - lc.x;
+      const align = Math.max(0, Math.floor(offset - pad - border));
+      const after = i < placed.length - 1 ? gap : 0;
       // margin: top right bottom left
       const margin = plan.horizontal ? `${align} ${after} 0 0` : `0 0 ${after} ${align}`;
-      ctx.css.push(`#${u.top} {\n    margin: ${margin};\n}`);
+      const lines = [`margin: ${margin};`];
+      // Without a fixed size the child must have the size the editor computed for it.
+      if (typeof u.node.props[crossProp] !== 'number') {
+        lines.push(`${crossProp}: ${Math.round(plan.horizontal ? lk.height : lk.width)};`);
+      }
+      ctx.css.push(`#${u.top} {\n${lines.map((l) => `    ${l}`).join('\n')}\n}`);
     });
   }
 
@@ -525,6 +577,17 @@ const emitBox: Emitter = (node, indent, ctx) => {
   if (!cssSize(node.props.width)) decl.unshift('width: auto;');
   if (!cssSize(node.props.height)) decl.unshift('height: auto;');
   decl.push(...flexDeclarations(node, ctx));
+  const own = isWrap(node) ? ctx.layoutOf(node.id) : undefined;
+  if (own) {
+    // All children are placed absolutely, so the container needs the size the editor gives it.
+    for (const [prop, value] of [
+      ['width', own.width],
+      ['height', own.height],
+    ] as const) {
+      const at = decl.indexOf(`${prop}: auto;`);
+      if (at >= 0) decl.splice(at, 1, `${prop}: ${Math.round(value)};`);
+    }
+  }
   addRule(ctx, node, decl);
 
   const body = emitChildren(node, indent + 1, ctx);
@@ -1470,6 +1533,7 @@ export function exportToTextual(input: ComponentNode | readonly ExportScreen[]):
     screenKeys: new Map(given.map((s, i) => [s.id, s.root.tag ?? `_screen_${i + 1}`])),
     css: [],
     palette: paletteOf(roots[0]),
+    layoutOf: () => undefined,
     handlers: [],
     imports: new Map(),
     mount: [],
@@ -1499,6 +1563,11 @@ export function exportToTextual(input: ComponentNode | readonly ExportScreen[]):
     ctx.palette = paletteOf(root);
     ctx.root = root;
     ctx.owner = key;
+    // The editor's own layout engine (a separate instance, so the canvas is not disturbed).
+    const engine = new LayoutEngine();
+    const size = (v: unknown, fallback: number) => (typeof v === 'number' ? v : fallback);
+    engine.calculateLayout(root, size(root.props.width, 80), size(root.props.height, 24), false);
+    ctx.layoutOf = (id) => engine.getLayout(id);
     const rule = screenRule(root, key, ctx);
     if (rule) ctx.css.push(rule);
 
