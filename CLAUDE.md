@@ -13,9 +13,12 @@ npm run dev       # Start Vite dev server with hot reload
 npm run build     # TypeScript compile + Vite production build (tsc -b && vite build)
 npm run lint      # ESLint
 npm run preview   # Preview production build locally
+npm test          # Vitest: unit, exporter and (if Python + Textual are installed) real-Textual tests
 ```
 
-No test runner is configured.
+Tests live in `tests/` (fixtures in `tests/fixtures`, Python scripts in `tests/python`). Set
+`TUISTUDIO_PYTHON` to an interpreter that has `textual` installed to run the real-Textual suites;
+without it they are skipped.
 
 ## Architecture
 
@@ -48,8 +51,14 @@ Defines `COMPONENT_LIBRARY`: 20+ TUI component types (Screen, Box, Button, TextI
 
 ### Export / Code Generation (`src/utils/export/`)
 
-- `codeExporter.ts` — Multi-framework code generation (Ink, BubbleTea, Blessed, Textual, OpenTUI, Tview).
-- `textExporter.ts` — Plain text/ASCII export.
+See `docs/EXPORT_ADAPTERS.md`. The design is resolved once into an IR (`ir.ts`: defaults, colours,
+visibility, the editor's own layout positions) and handed to one adapter per framework
+(`exporters/<framework>.ts`, registered in `exporters/index.ts`).
+
+- `codeExporter.ts` — `exportToFiles(root, format, screens)`: dispatches to the adapter registry.
+- `ir.ts`, `lang.ts`, `adapter.ts` — shared IR, string escaping/`CodeWriter`, adapter interface.
+- `exporters/` — Ink, OpenTUI, Blessed, Bubble Tea, tview, Ratatui, Textual (+ `api/` runtime for Textual).
+- `textExporter.ts` — Plain text/ASCII/HTML export.
 
 ### Key Types (`src/types/`)
 
@@ -77,6 +86,6 @@ Defines `COMPONENT_LIBRARY`: 20+ TUI component types (Screen, Box, Button, TextI
 
 ## Tech Stack
 
-- React 19, TypeScript 5.8, Vite 7
-- Zustand 5 (state), Tailwind CSS 3 (editor UI styling)
+- React 19, TypeScript 5.8, Vite 7, Vitest
+- Zustand 5 (state), Tailwind CSS 4 (editor UI styling)
 - Lucide React (icons), react-router-dom 7

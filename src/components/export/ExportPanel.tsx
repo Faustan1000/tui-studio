@@ -5,15 +5,11 @@ import { Download, Copy, Eye } from 'lucide-react';
 import { useComponentStore, useCanvasStore } from '../../stores';
 import {
   exportToText,
-  exportToCode,
   exportToFiles,
   exportToHtmlFile,
   ansiToHtml,
 } from '../../utils/export';
 import { saveToDownloadFolder } from '../../utils/downloadManager';
-// ExportFormat is typed as an interface but used as a string in the codebase
-type CodeFormat = any;
-
 type ExportMode = 'preview' | 'text' | 'code';
 
 /** All screens, in order (formats that support several screens export all of them). */
@@ -26,24 +22,16 @@ interface OutFile {
   content: string;
 }
 
-/** The files a code export consists of. Most formats are one file; Textual also needs its runtime. */
+/** The files a code export consists of (entry point plus runtime/manifest where the framework needs them). */
 function getCodeFiles(format: string, width: number, height: number): OutFile[] {
   const root = useComponentStore.getState().root;
   if (format === 'html') {
     return [{ name: 'tui-design.html', content: exportToHtmlFile(root, width, height) }];
   }
-  if (format === 'textual') {
-    return exportToFiles(root, 'textual', allScreens()).map((f) => ({
-      name: f.path,
-      content: f.content,
-    }));
-  }
-  return [
-    {
-      name: `tui-design${getCodeExtension(format)}`,
-      content: exportToCode(root, format as CodeFormat, allScreens()),
-    },
-  ];
+  return exportToFiles(root, format, allScreens()).map((f) => ({
+    name: f.path,
+    content: f.content,
+  }));
 }
 
 export function ExportPanel() {
@@ -190,6 +178,7 @@ export function ExportPanel() {
               <option value="textual">Textual (Python)</option>
               <option value="html">HTML + CSS</option>
               <option value="ratatui">Ratatui (Rust)</option>
+              <option value="tview">tview (Go)</option>
             </select>
           </div>
         )}
@@ -313,22 +302,3 @@ function CodeOutput({ content }: { content: string }) {
   );
 }
 
-function getCodeExtension(format: string): string {
-  switch (format) {
-    case 'opentui':
-    case 'ink':
-      return '.tsx';
-    case 'bubbletea':
-      return '.go';
-    case 'blessed':
-      return '.js';
-    case 'textual':
-      return '.py';
-    case 'html':
-      return '.html';
-    case 'ratatui':
-      return '.rs';
-    default:
-      return '.txt';
-  }
-}

@@ -2,6 +2,27 @@
 
 All notable changes to TUIStudio are documented here.
 
+## [1.0.0] - Unreleased
+
+### Added
+
+- **Export on a shared IR** — `src/utils/export/ir.ts` resolves defaults, colours, visibility and the editor's own layout once; every framework is a small adapter (`exporters/`). See `docs/EXPORT_ADAPTERS.md`.
+- **Exporters** for Ink, OpenTUI, Blessed, Bubble Tea, tview (new) and Ratatui, each producing a runnable project (entry point plus `package.json` / `go.mod` / `Cargo.toml`).
+- **Textual** — program API (thread, states, events, error dialog, log), multiple screens, screen links, per-item bodies for tabs/menus/lists, layout fidelity (gap, justify, align, wrap, grid, absolute).
+- **Tests** — `npm test` (Vitest): unit tests, a conformance suite for all exporters, per-framework output tests and, with Python + Textual installed, tests against real Textual.
+- **Roadmap** — `ROADMAP.md`.
+
+### Fixed
+
+- Textual export produced invalid Python for designs nested more than 20 levels deep.
+- Code names that are keywords in Go, Rust or JavaScript (`func`, `type`, `fn`, ...) get a trailing underscore in those exports.
+
+### Security
+
+- Dev dependency Vitest updated to 5.x (no known vulnerabilities in `npm audit`).
+
+---
+
 ## [0.3.6] - 2026-02-22
 
 ### Added

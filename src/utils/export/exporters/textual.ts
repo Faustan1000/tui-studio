@@ -22,6 +22,12 @@ interface Ctx {
   imports: Map<string, Set<string>>;
   /** Statements for the generated on_mount method (widget state set after mounting). */
   mount: string[];
+  /** Nesting depth of the `with` blocks being written (Python allows 20 per function). */
+  depth: number;
+  /** Helper compose methods for deep subtrees, written into the class being built. */
+  parts: string[];
+  /** Counter for the names of those helper methods (never reset, so names stay unique). */
+  partSeq: number;
   /** Generated widget subclasses (module level, before the App class). */
   classes: string[];
   /** Dedupe key -> generated class name. */
@@ -563,6 +569,30 @@ function emitChildren(node: ComponentNode, indent: number, ctx: Ctx): string {
   return out;
 }
 
+/** Python allows 20 nested blocks per function; deeper subtrees move into their own method. */
+const MAX_NESTING = 12;
+
+/** Children of a container, written inside its `with` block (`indent` = the block's indent). */
+function nestedBody(node: ComponentNode, indent: number, ctx: Ctx): string {
+  const sp = IND.repeat(indent + 1);
+  if (ctx.depth < MAX_NESTING) {
+    ctx.depth++;
+    const body = emitChildren(node, indent + 1, ctx);
+    ctx.depth--;
+    return body || `${sp}pass\n`;
+  }
+  const name = `_part_${++ctx.partSeq}`;
+  const outer = ctx.depth;
+  ctx.depth = 0;
+  const inner = emitChildren(node, 2, ctx);
+  ctx.depth = outer;
+  ctx.parts.push(
+    `${IND}def ${name}(self) -> ComposeResult:\n` +
+      (inner || `${IND}${IND}return\n${IND}${IND}yield\n`)
+  );
+  return `${sp}yield from self.${name}()\n`;
+}
+
 /** Container used for Box (and as the generic container fallback). */
 const emitBox: Emitter = (node, indent, ctx) => {
   // A box laid out as a grid is a Textual grid.
@@ -590,8 +620,8 @@ const emitBox: Emitter = (node, indent, ctx) => {
   }
   addRule(ctx, node, decl);
 
-  const body = emitChildren(node, indent + 1, ctx);
-  return `${sp}with ${widget}(id=${pyStr(widgetId(node))}):\n${body || `${sp}${IND}pass\n`}`;
+  const body = nestedBody(node, indent, ctx);
+  return `${sp}with ${widget}(id=${pyStr(widgetId(node))}):\n${body}`;
 };
 
 /** Text label. Static fills the width by default, so size to content unless set. */
@@ -1249,8 +1279,8 @@ const emitGrid: Emitter = (node, indent, ctx) => {
   addRule(ctx, node, decl);
 
   needImport(ctx, 'textual.containers', 'Grid');
-  const body = emitChildren(node, indent + 1, ctx);
-  return `${sp}with Grid(id=${pyStr(widgetId(node))}):\n${body || `${sp}${IND}pass\n`}`;
+  const body = nestedBody(node, indent, ctx);
+  return `${sp}with Grid(id=${pyStr(widgetId(node))}):\n${body}`;
 };
 
 /**
@@ -1282,11 +1312,18 @@ const emitModal: Emitter = (node, _indent, ctx) => {
   const modalKey = node.tag ?? `_modal_${number}`;
   const outerMount = ctx.mount;
   const outerOwner = ctx.owner;
+  const outerParts = ctx.parts;
+  const outerDepth = ctx.depth;
   ctx.mount = [];
+  ctx.parts = [];
+  ctx.depth = 1;
   ctx.owner = modalKey;
   const body = emitChildren(node, 3, ctx);
   const innerMount = ctx.mount;
+  const modalParts = ctx.parts;
   ctx.mount = outerMount;
+  ctx.parts = outerParts;
+  ctx.depth = outerDepth;
   ctx.owner = outerOwner;
 
   needImport(ctx, 'ui_runtime', 'StudioModalScreen');
@@ -1312,6 +1349,7 @@ const emitModal: Emitter = (node, _indent, ctx) => {
   if (innerMount.length) {
     code += `\n${IND}def on_mount(self) -> None:\n${innerMount.map((l) => `${IND}${IND}${l}\n`).join('')}`;
   }
+  for (const part of modalParts) code += `\n${part}`;
   ctx.classes.push(code);
   if (node.tag) ctx.classNames.set(`modal:${node.tag}`, name);
 
@@ -1537,6 +1575,9 @@ export function exportToTextual(input: ComponentNode | readonly ExportScreen[]):
     handlers: [],
     imports: new Map(),
     mount: [],
+    depth: 0,
+    parts: [],
+    partSeq: 0,
     classes: [],
     classNames: new Map(),
     bindings: [],
@@ -1574,8 +1615,11 @@ export function exportToTextual(input: ComponentNode | readonly ExportScreen[]):
     // Tables, trees, ... are filled when this screen is mounted, not when the app starts.
     const outerMount = ctx.mount;
     ctx.mount = [];
+    ctx.parts = [];
+    ctx.depth = 0;
     const body = emitChildren(root, 2, ctx);
     const mountLines = ctx.mount;
+    const screenParts = ctx.parts;
     ctx.mount = outerMount;
     if (!body) needImport(ctx, 'textual.widgets', 'Static');
 
@@ -1589,6 +1633,7 @@ export function exportToTextual(input: ComponentNode | readonly ExportScreen[]):
     if (mountLines.length) {
       code += `\n${IND}def on_mount(self) -> None:\n${mountLines.map((l) => `${IND}${IND}${l}\n`).join('')}`;
     }
+    for (const part of screenParts) code += `\n${part}`;
     ctx.screenClasses.push(code);
   });
 
