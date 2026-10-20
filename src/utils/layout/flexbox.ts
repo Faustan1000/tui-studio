@@ -53,11 +53,16 @@ export function calculateFlexboxLayout(
     // Calculate sizes for items in this line
     const sizes = resolveFlexItemSizes(line.items, mainSize, gap, isRow);
 
-    // Calculate cross size for this line
-    const lineCrossSize = line.items.reduce((max, item) => {
+    // Calculate cross size for this line. Like in CSS, the only line of a container that does
+    // not wrap is as large as the container itself, so `align` aligns within the container
+    // (not just within its largest child).
+    const largestItem = line.items.reduce((max, item) => {
       const size = isRow ? resolveHeight(item) : resolveWidth(item);
       return Math.max(max, size);
     }, 0);
+    const lineCrossSize = wrap
+      ? largestItem
+      : Math.max(largestItem, isRow ? contentHeight : contentWidth);
 
     // Apply justify-content
     const totalMainSize = sizes.reduce((sum, size) => sum + size, 0);

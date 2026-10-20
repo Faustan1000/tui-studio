@@ -2,7 +2,7 @@
 
 import type { ComponentNode } from '../../types';
 import { exportToRatatui } from './exporters/ratatui';
-import { exportToTextual } from './exporters/textual';
+import { exportToTextual, type ExportScreen } from './exporters/textual';
 import { TEXTUAL_RUNTIME_FILENAME, TEXTUAL_RUNTIME_SOURCE } from './api/textualRuntime';
 
 export interface ExportFile {
@@ -17,7 +17,7 @@ export interface ExportFile {
 export function exportToFiles(
   root: ComponentNode | null,
   format: string,
-  screens?: readonly ComponentNode[]
+  screens?: readonly ExportScreen[]
 ): ExportFile[] {
   if (!root) return [];
   if (format === 'textual') {
@@ -35,7 +35,7 @@ export function exportToFiles(
 export function exportToCode(
   root: ComponentNode | null,
   format: string,
-  screens?: readonly ComponentNode[]
+  screens?: readonly ExportScreen[]
 ): string {
   if (!root) return '';
 

@@ -51,6 +51,9 @@ export interface ComponentNode {
    */
   showWhen?: { nav: string; item: number };
 
+  /** Button: id of the project screen that opens when it is pressed. */
+  opensScreen?: string;
+
   // Metadata
   locked: boolean;
   hidden: boolean;

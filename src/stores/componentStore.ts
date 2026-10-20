@@ -6,6 +6,7 @@ import { findNodeById, findParentNode, flattenTree, cloneNode } from '../utils/t
 import { generateComponentId } from '../utils/idGenerator';
 import { collectTags } from '../utils/apiTag';
 import { remapShowWhen } from '../utils/navBodies';
+import { treeLinksTo, withoutScreenLinks } from '../utils/screenLinks';
 
 /** One screen of the project. For the active screen `root`/history live in the store itself. */
 export interface ScreenEntry {
@@ -565,7 +566,22 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
     if (id === activeScreenId) {
       get().switchScreen(screens[index === 0 ? 1 : index - 1].id);
     }
-    set({ screens: get().screens.filter((s) => s.id !== id) });
+    // Buttons and menu items that opened the removed screen lose that link.
+    const forgetLinks = (root: ComponentNode) =>
+      treeLinksTo(root, id) ? withoutScreenLinks(root, (target) => target === id) : root;
+    const remaining = get()
+      .screens.filter((s) => s.id !== id)
+      .map((s) => ({ ...s, root: forgetLinks(s.root) }));
+    const liveRoot = get().root;
+    const cleanedRoot = liveRoot ? forgetLinks(liveRoot) : liveRoot;
+    set({
+      screens: remaining.map((s) =>
+        s.id === get().activeScreenId && cleanedRoot ? { ...s, root: cleanedRoot } : s
+      ),
+      ...(cleanedRoot !== liveRoot && cleanedRoot
+        ? { root: cleanedRoot, components: flattenTree(cleanedRoot) }
+        : {}),
+    });
   },
 
   renameScreen: (id, name) => {

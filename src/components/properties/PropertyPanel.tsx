@@ -250,6 +250,100 @@ function NavBodyField({ component }: { component: ComponentNode }) {
   );
 }
 
+// Screen navigation: a Button opens a screen when pressed, Menu/List items open one when chosen.
+function ScreenLinkField({ component }: { component: ComponentNode }) {
+  const componentStore = useComponentStore();
+  const isButton = component.type === 'Button';
+  const isNav = component.type === 'Menu' || component.type === 'List';
+  if (!isButton && !isNav) return null;
+
+  const targets = componentStore
+    .getScreenRoots()
+    .filter((s) => s.id !== componentStore.activeScreenId);
+  if (targets.length === 0) return null;
+
+  const selectClass =
+    'w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden';
+  const options = (current: string | undefined) => (
+    <>
+      <option value="">No screen</option>
+      {targets.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.root.name}
+        </option>
+      ))}
+      {current && !targets.some((s) => s.id === current) && (
+        <option value={current}>(missing screen)</option>
+      )}
+    </>
+  );
+
+  if (isButton) {
+    return (
+      <div className="px-3 py-2 border-b border-border/30">
+        <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">
+          Opens screen
+        </label>
+        <select
+          value={component.opensScreen ?? ''}
+          className={selectClass}
+          onChange={(e) =>
+            componentStore.updateComponent(component.id, {
+              opensScreen: e.target.value || undefined,
+            })
+          }
+        >
+          {options(component.opensScreen)}
+        </select>
+      </div>
+    );
+  }
+
+  const items: unknown[] = Array.isArray(component.props.items) ? component.props.items : [];
+  if (items.length === 0) return null;
+  const setItemScreen = (index: number, screen: string) => {
+    const next = items.map((item, i) => {
+      if (i !== index) return item;
+      const base: Record<string, unknown> =
+        typeof item === 'object' && item
+          ? { ...(item as Record<string, unknown>) }
+          : { label: String(item ?? '') };
+      if (screen) base.screen = screen;
+      else delete base.screen;
+      return base;
+    });
+    componentStore.updateProps(component.id, { items: next });
+  };
+
+  return (
+    <div className="px-3 py-2 border-b border-border/30 space-y-1">
+      <label className="text-[9px] text-muted-foreground block uppercase tracking-wide">
+        Items open a screen
+      </label>
+      {items.map((item, i) => {
+        const label =
+          typeof item === 'string' ? item : String((item as { label?: unknown })?.label ?? '');
+        const current =
+          typeof item === 'object' && item ? ((item as { screen?: string }).screen ?? '') : '';
+        return (
+          <div key={i} className="flex items-center gap-1.5">
+            <span className="text-[11px] truncate w-20 shrink-0" title={label}>
+              {label || `Item ${i + 1}`}
+            </span>
+            <select
+              value={current}
+              className={selectClass}
+              onChange={(e) => setItemScreen(i, e.target.value)}
+            >
+              {options(current || undefined)}
+            </select>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PropertyPanel() {
   const selectionStore = useSelectionStore();
   const componentStore = useComponentStore();
@@ -297,6 +391,7 @@ export function PropertyPanel() {
 
       <ApiNameField component={selectedComponent} />
       <NavBodyField component={selectedComponent} />
+      <ScreenLinkField component={selectedComponent} />
 
       {/* Tabs */}
       <div className="flex border-b border-border/30">

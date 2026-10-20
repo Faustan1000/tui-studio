@@ -3,19 +3,47 @@
 import { useState } from 'react';
 import { Download, Copy, Eye } from 'lucide-react';
 import { useComponentStore, useCanvasStore } from '../../stores';
-import { exportToText, exportToCode, exportToHtmlFile, ansiToHtml } from '../../utils/export';
+import {
+  exportToText,
+  exportToCode,
+  exportToFiles,
+  exportToHtmlFile,
+  ansiToHtml,
+} from '../../utils/export';
 import { saveToDownloadFolder } from '../../utils/downloadManager';
 // ExportFormat is typed as an interface but used as a string in the codebase
 type CodeFormat = any;
 
 type ExportMode = 'preview' | 'text' | 'code';
 
-/** Trees of all screens, in order (formats that support several screens export all of them). */
+/** All screens, in order (formats that support several screens export all of them). */
 function allScreens() {
-  return useComponentStore
-    .getState()
-    .getScreenRoots()
-    .map((s) => s.root);
+  return useComponentStore.getState().getScreenRoots();
+}
+
+interface OutFile {
+  name: string;
+  content: string;
+}
+
+/** The files a code export consists of. Most formats are one file; Textual also needs its runtime. */
+function getCodeFiles(format: string, width: number, height: number): OutFile[] {
+  const root = useComponentStore.getState().root;
+  if (format === 'html') {
+    return [{ name: 'tui-design.html', content: exportToHtmlFile(root, width, height) }];
+  }
+  if (format === 'textual') {
+    return exportToFiles(root, 'textual', allScreens()).map((f) => ({
+      name: f.path,
+      content: f.content,
+    }));
+  }
+  return [
+    {
+      name: `tui-design${getCodeExtension(format)}`,
+      content: exportToCode(root, format as CodeFormat, allScreens()),
+    },
+  ];
 }
 
 export function ExportPanel() {
@@ -26,14 +54,14 @@ export function ExportPanel() {
   const [textFormat, setTextFormat] = useState<'text' | 'ansi' | 'ansi256' | 'trueColor'>('ansi');
   const [codeFormat, setCodeFormat] = useState('opentui');
   const [copied, setCopied] = useState(false);
+  const [activeFile, setActiveFile] = useState(0);
+
+  const codeFiles =
+    mode === 'code' ? getCodeFiles(codeFormat, canvasStore.width, canvasStore.height) : [];
+  const shownFile = codeFiles[Math.min(activeFile, Math.max(codeFiles.length - 1, 0))];
 
   const getOutput = () => {
-    if (mode === 'code') {
-      if (codeFormat === 'html') {
-        return exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height);
-      }
-      return exportToCode(componentStore.root, codeFormat as CodeFormat, allScreens());
-    }
+    if (mode === 'code') return shownFile?.content ?? '';
     return exportToText(componentStore.root, {
       format: textFormat,
       width: canvasStore.width,
@@ -47,35 +75,41 @@ export function ExportPanel() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = async () => {
-    const output =
-      mode === 'code'
-        ? codeFormat === 'html'
-          ? exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height)
-          : exportToCode(componentStore.root, codeFormat as CodeFormat, allScreens())
-        : exportToText(componentStore.root, {
-            format: textFormat,
-            width: canvasStore.width,
-            height: canvasStore.height,
-            includeMetadata: true,
-          });
-
-    const extension = mode === 'code' ? getCodeExtension(codeFormat) : '.txt';
-    const filename = `tui-design${extension}`;
-    const mimeType = codeFormat === 'html' && mode === 'code' ? 'text/html' : 'text/plain';
-
+  const saveFile = async (file: OutFile, mimeType: string) => {
     // Try saving to the user's selected download folder first
-    const savedToFolder = await saveToDownloadFolder(output, filename);
-    if (savedToFolder) return;
+    if (await saveToDownloadFolder(file.content, file.name)) return;
 
     // Fall back to browser download link
-    const blob = new Blob([output], { type: mimeType });
+    const blob = new Blob([file.content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    a.download = file.name;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownload = async () => {
+    if (mode === 'code') {
+      // Every file of the export, e.g. ui.py and ui_runtime.py, one after the other.
+      for (const file of codeFiles) {
+        await saveFile(file, file.name.endsWith('.html') ? 'text/html' : 'text/plain');
+        if (codeFiles.length > 1) await new Promise((r) => setTimeout(r, 250));
+      }
+      return;
+    }
+    await saveFile(
+      {
+        name: 'tui-design.txt',
+        content: exportToText(componentStore.root, {
+          format: textFormat,
+          width: canvasStore.width,
+          height: canvasStore.height,
+          includeMetadata: true,
+        }),
+      },
+      'text/plain'
+    );
   };
 
   return (
@@ -143,7 +177,10 @@ export function ExportPanel() {
             <label className="text-sm font-medium mb-2 block">Framework</label>
             <select
               value={codeFormat}
-              onChange={(e) => setCodeFormat(e.target.value)}
+              onChange={(e) => {
+                setCodeFormat(e.target.value);
+                setActiveFile(0);
+              }}
               className="w-full px-3 py-2 bg-secondary border border-border rounded text-sm"
             >
               <option value="opentui">OpenTUI (React)</option>
@@ -164,7 +201,33 @@ export function ExportPanel() {
         {mode === 'text' && (
           <TextOutput format={textFormat} width={canvasStore.width} height={canvasStore.height} />
         )}
-        {mode === 'code' && <CodeOutput format={codeFormat} />}
+        {mode === 'code' && (
+          <>
+            {codeFiles.length > 1 && (
+              <div className="mb-2">
+                <div className="flex gap-1">
+                  {codeFiles.map((file, i) => (
+                    <button
+                      key={file.name}
+                      onClick={() => setActiveFile(i)}
+                      className={`px-2 py-1 rounded text-xs font-mono transition-colors ${
+                        file === shownFile
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary hover:bg-secondary/80'
+                      }`}
+                    >
+                      {file.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Keep these files in the same folder.
+                </p>
+              </div>
+            )}
+            <CodeOutput content={shownFile?.content ?? ''} />
+          </>
+        )}
       </div>
 
       {/* Actions */}
@@ -174,14 +237,18 @@ export function ExportPanel() {
           className="w-full px-3 py-2 bg-secondary hover:bg-secondary/80 rounded text-sm font-medium flex items-center justify-center gap-2"
         >
           <Copy className="w-4 h-4" />
-          {copied ? 'Copied!' : 'Copy to Clipboard'}
+          {copied
+            ? 'Copied!'
+            : codeFiles.length > 1
+              ? `Copy ${shownFile?.name}`
+              : 'Copy to Clipboard'}
         </button>
         <button
           onClick={handleDownload}
           className="w-full px-3 py-2 bg-primary hover:bg-primary/80 text-primary-foreground rounded text-sm font-medium flex items-center justify-center gap-2"
         >
           <Download className="w-4 h-4" />
-          Download File
+          {codeFiles.length > 1 ? `Download ${codeFiles.length} files` : 'Download File'}
         </button>
       </div>
     </div>
@@ -238,18 +305,10 @@ function TextOutput({ format, width, height }: { format: string; width: number; 
   );
 }
 
-function CodeOutput({ format }: { format: string }) {
-  const componentStore = useComponentStore();
-  const canvasStore = useCanvasStore();
-
-  const output =
-    format === 'html'
-      ? exportToHtmlFile(componentStore.root, canvasStore.width, canvasStore.height)
-      : exportToCode(componentStore.root, format as CodeFormat, allScreens());
-
+function CodeOutput({ content }: { content: string }) {
   return (
     <pre className="text-xs font-mono bg-secondary p-4 rounded overflow-auto border border-border">
-      {output}
+      {content}
     </pre>
   );
 }

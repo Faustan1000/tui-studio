@@ -35,6 +35,14 @@ interface Ctx {
   root: ComponentNode;
   /** Generated screen classes (module level, after the widget classes). */
   screenClasses: string[];
+  /** Project screen id -> key of its generated Screen class (its code name). */
+  screenKeys: Map<string, string>;
+}
+
+/** A screen of the project: its id (used by links) and the root of its component tree. */
+export interface ExportScreen {
+  id: string;
+  root: ComponentNode;
 }
 
 type Emitter = (node: ComponentNode, indent: number, ctx: Ctx) => string;
@@ -94,11 +102,29 @@ function borderDeclaration(node: ComponentNode, ctx: Ctx): string | null {
   return `border: ${kind}${color ? ' ' + color : ''};`;
 }
 
+/** Components whose height the editor's layout engine always takes from their content. */
+const SINGLE_LINE_TYPES: ReadonlySet<string> = new Set([
+  'Button',
+  'TextInput',
+  'Checkbox',
+  'Radio',
+  'Toggle',
+  'Select',
+  'Spinner',
+  'ProgressBar',
+  'Text',
+  'Breadcrumb',
+]);
+
 /** CSS declarations shared by all components (size, colors, border). */
 function commonDeclarations(node: ComponentNode, ctx: Ctx): string[] {
   const d: string[] = [];
   const w = cssSize(node.props.width);
-  const h = cssSize(node.props.height);
+  // The editor gives these a one-line (or bordered) natural height unless it is a number.
+  const h =
+    SINGLE_LINE_TYPES.has(node.type) && typeof node.props.height !== 'number'
+      ? null
+      : cssSize(node.props.height);
   if (w) d.push(`width: ${w};`);
   if (h) d.push(`height: ${h};`);
   if (typeof node.props.minWidth === 'number') d.push(`min-width: ${node.props.minWidth};`);
@@ -178,7 +204,8 @@ function addHandler(
   message: string,
   rawName: unknown,
   fallback: string,
-  bodies?: string | null
+  bodies?: string | null,
+  after: string[] = []
 ) {
   const name = methodName(typeof rawName === 'string' && rawName ? rawName : fallback, ctx);
   const api = EVENT_API[message];
@@ -191,6 +218,8 @@ function addHandler(
       `self.ui._emit(${pyStr(node.tag)}, ${pyStr(api.name)}${api.value ? ', ' + api.value : ''})`
     );
   }
+  // Screen links run last, so the program hears about the interaction before the switch.
+  lines.push(...after);
   if (lines.length === 0) lines.push('pass');
   ctx.handlers.push(
     `${IND}@on(${message}, "#${widgetId(node)}")\n` +
@@ -198,6 +227,32 @@ function addHandler(
       lines.map((l) => `${IND}${IND}${l}\n`).join('')
   );
   needImport(ctx, 'textual', 'on');
+}
+
+/** Statements that open the screen a button links to (none when it links nowhere). */
+function buttonLink(node: ComponentNode, ctx: Ctx): string[] {
+  const key = node.opensScreen ? ctx.screenKeys.get(node.opensScreen) : undefined;
+  return key ? [`self.ui.show_screen(${pyStr(key)})`] : [];
+}
+
+/**
+ * Statements for the items of a Menu/List that open a screen, picked by the index of the
+ * chosen item (none when no item links anywhere).
+ */
+function itemLinks(node: ComponentNode, ctx: Ctx, indexExpr: string): string[] {
+  const items = Array.isArray(node.props.items) ? node.props.items : [];
+  const targets: string[] = [];
+  items.forEach((item, i) => {
+    const screen = item && typeof item === 'object' ? (item as { screen?: string }).screen : '';
+    const key = screen ? ctx.screenKeys.get(screen) : undefined;
+    if (key) targets.push(`${i}: ${pyStr(key)}`);
+  });
+  if (targets.length === 0) return [];
+  return [
+    `target = {${targets.join(', ')}}.get(${indexExpr})`,
+    'if target:',
+    `${IND}self.ui.show_screen(target)`,
+  ];
 }
 
 /** Widget that is shown/hidden to show/hide `node` (a toggle's label belongs to its group). */
@@ -246,32 +301,230 @@ function addRule(ctx: Ctx, node: ComponentNode, declarations: string[]) {
 
 // ── Emitters ──────────────────────────────────────────────────────────────────
 
+// ── How containers arrange their children ─────────────────────────────────────
+
+interface FlexPlan {
+  horizontal: boolean;
+  gap: number;
+  justify: string;
+  align: string;
+}
+
+/**
+ * Arrangement of a container's children, following the editor's layout engine: a flexbox
+ * defaults to a row, "none" stacks vertically with one empty line in between.
+ */
+function flexPlan(node: ComponentNode): FlexPlan {
+  const l = node.layout;
+  if (l.type === 'flexbox') {
+    return {
+      horizontal: (l.direction ?? 'row') === 'row',
+      gap: typeof l.gap === 'number' ? l.gap : 0,
+      justify: String(l.justify ?? 'start'),
+      align: String(l.align ?? 'start'),
+    };
+  }
+  return { horizontal: false, gap: l.type === 'none' ? 1 : 0, justify: 'start', align: 'start' };
+}
+
+/** Only a container with a fixed size along its main axis has free space to distribute. */
+function hasFreeSpace(node: ComponentNode, ctx: Ctx, horizontal: boolean): boolean {
+  if (node === ctx.root) return true; // a screen fills the terminal
+  const size = horizontal ? node.props.width : node.props.height;
+  return typeof size === 'number' || size === 'fill';
+}
+
+/** "space-between" / "space-around" need free space; the editor ignores them otherwise. */
+function spreadMode(node: ComponentNode, ctx: Ctx): 'between' | 'around' | null {
+  if (node.layout.type !== 'flexbox') return null;
+  const { horizontal, justify } = flexPlan(node);
+  if (justify !== 'space-between' && justify !== 'space-around') return null;
+  if (!hasFreeSpace(node, ctx, horizontal)) return null;
+  return justify === 'space-between' ? 'between' : 'around';
+}
+
+/**
+ * Cross-axis alignment of every child by its own margin. This is exact when the container
+ * and all children have a fixed cross size; otherwise the group alignment of Textual is used
+ * (which is only exact when the children are equally large).
+ */
+function alignByMargin(node: ComponentNode, ctx: Ctx): boolean {
+  if (node.layout.type !== 'flexbox' || node === ctx.root) return false;
+  const { horizontal, align } = flexPlan(node);
+  if (align !== 'center' && align !== 'end') return false;
+  const prop = horizontal ? 'height' : 'width';
+  if (typeof node.props[prop] !== 'number') return false;
+  const kids = node.children.filter((c) => c.type !== 'Modal');
+  return (
+    kids.length > 0 && kids.every((c) => c.type !== 'Radio' && typeof c.props[prop] === 'number')
+  );
+}
+
+/** Selector id of the widget that holds a node's children (a screen is a widget with its key). */
+function containerId(node: ComponentNode, ctx: Ctx): string {
+  return node === ctx.root ? ctx.owner : widgetId(node);
+}
+
+/**
+ * Declarations for the container itself (alignment of its children) plus the CSS rules for
+ * the gap between children and for the flexible spacers used by space-between/around.
+ * Textual has no `gap`, so the gap becomes a margin on every child but the last.
+ */
+function flexDeclarations(node: ComponentNode, ctx: Ctx): string[] {
+  if (node.layout.type !== 'flexbox' && node.layout.type !== 'none') return [];
+  const { horizontal, gap, justify, align } = flexPlan(node);
+  const selector = `#${containerId(node, ctx)}`;
+  const decl: string[] = [];
+
+  // Textual aligns the whole group of children, not each child on its own.
+  const axisValue = (onHorizontalAxis: boolean, v: string) =>
+    v === 'center'
+      ? onHorizontalAxis
+        ? 'center'
+        : 'middle'
+      : onHorizontalAxis
+        ? 'right'
+        : 'bottom';
+  if (justify === 'center' || justify === 'end') {
+    decl.push(
+      `${horizontal ? 'align-horizontal' : 'align-vertical'}: ${axisValue(horizontal, justify)};`
+    );
+  }
+  if ((align === 'center' || align === 'end') && !alignByMargin(node, ctx)) {
+    decl.push(
+      `${horizontal ? 'align-vertical' : 'align-horizontal'}: ${axisValue(!horizontal, align)};`
+    );
+  }
+
+  const spread = spreadMode(node, ctx);
+  if (gap > 0 && !spread && !alignByMargin(node, ctx)) {
+    const side = horizontal ? 'margin-right' : 'margin-bottom';
+    ctx.css.push(`${selector} > * {\n    ${side}: ${gap};\n}`);
+    ctx.css.push(`${selector} > *:last-child {\n    ${side}: 0;\n}`);
+    ctx.css.push(`${selector} > LogPanel {\n    margin: 0;\n}`);
+  }
+  if (spread) {
+    const along = horizontal ? 'width' : 'height';
+    const across = horizontal ? 'height' : 'width';
+    ctx.css.push(`${selector} > ._sp1 {\n    ${along}: 1fr;\n    ${across}: 1;\n}`);
+    ctx.css.push(`${selector} > ._sp2 {\n    ${along}: 2fr;\n    ${across}: 1;\n}`);
+  }
+  return decl;
+}
+
+/** Widget that a child contributes to its parent (the group for radios and labelled toggles). */
+function topWidgetId(child: ComponentNode): string {
+  return bodyWidgetId(child);
+}
+
+/**
+ * Place a child at its x/y of an absolute layout. Textual measures offsets from inside the
+ * container's border and padding, the editor from its outer edge plus (numeric) padding.
+ */
+function absoluteRule(
+  child: ComponentNode,
+  parent: ComponentNode,
+  widgetIdOfChild: string,
+  ctx: Ctx
+) {
+  const pad = typeof parent.layout.padding === 'number' ? parent.layout.padding : 0;
+  const border = parent.style.border ? 1 : 0;
+  const cssPad = (side: 'left' | 'top') => {
+    const p = parent.layout.padding;
+    if (typeof p === 'number') return p;
+    return p && typeof p === 'object' ? ((p as Record<string, number>)[side] ?? 0) : 0;
+  };
+  const x =
+    (typeof child.layout.x === 'number' ? child.layout.x : 0) + pad - border - cssPad('left');
+  const y =
+    (typeof child.layout.y === 'number' ? child.layout.y : 0) + pad - border - cssPad('top');
+  const lines = ['position: absolute;', `offset: ${x} ${y};`];
+  if (child.props.width === 'fill') lines.push('width: 100%;');
+  if (child.props.height === 'fill') lines.push('height: 100%;');
+  ctx.css.push(`#${widgetIdOfChild} {\n${lines.map((l) => `    ${l}`).join('\n')}\n}`);
+}
+
 function emitChildren(node: ComponentNode, indent: number, ctx: Ctx): string {
-  const horizontal = node.layout.direction === 'row';
-  let out = '';
+  const plan = flexPlan(node);
+  const sp = IND.repeat(indent);
+  const units: { code: string; top: string; node: ComponentNode }[] = [];
   for (let i = 0; i < node.children.length; i++) {
     const child = node.children[i];
     if (child.type === 'Radio') {
       const group = [child];
       while (node.children[i + 1]?.type === 'Radio') group.push(node.children[++i]);
-      out += emitRadioGroup(group, horizontal, indent, ctx);
+      const code = emitRadioGroup(group, plan.horizontal, indent, ctx);
+      units.push({ code, top: `${widgetId(group[0])}__group`, node: group[0] });
     } else {
-      out += emitNode(child, indent, ctx);
+      units.push({ code: emitNode(child, indent, ctx), top: topWidgetId(child), node: child });
     }
+  }
+  // Modals produce no widget in place.
+  const shown = units.filter((u) => u.code);
+
+  if (node.layout.type === 'absolute') {
+    shown.forEach((u) => absoluteRule(u.node, node, u.top, ctx));
+  }
+
+  if (alignByMargin(node, ctx)) {
+    // Place each child inside the container: offsets count from the content area (inside the
+    // border), the editor's from the outer edge minus the padding.
+    const prop = plan.horizontal ? 'height' : 'width';
+    const pad = typeof node.layout.padding === 'number' ? node.layout.padding : 0;
+    const border = node.style.border ? 1 : 0;
+    const inner = (node.props[prop] as number) - 2 * pad;
+    // Textual keeps one margin per widget (a second rule replaces it), so the gap to the
+    // next child has to be part of the same declaration.
+    const gap = spreadMode(node, ctx) ? 0 : plan.gap;
+    shown.forEach((u, i) => {
+      const size = u.node.props[prop] as number;
+      const offset = plan.align === 'center' ? Math.floor((inner - size) / 2) : inner - size;
+      const align = Math.max(0, offset - border);
+      const after = i < shown.length - 1 ? gap : 0;
+      // margin: top right bottom left
+      const margin = plan.horizontal ? `${align} ${after} 0 0` : `0 0 ${after} ${align}`;
+      ctx.css.push(`#${u.top} {\n    margin: ${margin};\n}`);
+    });
+  }
+
+  const spread = spreadMode(node, ctx);
+  if (!spread || shown.length === 0) return shown.map((u) => u.code).join('');
+  needImport(ctx, 'textual.widgets', 'Static');
+  const spacer = (weight: 0 | 1 | 2) => `${sp}yield Static("", classes="_sp${weight}")\n`;
+  let out = spread === 'around' ? spacer(1) : '';
+  shown.forEach((u, i) => {
+    out += u.code;
+    if (i < shown.length - 1) out += spacer(spread === 'around' ? 2 : 1);
+  });
+  out += spread === 'around' ? spacer(1) : '';
+  // The editor takes the gaps out of the free space but does not add them between the items,
+  // so they end up after the last one.
+  const trailing = plan.gap * (shown.length - 1);
+  if (trailing > 0) {
+    const along = plan.horizontal ? 'width' : 'height';
+    const across = plan.horizontal ? 'height' : 'width';
+    ctx.css.push(
+      `#${containerId(node, ctx)} > ._sp0 {\n    ${along}: ${trailing};\n    ${across}: 1;\n}`
+    );
+    out += spacer(0);
   }
   return out;
 }
 
 /** Container used for Box (and as the generic container fallback). */
 const emitBox: Emitter = (node, indent, ctx) => {
+  // A box laid out as a grid is a Textual grid.
+  if (node.layout.type === 'grid') return emitGrid(node, indent, ctx);
+
   const sp = IND.repeat(indent);
-  const widget = node.layout.direction === 'row' ? 'Horizontal' : 'Vertical';
+  const widget = flexPlan(node).horizontal ? 'Horizontal' : 'Vertical';
   needImport(ctx, 'textual.containers', widget);
 
   const decl = commonDeclarations(node, ctx);
   // Textual containers default to 1fr; stay content-sized unless a size is set.
   if (!cssSize(node.props.width)) decl.unshift('width: auto;');
   if (!cssSize(node.props.height)) decl.unshift('height: auto;');
+  decl.push(...flexDeclarations(node, ctx));
   addRule(ctx, node, decl);
 
   const body = emitChildren(node, indent + 1, ctx);
@@ -353,7 +606,15 @@ const emitButton: Emitter = (node, indent, ctx) => {
   addRule(ctx, node, decl);
 
   needImport(ctx, 'textual.widgets', 'Button');
-  addHandler(ctx, node, 'Button.Pressed', node.events.onClick, 'on_button_pressed');
+  addHandler(
+    ctx,
+    node,
+    'Button.Pressed',
+    node.events.onClick,
+    'on_button_pressed',
+    undefined,
+    buttonLink(node, ctx)
+  );
 
   const args = [
     // Button labels are Rich markup: escape "[" so user text is shown literally.
@@ -701,7 +962,15 @@ const emitList: Emitter = (node, indent, ctx) => {
   const args =
     items.length && selected >= 0 && selected < items.length ? `initial_index=${selected}, ` : '';
 
-  addHandler(ctx, node, 'ListView.Selected', node.events.onSelect, 'on_list_selected');
+  addHandler(
+    ctx,
+    node,
+    'ListView.Selected',
+    node.events.onSelect,
+    'on_list_selected',
+    undefined,
+    itemLinks(node, ctx, 'event.list_view.index')
+  );
   const listBodies = bodyGroups(node, ctx);
   if (listBodies) {
     addHandler(ctx, node, 'ListView.Highlighted', undefined, 'on_list_highlighted', listBodies);
@@ -823,8 +1092,17 @@ const emitMenu: Emitter = (node, indent, ctx) => {
   if (items.length && selected >= 0 && selected < items.length) {
     ctx.mount.push(`self.query_one(${pyStr('#' + id)}, OptionList).highlighted = ${selected}`);
   }
-  if (node.events.onSelect || node.tag) {
-    addHandler(ctx, node, 'OptionList.OptionSelected', node.events.onSelect, 'on_menu_selected');
+  const menuLinks = itemLinks(node, ctx, 'event.option_index');
+  if (node.events.onSelect || node.tag || menuLinks.length) {
+    addHandler(
+      ctx,
+      node,
+      'OptionList.OptionSelected',
+      node.events.onSelect,
+      'on_menu_selected',
+      undefined,
+      menuLinks
+    );
   }
   const menuBodies = bodyGroups(node, ctx);
   if (menuBodies) {
@@ -903,8 +1181,8 @@ const emitGrid: Emitter = (node, indent, ctx) => {
   const l = node.layout;
   const decl = commonDeclarations(node, ctx);
   decl.push(`grid-size: ${l.columns || 2} ${l.rows || 2};`);
-  if (l.columnGap) decl.push(`grid-gutter-horizontal: ${l.columnGap};`);
-  if (l.rowGap) decl.push(`grid-gutter-vertical: ${l.rowGap};`);
+  // Shorthand is "vertical horizontal"; the longhand properties are swapped in Textual.
+  if (l.columnGap || l.rowGap) decl.push(`grid-gutter: ${l.rowGap || 0} ${l.columnGap || 0};`);
   addRule(ctx, node, decl);
 
   needImport(ctx, 'textual.containers', 'Grid');
@@ -922,7 +1200,8 @@ const emitModal: Emitter = (node, _indent, ctx) => {
   const number = ctx.bindings.filter(([, action]) => action.startsWith('show_modal_')).length + 1;
   const name = `StudioModal${number}`;
   const title = String(node.props.title ?? '');
-  const widget = node.layout.direction === 'row' ? 'Horizontal' : 'Vertical';
+  const widget =
+    flexPlan(node).horizontal && node.layout.type === 'flexbox' ? 'Horizontal' : 'Vertical';
 
   if (!ctx.classNames.has('modal-css')) {
     ctx.classNames.set('modal-css', 'ModalScreen');
@@ -933,6 +1212,7 @@ const emitModal: Emitter = (node, _indent, ctx) => {
   const decl = commonDeclarations(node, ctx);
   const padding = cssSpacing(node.layout.padding);
   if (padding && !decl.some((l) => l.startsWith('padding:'))) decl.push(`padding: ${padding};`);
+  decl.push(...flexDeclarations(node, ctx));
   addRule(ctx, node, decl);
 
   // The children belong to the modal: their state is synced when the modal is shown.
@@ -1141,7 +1421,14 @@ function screenRule(root: ComponentNode, key: string, ctx: Ctx): string {
   const fg = cssColor(root.style.color, ctx);
   if (bg) decl.push(`background: ${bg};`);
   if (fg) decl.push(`color: ${fg};`);
-  if (root.layout.direction === 'row') decl.push('layout: horizontal;');
+  const l = root.layout;
+  if (l.type === 'grid') {
+    decl.push('layout: grid;', `grid-size: ${l.columns || 2} ${l.rows || 2};`);
+    if (l.columnGap || l.rowGap) decl.push(`grid-gutter: ${l.rowGap || 0} ${l.columnGap || 0};`);
+  } else if (flexPlan(root).horizontal && l.type === 'flexbox') {
+    decl.push('layout: horizontal;');
+  }
+  decl.push(...flexDeclarations(root, ctx));
   const border = borderDeclaration(root, ctx);
   if (border) decl.push(border);
   const padding = cssSpacing(root.layout.padding);
@@ -1174,9 +1461,13 @@ function paletteOf(root: ComponentNode): Record<string, string> {
  * Textual app for one or more screens. Every screen becomes a `Screen` class; the first one
  * is shown at startup and `ui.<screen>.show()` switches between them.
  */
-export function exportToTextual(input: ComponentNode | readonly ComponentNode[]): string {
-  const roots = (Array.isArray(input) ? input : [input]) as ComponentNode[];
+export function exportToTextual(input: ComponentNode | readonly ExportScreen[]): string {
+  const given: ExportScreen[] = Array.isArray(input)
+    ? [...(input as readonly ExportScreen[])]
+    : [{ id: 'screen-1', root: input as ComponentNode }];
+  const roots = given.map((s) => s.root);
   const ctx: Ctx = {
+    screenKeys: new Map(given.map((s, i) => [s.id, s.root.tag ?? `_screen_${i + 1}`])),
     css: [],
     palette: paletteOf(roots[0]),
     handlers: [],
@@ -1223,8 +1514,9 @@ export function exportToTextual(input: ComponentNode | readonly ComponentNode[])
       `class ${cls}(StudioScreen):\n` +
       `${IND}KEY = ${pyStr(key)}\n\n` +
       `${IND}def compose(self) -> ComposeResult:\n` +
-      (body || `${IND}${IND}yield Static("Empty screen")\n`) +
-      `${IND}${IND}yield LogPanel(id="_ui_log")\n`;
+      // First, so that the last child of the screen is a real widget (see the gap rules).
+      `${IND}${IND}yield LogPanel(id="_ui_log")\n` +
+      (body || `${IND}${IND}yield Static("Empty screen")\n`);
     if (mountLines.length) {
       code += `\n${IND}def on_mount(self) -> None:\n${mountLines.map((l) => `${IND}${IND}${l}\n`).join('')}`;
     }

@@ -2,6 +2,7 @@
 
 import type { ComponentNode, ComponentType } from '../types/components';
 import { validateTag } from './apiTag';
+import { withoutScreenLinks } from './screenLinks';
 
 export const MAX_TUI_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_TREE_DEPTH = 50;
@@ -75,6 +76,11 @@ function validateNode(
     const problem = validateTag(raw.tag, state.tags);
     if (problem) throw new Error(`Component "${raw.id}": invalid code name (${problem})`);
     if (raw.tag) state.tags.add(raw.tag);
+  }
+
+  if (raw.opensScreen !== undefined) {
+    if (typeof raw.opensScreen !== 'string' || raw.opensScreen.length > 100)
+      throw new Error(`Component "${raw.id}": invalid screen link`);
   }
 
   if (raw.showWhen !== undefined) {
@@ -169,6 +175,12 @@ export function parseTuiFile(text: string, validThemes: readonly string[]): Vali
       throw new Error('Unknown theme');
     theme = data.meta.theme;
   }
+  // Links to screens that are not in the file are dropped instead of rejecting the file.
+  const known = new Set(screens.map((s) => s.id));
+  screens.forEach((s) => {
+    s.tree = withoutScreenLinks(s.tree, (target) => !known.has(target));
+  });
+
   const activeId =
     isPlainObject(data.meta) && typeof data.meta.activeScreen === 'string'
       ? data.meta.activeScreen
