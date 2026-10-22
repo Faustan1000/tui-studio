@@ -1,0 +1,566 @@
+// Runs the API scenario (docs/API_SCENARIO.md) against the generated OpenTUI project, headless
+// with the test renderer of OpenTUI under Bun. Copied next to the generated project as
+// scenario.ts and run with `bun scenario.ts`; prints the results as JSON on the last line.
+// Not part of the vitest run itself (see tests/api.opentui.test.ts).
+// Stored with a .txt suffix so that the editor's tsc/eslint do not try to compile it.
+
+import { createTestRenderer } from '@opentui/core/testing';
+import { Ui } from './src/index';
+
+const results: { name: string; ok: boolean; info?: string }[] = [];
+const check = (name: string, ok: unknown, info?: unknown) =>
+  results.push({ name, ok: !!ok, info: ok ? undefined : String(info ?? '') });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const throws = (fn: () => void) => {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e as Error;
+  }
+};
+
+async function launch(width = 80, height = 40) {
+  const setup = await createTestRenderer({ width, height, exitOnCtrlC: false });
+  const ui = new Ui();
+  await ui.start({ renderer: setup.renderer });
+  return { setup, ui };
+}
+
+const { setup, ui } = await launch();
+const { mockInput, mockMouse } = setup;
+const settle = async (ms = 60) => {
+  await sleep(ms);
+  await setup.renderOnce();
+};
+const frame = () => setup.captureCharFrame();
+const typeKeys = async (text: string) => {
+  await mockInput.typeText(text);
+  await settle();
+};
+const press = async (fn: () => void) => {
+  fn();
+  await settle();
+};
+
+// The focus ring as the generated App computes it.
+const ALL = ['name_input', 'submit_btn', 'agree', 'color', 'files', 'pages'];
+let order = [...ALL];
+let focusVar = 'name_input';
+const tabTo = async (id: string) => {
+  for (let i = 0; i < 12 && !(order.includes(focusVar) && focusVar === id); i++) {
+    const at = order.includes(focusVar) ? order.indexOf(focusVar) : -1;
+    focusVar = order[(at + 1 + order.length) % order.length];
+    await press(() => mockInput.pressTab());
+  }
+};
+async function drain() {
+  const out = [];
+  for (;;) {
+    const e = await ui.nextEvent(120);
+    if (!e) return out;
+    out.push(e);
+  }
+}
+const locate = (text: string): [number, number] | null => {
+  const lines = frame().split('\n');
+  for (let y = 0; y < lines.length; y++) {
+    const x = lines[y].indexOf(text);
+    if (x >= 0) return [x, y];
+  }
+  return null;
+};
+
+try {
+  // S1
+  check('S1 ready and running', ui.ready && ui.running);
+  await settle();
+
+  // S2
+  check('S2 status text', ui.status.text === 'Ready', ui.status.text);
+  check('S2 progress max', ui.progress.max === 100, ui.progress.max);
+  check('S2 states active', ui.status.state === 'active' && ui.submitBtn.state === 'active');
+  check(
+    'S2 frame shows the design',
+    frame().includes('Ready') && frame().includes('Send') && frame().includes('I agree'),
+    frame()
+  );
+
+  // S3: written from another "thread" (a timer callback)
+  await new Promise<void>((resolve) =>
+    setTimeout(() => {
+      ui.status.text = 'Working';
+      ui.progress.value = 40;
+      ui.nameInput.value = 'Ada';
+      check(
+        'S3 read after write',
+        ui.status.text === 'Working' && ui.progress.value === 40 && ui.nameInput.value === 'Ada'
+      );
+      resolve();
+    }, 10)
+  );
+  await settle();
+  check(
+    'S3 frame shows writes',
+    frame().includes('Working') && frame().includes('Ada') && frame().includes('40%'),
+    frame()
+  );
+  check('S3 writes fire no event', (await drain()).length === 0);
+
+  // S4
+  const clicks: { tag: string; name: string }[] = [];
+  let clickSync: boolean | null = null;
+  let inSync = false;
+  ui.submitBtn.onClick((e) => {
+    clickSync = inSync;
+    clicks.push(e);
+  });
+  ui.submitBtn.mute();
+  order = ALL.filter((i) => i !== 'submit_btn');
+  await settle();
+  check('S4 muted button still drawn', frame().includes('Send'));
+  await press(() => mockInput.pressEnter());
+  const at = locate('Send');
+  if (at) await mockMouse.click(at[0], at[1]);
+  await settle();
+  const stray = (await drain()).filter((e) => e.tag === 'submit_btn');
+  check('S4 muted button fires nothing', clicks.length === 0 && stray.length === 0, JSON.stringify([clicks, stray]));
+  ui.submitBtn.active();
+  order = [...ALL];
+  await settle();
+
+  // S5
+  ui.panel.hide();
+  await settle();
+  check('S5 hidden', !frame().includes('Inside the panel'), frame());
+  ui.panel.show();
+  await settle();
+  check('S5 shown again', frame().includes('Inside the panel'), frame());
+
+  // S6
+  ui.nameInput.readonly();
+  order = ALL.filter((i) => i !== 'name_input');
+  await settle();
+  await typeKeys('abc');
+  check(
+    'S6 readonly ignores typing',
+    ui.nameInput.value === 'Ada' && (await drain()).length === 0,
+    ui.nameInput.value
+  );
+  ui.nameInput.active();
+  order = [...ALL];
+  await settle();
+  await typeKeys('z');
+  check('S6 active accepts typing', ui.nameInput.value === 'Adaz', ui.nameInput.value);
+  const typed = await drain();
+  check(
+    'S6 typing fires change',
+    typed.length === 1 && typed[0].name === 'change' && typed[0].value === 'Adaz',
+    JSON.stringify(typed)
+  );
+
+  // S7
+  const err = throws(() => ui.submitBtn.readonly());
+  check('S7 readonly on a button is an error', err && err.name === 'UiError', err);
+  check('S7 nothing changed', ui.submitBtn.state === 'active');
+
+  // S8
+  await drain();
+  await tabTo('submit_btn');
+  inSync = true;
+  mockInput.pressEnter();
+  inSync = false;
+  await settle();
+  check(
+    'S8 click handler ran off the UI path',
+    clicks.length === 1 && clickSync === false,
+    JSON.stringify([clicks.length, clickSync])
+  );
+  check(
+    'S8 handler event',
+    clicks[0] && clicks[0].tag === 'submit_btn' && clicks[0].name === 'click',
+    JSON.stringify(clicks[0])
+  );
+  await tabTo('name_input');
+  await typeKeys('y');
+  await tabTo('agree');
+  await typeKeys(' ');
+  const queue = await drain();
+  check(
+    'S8 queue',
+    queue.map((e) => e.tag + ':' + e.name).join() ===
+      'submit_btn:click,name_input:change,agree:change' && queue[2].value === true,
+    JSON.stringify(queue)
+  );
+  check('S8 checkbox drawn checked', frame().includes('[✓]'), frame());
+
+  // S9
+  ui.agree.checked = false;
+  await settle();
+  check('S9 write shows', frame().includes('[ ]'), frame());
+  ui.agree.checked = true;
+  await settle();
+  check('S9 no echo', (await drain()).length === 0 && ui.agree.checked === true);
+
+  // S10
+  ui.report('boom');
+  await settle();
+  check('S10 dialog shows the message', frame().includes('boom'), frame());
+  check('S10 errors has it', ui.errors.length === 1 && ui.errors[0].message === 'boom');
+  await press(() => mockInput.pressEnter());
+  check('S10 Enter closes the dialog', !frame().includes('boom'), frame());
+  check(
+    'S10 Enter did not press the widget below',
+    ui.agree.checked === true && (await drain()).length === 0
+  );
+  ui.report(new Error('second'));
+  await settle();
+  check('S10 error object shown', frame().includes('second'), frame());
+  await press(() => mockInput.pressEscape());
+  await settle(150);
+  check('S10 Esc closes the dialog', !frame().includes('second'), frame());
+
+  // S11
+  ui.submitBtn.onClick(() => {
+    throw new Error('handler failed');
+  });
+  await tabTo('submit_btn');
+  await press(() => mockInput.pressEnter());
+  await settle();
+  check(
+    'S11 handler error reported',
+    frame().includes('handler failed') &&
+      ui.errors.some((e) => e.message.includes('handler failed')),
+    frame() + JSON.stringify(ui.errors.map((e) => e.message))
+  );
+  check('S11 UI keeps running', ui.running);
+  await press(() => mockInput.pressEnter());
+
+  // S12
+  ui.log.info('hello');
+  await settle();
+  check('S12 panel closed at first', !frame().includes('hello'), frame());
+  await tabTo('name_input');
+  const before = ui.nameInput.value;
+  await press(() => mockInput.pressKey('l', { ctrl: true }));
+  check('S12 Ctrl+L opens the log', frame().includes('hello'), frame());
+  check('S12 Ctrl+L typed no character', ui.nameInput.value === before, ui.nameInput.value);
+  check('S12 errors are in the log', frame().includes('handler failed'), frame());
+  await press(() => mockInput.pressKey('l', { ctrl: true }));
+  check('S12 Ctrl+L closes the log', !frame().includes('hello'), frame());
+
+  // S13
+  check('S13 initially closed', !ui.confirm.isOpen && !frame().includes('Really?'), frame());
+  ui.confirm.open();
+  await settle();
+  check('S13 open', ui.confirm.isOpen && frame().includes('Really?'), frame());
+  ui.confirm.close();
+  await settle();
+  check('S13 closed', !frame().includes('Really?'), frame());
+  ui.confirm.open();
+  await settle();
+  await press(() => mockInput.pressEscape());
+  await settle(150);
+  check('S13 Esc closes the modal', !ui.confirm.isOpen && !frame().includes('Really?'), frame());
+
+  // Extras: select, tabs, list, typing q, tab/list properties
+  await drain();
+  await tabTo('color');
+  await press(() => mockInput.pressArrow('down'));
+  await press(() => mockInput.pressArrow('down'));
+  await press(() => mockInput.pressEnter());
+  const sel = await drain();
+  check(
+    'X select change',
+    ui.color.value === 'Green' && sel.length === 1 && sel[0].value === 'Green',
+    JSON.stringify(sel) + ui.color.value
+  );
+  ui.color.value = 'Blue';
+  await settle();
+  check('X select write no echo', (await drain()).length === 0 && ui.color.value === 'Blue');
+  await tabTo('pages');
+  await press(() => mockInput.pressArrow('right'));
+  const tab = await drain();
+  check(
+    'X tabs change',
+    ui.pages.activeTab === 1 && tab.length === 1 && tab[0].name === 'change',
+    JSON.stringify(tab)
+  );
+  ui.pages.activeTab = 0;
+  await settle();
+  check('X tab write no echo', (await drain()).length === 0);
+  ui.results.columns = ['k'];
+  ui.results.rows = [['a'], ['b']];
+  ui.files.items = ['one', 'two'];
+  await settle();
+  check(
+    'X table and list writes',
+    frame().includes('one') && frame().includes('two') && frame().includes('b'),
+    frame()
+      .split('\n')
+      .filter((l) => l.trim().replace(/[│ ]/g, ''))
+      .join('\n')
+  );
+  await tabTo('name_input');
+  await typeKeys('q');
+  check(
+    'X typing q does not quit',
+    ui.running && ui.nameInput.value.endsWith('q'),
+    ui.nameInput.value
+  );
+
+  // S14
+  ui.stop();
+  const waited = await Promise.race([ui.wait().then(() => true), sleep(1000).then(() => false)]);
+  check('S14 wait returns', waited && !ui.running);
+  check(
+    'S14 later calls do not throw',
+    throws(() => {
+      ui.status.text = 'late';
+      ui.submitBtn.mute();
+      ui.report('late');
+      ui.log.info('late');
+    }) === null
+  );
+
+  // S15: the mouse does what the keys do
+  {
+    const m = await launch();
+    const mouse = m.setup.mockMouse;
+    const mframe = () => m.setup.captureCharFrame();
+    const mlocate = (text: string): [number, number] | null => {
+      const lines = mframe().split(String.fromCharCode(10));
+      for (let y = 0; y < lines.length; y++) {
+        const x = lines[y].indexOf(text);
+        if (x >= 0) return [x, y];
+      }
+      return null;
+    };
+    const msettle = async () => {
+      await sleep(80);
+      await m.setup.renderOnce();
+    };
+    const clickOn = async (text: string, dx = 0) => {
+      const at2 = mlocate(text);
+      if (!at2) return false;
+      await mouse.click(at2[0] + dx, at2[1]);
+      await msettle();
+      return true;
+    };
+    const mdrain = async () => {
+      const out = [];
+      for (;;) {
+        const e = await m.ui.nextEvent(100);
+        if (!e) return out;
+        out.push(e);
+      }
+    };
+    await msettle();
+    await clickOn('Send');
+    let evs = await mdrain();
+    check('S15 click on a button fires click', evs.length === 1 && evs[0].tag === 'submit_btn' && evs[0].name === 'click', JSON.stringify(evs));
+    await clickOn('I agree');
+    evs = await mdrain();
+    check('S15 click toggles the checkbox', evs.length === 1 && evs[0].tag === 'agree' && evs[0].value === true && m.ui.agree.checked, JSON.stringify(evs));
+    check('S15 checkbox drawn checked', mframe().includes('[✓]'), mframe());
+    m.ui.agree.checked = false;
+    await msettle();
+    check('S15 write after click: no echo', (await mdrain()).length === 0);
+    await clickOn('your name');
+    await m.setup.mockInput.typeText('x');
+    await msettle();
+    evs = await mdrain();
+    check('S15 click focuses the text field', m.ui.nameInput.value === 'x' && evs.length === 1 && evs[0].tag === 'name_input', m.ui.nameInput.value + JSON.stringify(evs));
+    await clickOn('Red');
+    await clickOn('Green');
+    evs = await mdrain();
+    check('S15 click chooses a select option', m.ui.color.value === 'Green' && evs.length === 1 && evs[0].tag === 'color' && evs[0].value === 'Green', JSON.stringify(evs));
+    await clickOn('Item 2');
+    evs = await mdrain();
+    check('S15 click selects a list item', evs.length === 1 && evs[0].tag === 'files' && evs[0].name === 'select' && evs[0].value === 1 && m.ui.files.selected === 1, JSON.stringify(evs));
+    await clickOn('Agent');
+    evs = await mdrain();
+    check('S15 click selects a tab', m.ui.pages.activeTab === 1 && evs.length === 1 && evs[0].tag === 'pages' && evs[0].name === 'change' && evs[0].value === 1, JSON.stringify(evs));
+    m.ui.pages.activeTab = 0;
+    await msettle();
+    check('S15 tab write: no echo', (await mdrain()).length === 0);
+    // muted, readonly and hidden ignore clicks
+    m.ui.submitBtn.mute();
+    m.ui.nameInput.readonly();
+    await msettle();
+    await clickOn('Send');
+    check('S15 click on a muted button fires nothing', (await mdrain()).length === 0);
+    m.ui.submitBtn.active();
+    m.ui.nameInput.active();
+    // an error dialog covers the widgets behind it
+    m.ui.report('boom');
+    await msettle();
+    const box = mlocate('boom');
+    const behind = mlocate('I agree');
+    if (box && behind) await mouse.click(box[0], behind[1]);
+    await clickOn('Send');
+    await msettle();
+    check('S15 click under an error dialog activates nothing', (await mdrain()).length === 0 && !m.ui.agree.checked, JSON.stringify(m.ui.agree.checked));
+    await m.setup.mockInput.pressEnter();
+    await msettle();
+    // a modal
+    m.ui.confirm.open();
+    await msettle();
+    const inModal = mlocate('Really?');
+    if (inModal) await mouse.click(inModal[0], inModal[1]);
+    await msettle();
+    check('S15 click inside a modal activates nothing behind', (await mdrain()).length === 0 && m.ui.confirm.isOpen);
+    m.ui.stop();
+  }
+
+  // S16: the root fills the terminal at both sizes (a scrollbar may take the last column)
+  for (const [w, h] of [
+    [80, 24],
+    [120, 40],
+  ]) {
+    const NLC = String.fromCharCode(10);
+    const spans = (line: string, width: number, left: string, right: string) => {
+      const cells = [...line];
+      return cells[0] === left && (cells[width - 1] === right || cells[width - 2] === right);
+    };
+    const f = await launch(w, h);
+    await sleep(120);
+    await f.setup.renderOnce();
+    let lines = f.setup.captureCharFrame().split(NLC);
+    check(`S16 ${w}x${h} top border spans the width`, spans(lines[0], w, '┌', '┐'), lines[0]);
+    f.ui.scrollRef.current?.scrollTo(100000);
+    await sleep(100);
+    await f.setup.renderOnce();
+    lines = f.setup.captureCharFrame().split(NLC);
+    check(`S16 ${w}x${h} bottom border on the last row`, spans(lines[h - 1], w, '└', '┘'), lines[h - 1]);
+    f.setup.resize(w + 10, h + 6);
+    f.ui.scrollRef.current?.scrollTo(0);
+    await sleep(200);
+    await f.setup.renderOnce();
+    lines = f.setup.captureCharFrame().split(NLC);
+    check(`S16 ${w}x${h} follows a resize`, spans(lines[0], w + 10, '┌', '┐'), lines[0]);
+    f.ui.scrollRef.current?.scrollTo(100000);
+    await sleep(100);
+    await f.setup.renderOnce();
+    lines = f.setup.captureCharFrame().split(NLC);
+    check(`S16 ${w}x${h} resized bottom border`, spans(lines[h + 5], w + 10, '└', '┘'), lines[h + 5]);
+    f.ui.stop();
+  }
+
+  // S18: Select is a dropdown
+  {
+    const d = await launch();
+    const dm = d.setup.mockMouse;
+    const dframe = () => d.setup.captureCharFrame();
+    const dsettle = async () => {
+      await sleep(80);
+      await d.setup.renderOnce();
+    };
+    const dlocate = (text: string): [number, number] | null => {
+      const lines = dframe().split(String.fromCharCode(10));
+      for (let y = 0; y < lines.length; y++) {
+        const x = lines[y].indexOf(text);
+        if (x >= 0) return [x, y];
+      }
+      return null;
+    };
+    const dclick = async (text: string) => {
+      const at3 = dlocate(text);
+      if (at3) await dm.click(at3[0], at3[1]);
+      await dsettle();
+      return at3 !== null;
+    };
+    const ddrain = async () => {
+      const out = [];
+      for (;;) {
+        const e = await d.ui.nextEvent(100);
+        if (!e) return out;
+        out.push(e);
+      }
+    };
+    await dsettle();
+    const closedFrame = dframe();
+    check('S18 closed shows only the current value', closedFrame.includes('Red') && !closedFrame.includes('Green') && !closedFrame.includes('Blue'), closedFrame);
+    check('S18 closed shows a down arrow', /Red +▼/.test(closedFrame), closedFrame);
+    await dclick('Red');
+    check('S18 click opens the list', dframe().includes('Green') && dframe().includes('Blue'), dframe());
+    d.setup.mockInput.pressEscape();
+    await dsettle();
+    check('S18 Esc closes without an event', !dframe().includes('Green') && d.ui.color.value === 'Red' && (await ddrain()).length === 0, dframe());
+    // keyboard: the field has the focus from the click
+    d.setup.mockInput.pressArrow('down');
+    await dsettle();
+    check('S18 Down opens the list', dframe().includes('Green'), dframe());
+    d.setup.mockInput.pressArrow('down');
+    await dsettle();
+    d.setup.mockInput.pressEnter();
+    await dsettle();
+    let dev = await ddrain();
+    check('S18 Down+Enter chooses Green', d.ui.color.value === 'Green' && dev.length === 1 && dev[0].tag === 'color' && dev[0].value === 'Green' && !dframe().includes('Blue'), JSON.stringify(dev) + dframe());
+    d.setup.mockInput.pressKey(' ');
+    await dsettle();
+    check('S18 Space opens the list', dframe().includes('Blue'), dframe());
+    await dclick('Blue');
+    dev = await ddrain();
+    check('S18 click on a row chooses it', d.ui.color.value === 'Blue' && dev.length === 1 && dev[0].value === 'Blue' && !dframe().includes('Red'), JSON.stringify(dev) + dframe());
+    d.setup.mockInput.pressEnter();
+    await dsettle();
+    d.setup.mockInput.pressEnter();
+    await dsettle();
+    check('S18 the same option sends no event', (await ddrain()).length === 0 && d.ui.color.value === 'Blue', dframe());
+    // Tab closes without a change
+    d.setup.mockInput.pressEnter();
+    await dsettle();
+    d.setup.mockInput.pressTab();
+    await dsettle();
+    check('S18 Tab closes the list', !dframe().includes('Red') && (await ddrain()).length === 0, dframe());
+    // a click outside closes it and is swallowed
+    await dclick('Blue');
+    check('S18 open again', dframe().includes('Red'), dframe());
+    await dclick('Send');
+    check('S18 click outside closes and is swallowed', !dframe().includes('Red') && (await ddrain()).length === 0, dframe());
+    // program writes
+    d.ui.color.value = 'Green';
+    d.ui.color.options = ['Green', 'Cyan'];
+    await dsettle();
+    check('S18 program writes show without an event', /Green +▼/.test(dframe()) && (await ddrain()).length === 0, dframe());
+    // muted does not open
+    d.ui.color.mute();
+    await dsettle();
+    await dclick('Green');
+    check('S18 muted select does not open', !dframe().includes('Cyan') && (await ddrain()).length === 0, dframe());
+    d.ui.color.readonly();
+    await dsettle();
+    await dclick('Green');
+    check('S18 readonly select does not open', !dframe().includes('Cyan'), dframe());
+    d.ui.color.active();
+    d.ui.color.hide();
+    await dsettle();
+    check('S18 hidden select is not drawn', !dframe().includes('Green'), dframe());
+    d.ui.stop();
+  }
+
+  // q and Ctrl+C quit
+  const second = await launch();
+  await second.setup.renderOnce();
+  second.setup.mockInput.pressTab();
+  await sleep(60);
+  second.setup.mockInput.pressKey('q');
+  const quit = await Promise.race([
+    second.ui.wait().then(() => true),
+    sleep(1000).then(() => false),
+  ]);
+  check('X q quits', quit && !second.ui.running);
+  const third = await launch();
+  await sleep(100);
+  third.setup.mockInput.pressCtrlC();
+  const quit2 = await Promise.race([
+    third.ui.wait().then(() => true),
+    sleep(1000).then(() => false),
+  ]);
+  check('X Ctrl+C quits', quit2 && !third.ui.running);
+} catch (e) {
+  check('driver crashed', false, e instanceof Error ? e.stack : e);
+}
+console.log('RESULTS ' + JSON.stringify(results));
+process.exit(0);

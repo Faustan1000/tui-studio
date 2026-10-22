@@ -16,14 +16,20 @@
 
 import type { ExportAdapter, ExportFile } from '../adapter';
 import { inlineText, itemText, recase, treeLines, visibleChildren } from '../ir';
-import type { IRBox, IRNode, IRScreen, IRStyle } from '../ir';
+import type { IRBox, IRItem, IRNode, IRScreen, IRStyle } from '../ir';
 import { CodeWriter, jsStr } from '../lang';
+import { apiName, buildApiModel, safeIdent } from '../api/model';
+import type { ApiModel } from '../api/model';
+import {
+  BLESSED_RUNTIME_FILENAME,
+  BLESSED_RUNTIME_SOURCE,
+  BLESSED_RUNTIME_TYPES,
+} from '../api/blessed/runtime';
 
 /** Pinned blessed release. */
 export const BLESSED_VERSION = '0.1.81';
 
 const FOCUS_COLOR = '#5fafff';
-const HINT_COLOR = '#808080';
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 /** U+2028 and U+2029, built here so this source file never contains them. */
 const LINE_SEPARATORS = String.fromCharCode(0x2028, 0x2029);
@@ -45,24 +51,39 @@ const FIXED_NAMES = [
   'exports',
   'process',
   'console',
-  'focusables',
-  'focusIndex',
-  'focusAt',
-  'quit',
-  'overlayOpen',
-  'overlayOpenNow',
-  'firstStop',
-  'modals',
-  'showModal',
-  'closeTopModal',
-  'dropdown',
-  'withPlaceholder',
-  'setMark',
-  'spin',
-  'SPINNER_FRAMES',
+  'ui',
+  'Ui',
+  'Handle',
+  'StudioUi',
 ];
 
-type Helper = 'dropdown' | 'placeholder' | 'mark' | 'spin';
+/** Members of the base class: a code name must not shadow them. */
+const BASE_MEMBERS = [
+  'start',
+  'stop',
+  'wait',
+  'run',
+  'report',
+  'log',
+  'errors',
+  'ready',
+  'running',
+  'screen',
+  'get',
+  'on',
+  'nextEvent',
+  'installExcepthooks',
+  'focusNext',
+  'textbox',
+  'wire',
+  'constructor',
+];
+
+/** Where the children of a container go: the variable of the inner box and its inset. */
+interface Inner {
+  var: string;
+  inset: number;
+}
 
 interface Ctx {
   w: CodeWriter;
@@ -70,15 +91,16 @@ interface Ctx {
   vars: Map<IRNode, string>;
   /** Handler names in first-use order (deduplicated stubs). */
   handlers: Set<string>;
-  focusables: string[];
-  modals: string[];
-  helpers: Set<Helper>;
+  /** Facade member (`ui.<member>`) of the nodes that have a code name. */
+  members: Map<IRNode, string>;
 }
 
 // ── Public helpers (also used by tests) ───────────────────────────────────────
 
 /** The box a node gets in blessed: relative to the parent's outer box, at least 1x1, whole cells. */
 export function blessedPlacement(node: IRNode): IRBox {
+  const flow = FLOW.get(node);
+  if (flow) return { x: flow.x, y: flow.y, width: flow.width, height: flow.height };
   let b: IRBox | undefined = node.rel;
   if (!b && node.box) {
     const pb = node.parent?.box;
@@ -100,7 +122,269 @@ export function blessedPlacement(node: IRNode): IRBox {
     };
   }
   const n = (v: number) => (Number.isFinite(v) ? Math.round(v) : 0);
-  return { x: n(b.x), y: n(b.y), width: Math.max(1, n(b.width)), height: Math.max(1, n(b.height)) };
+  // The editor's engine gives components with an automatic width a minimum width; blessed
+  // clips, so such widgets get at least the width of their content.
+  let width = node.width === 'auto' ? Math.max(n(b.width), intrinsicWidth(node)) : n(b.width);
+  // The program can write longer text into a Text with a code name: it may grow to the right
+  // edge of its parent unless the parent lays its children out in a row.
+  const parent = node.parent;
+  if (node.tag && node.type === 'Text' && node.width === 'auto' && parent?.box) {
+    const row = parent.layout.mode === 'flex' && parent.layout.direction === 'row';
+    const inner = parent.box.width - (parent.style.border ? 1 : 0) - n(b.x);
+    if (!row) width = Math.max(width, inner);
+  }
+  const adj = ADJUST.get(node);
+  return {
+    x: n(b.x),
+    y: n(b.y) + (adj?.dy ?? 0),
+    width: Math.max(1, width),
+    height: Math.max(1, n(b.height) + (adj?.dh ?? 0)),
+  };
+}
+
+const longest = (lines: string[]) => Math.max(0, ...lines.map((l) => [...l].length));
+
+/** Width of the content of a widget with an automatic width (0 = unknown). */
+function intrinsicWidth(node: IRNode): number {
+  const border = node.style.border ? 2 : 0;
+  switch (node.type) {
+    case 'Text':
+      return node.wrapText ? 0 : longest(node.text.split(String.fromCharCode(10))) + border;
+    case 'Checkbox':
+    case 'Radio':
+    case 'Toggle':
+    case 'Breadcrumb':
+    case 'Spinner':
+    case 'Button':
+      return longest([inlineText(node)]) + border;
+    case 'List':
+    case 'Menu':
+      return longest(node.items.map((i) => itemText(i, node.type === 'Menu'))) + 1 + border;
+    case 'Tree':
+      return longest(treeLines(node.items).map((l) => l.text)) + 1 + border;
+    case 'Select':
+      return longest(node.options.length ? node.options : ['']) + 2 + border;
+    case 'Table': {
+      const cols = Math.max(node.columns.length, ...node.rows.map((r) => r.length));
+      let total = 0;
+      for (let c = 0; c < cols; c++) {
+        total += longest([node.columns[c] ?? '', ...node.rows.map((r) => r[c] ?? '')]) + 2;
+      }
+      return total + border;
+    }
+    default:
+      return 0;
+  }
+}
+
+interface Adjust {
+  dy: number;
+  dh: number;
+}
+
+/** Growth of widgets that the editor sizes too small for their content, and what it shifts. */
+let ADJUST = new WeakMap<IRNode, Adjust>();
+
+/** Height of the content of a widget with an automatic height (0 = unknown). */
+function intrinsicHeight(node: IRNode): number {
+  const border = node.style.border ? 2 : 0;
+  switch (node.type) {
+    case 'List':
+    case 'Menu':
+      return node.items.length + border;
+    case 'Tree':
+      return treeLines(node.items).length + border;
+    case 'Table':
+      return node.rows.length + 1 + border;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Lists, menus, trees and tables with an automatic height get the height of their content;
+ * siblings below them (that overlap horizontally) move down by the same amount and containers
+ * with an automatic height grow. Returns how much `node` itself grows.
+ */
+function computeAdjust(node: IRNode): number {
+  const kids = visibleChildren(node).filter((k) => k.type !== 'Spacer' && k.rel);
+  const grows = new Map<IRNode, number>();
+  for (const k of kids) grows.set(k, computeAdjust(k));
+  const sorted = [...kids].sort((a, b) => a.rel!.y - b.rel!.y);
+  let bottom = 0;
+  // The editor's engine sometimes places a widget over the one above it (its height is larger
+  // than the room it left); in a column that is pushed down so nothing overlaps.
+  const column = node.layout.mode === 'flex' && node.layout.direction === 'column';
+  let cursor = -Infinity;
+  for (const k of sorted) {
+    const r = k.rel!;
+    let dy = 0;
+    for (const e of sorted) {
+      if (e === k) break;
+      const er = e.rel!;
+      const overlapX = er.x < r.x + r.width && r.x < er.x + er.width;
+      if (overlapX && er.y + er.height <= r.y) dy += grows.get(e)!;
+    }
+    if (column && r.y + dy < cursor) dy = cursor - r.y;
+    cursor = r.y + dy + r.height + grows.get(k)!;
+    ADJUST.set(k, { dy, dh: grows.get(k)! });
+    bottom = Math.max(bottom, r.y + dy + r.height + grows.get(k)!);
+  }
+  const canGrow = node.parent === null || node.height === 'auto';
+  if (!canGrow) {
+    for (const k of kids) ADJUST.set(k, { dy: 0, dh: 0 });
+    return 0;
+  }
+  if (!node.rel) return 0;
+  const own = Math.max(0, intrinsicHeight(node) - node.rel.height);
+  if (own > 0) return own;
+  if (!kids.length) return 0;
+  return Math.max(0, bottom + (node.style.border ? 1 : 0) - node.rel.height);
+}
+
+// ── Flow layout (the Textual reference) ──────────────────────────────────────
+//
+// A column of auto-height children is laid out like Textual does (docs/VISUAL_SPEC.md): children
+// one below the other, every widget at its natural size, border and padding of a container
+// add up. The editor's own engine gives such children fixed slots, so those boxes are not used
+// there. Widgets that fill the width get a percentage, so they follow the terminal.
+
+/** A box computed by the flow layout, relative to the content area of the parent. */
+interface FlowBox extends IRBox {
+  /** The width is the width of the parent's content area (a percentage in the output). */
+  fill: boolean;
+}
+
+let FLOW = new WeakMap<IRNode, FlowBox>();
+
+const flowKids = (n: IRNode) =>
+  visibleChildren(n).filter((k) => k.type !== 'Spacer' && k.type !== 'Modal');
+
+/** Containers whose children are stacked top to bottom at their natural height. */
+function isFlowContainer(n: IRNode): boolean {
+  if (n.type !== 'Screen' && n.type !== 'Box') return false;
+  const l = n.layout;
+  if (l.mode !== 'flex' || l.direction !== 'column' || l.wrap || l.justify !== 'start') return false;
+  if (l.align !== 'start' && l.align !== 'stretch') return false;
+  return flowKids(n).every((k) => k.height === 'auto' || typeof k.height === 'number');
+}
+
+/** Border and padding of a flow container (cells per side). */
+function flowFrame(n: IRNode): { b: number; l: number; t: number; h: number; v: number } {
+  const b = n.style.border ? 1 : 0;
+  const p = n.layout.padding;
+  return { b, l: b + p.left, t: b + p.top, h: 2 * b + p.left + p.right, v: 2 * b + p.top + p.bottom };
+}
+
+/** The content area of a container with children laid out by the flow. */
+export function hasFlow(n: IRNode): boolean {
+  return isFlowContainer(n);
+}
+
+function tableWidth(n: IRNode): number {
+  const cols = Math.max(n.columns.length, ...n.rows.map((r) => r.length));
+  let total = 0;
+  for (let c = 0; c < cols; c++) {
+    total += longest([n.columns[c] ?? '', ...n.rows.map((r) => r[c] ?? '')]);
+  }
+  return total + 2 * Math.max(0, cols - 1) + 2;
+}
+
+/** Label of a tab: icon, label, status dot and hotkey, as in the reference. */
+export function tabLabel(t: IRItem): string {
+  return (
+    (t.icon ? `${t.icon} ` : '') + t.label + (t.status ? ' ●' : '') + (t.hotkey ? ` ${t.hotkey}` : '')
+  );
+}
+
+/** Natural size of a node in the flow (`fill` = as wide as the parent's content area). */
+function measure(n: IRNode, avail: number): { w: number; h: number; fill: boolean } {
+  const border = n.style.border ? 2 : 0;
+  const numW = typeof n.width === 'number' ? n.width : null;
+  const numH = typeof n.height === 'number' ? n.height : null;
+  let w = 0;
+  let h = 1 + border;
+  let fill = n.width === 'fill';
+  const stretch = () => {
+    if (numW === null) fill = true;
+  };
+  switch (n.type) {
+    case 'Screen':
+    case 'Box':
+      if (isFlowContainer(n)) {
+        const f = flowFrame(n);
+        const kids = flowKids(n);
+        const inner = Math.max(1, avail - f.h);
+        const sizes = kids.map((k) => measure(k, inner));
+        w = Math.max(0, ...sizes.map((s) => (s.fill ? 10 : s.w))) + f.h;
+        h = sizes.reduce((a, s) => a + s.h, 0) + Math.max(0, kids.length - 1) * n.layout.gap + f.v;
+        if (!kids.length) h = Math.max(h, 1);
+      } else {
+        w = n.rel?.width ?? 10;
+        h = n.rel?.height ?? 3;
+      }
+      break;
+    case 'Text': {
+      const lines = n.text.split(String.fromCharCode(10));
+      w = longest(lines) + border;
+      h = lines.length + border;
+      break;
+    }
+    case 'TextInput':
+      stretch();
+      h = border ? 3 : 1;
+      break;
+    case 'Button':
+      w = longest([inlineText(n)]) + 2 + border;
+      if (border) w = Math.max(16, w);
+      break;
+    case 'Select':
+      stretch();
+      h = border ? 3 : 1;
+      break;
+    case 'ProgressBar':
+      stretch();
+      h = border ? 3 : 1;
+      break;
+    case 'Table':
+      w = tableWidth(n) + border;
+      h = n.rows.length + 1 + border;
+      break;
+    case 'List':
+    case 'Menu':
+      stretch();
+      h = n.items.length + border;
+      break;
+    case 'Tree':
+      stretch();
+      h = treeLines(n.items).length + border;
+      break;
+    case 'Tabs':
+      stretch();
+      h = 2;
+      break;
+    default:
+      w = longest([inlineText(n)]) + border;
+  }
+  if (numW !== null) {
+    w = numW;
+    fill = false;
+  }
+  if (numH !== null) h = numH;
+  return { w: Math.max(1, Math.min(w, Math.max(avail, 1))), h: Math.max(1, h), fill };
+}
+
+/** Lay out the children of a flow container (and, recursively, of its flow children). */
+function computeFlow(n: IRNode, avail: number): void {
+  const f = flowFrame(n);
+  const inner = Math.max(1, avail - f.h);
+  let y = 0;
+  for (const k of flowKids(n)) {
+    const m = measure(k, inner);
+    FLOW.set(k, { x: 0, y, width: m.w, height: m.h, fill: m.fill });
+    y += m.h + n.layout.gap;
+    if (isFlowContainer(k)) computeFlow(k, m.fill ? inner : m.w);
+  }
 }
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
@@ -109,12 +393,18 @@ export const blessedAdapter: ExportAdapter = {
   id: 'blessed',
   label: 'Blessed (Node.js)',
   language: 'js',
-  verification: 'syntax',
+  verification: 'run',
   multiScreen: false,
   generate: ({ ir }): ExportFile[] => {
     const screen = ir.start;
+    // Only the first screen is exported, so only its components get handles.
+    const all = buildApiModel({ screens: [screen], start: screen });
+    const model = { ...all, handles: all.handles.filter((h) => h.node.visible) };
     return [
-      { path: 'index.js', content: generateIndex(screen) },
+      { path: 'index.js', content: generateIndex(screen, model) },
+      { path: 'index.d.ts', content: generateTypes(model) },
+      { path: BLESSED_RUNTIME_FILENAME, content: BLESSED_RUNTIME_SOURCE },
+      { path: 'ui-runtime.d.ts', content: BLESSED_RUNTIME_TYPES },
       { path: 'package.json', content: generatePackageJson(screen) },
     ];
   },
@@ -127,6 +417,7 @@ function generatePackageJson(screen: IRScreen): string {
     private: true,
     description: 'Terminal UI exported from TUI Studio (Blessed)',
     main: 'index.js',
+    types: 'index.d.ts',
     scripts: { start: 'node index.js' },
     dependencies: { blessed: BLESSED_VERSION },
   };
@@ -135,30 +426,42 @@ function generatePackageJson(screen: IRScreen): string {
 
 // ── index.js ──────────────────────────────────────────────────────────────────
 
-function generateIndex(screen: IRScreen): string {
+function generateIndex(screen: IRScreen, model: ApiModel): string {
   const root = screen.root;
   const ctx: Ctx = {
-    w: new CodeWriter('  ', 0),
+    w: new CodeWriter('  ', 2),
     used: new Set<string>([...JS_RESERVED, ...FIXED_NAMES]),
     vars: new Map(),
     handlers: new Set(),
-    focusables: [],
-    modals: [],
-    helpers: new Set(),
+    members: new Map(),
   };
+  const facade = facadeNames(model);
+  for (const h of model.handles) ctx.members.set(h.node, facade.get(h.tag)!);
   collectHandlers(root, ctx);
 
-  // Body first (it decides which helpers are needed), then the file is assembled.
   const rootVar = nameFor(root, ctx);
-  emitWidget(
+  ADJUST = new WeakMap();
+  FLOW = new WeakMap();
+  computeAdjust(root);
+  if (isFlowContainer(root)) computeFlow(root, screen.width);
+  // The root fills the terminal; the design size is only where the content sits.
+  const rootInner = emitWidget(
     root,
     'screen',
-    { x: 0, y: 0, width: Math.max(1, screen.width), height: Math.max(1, screen.height) },
+    { x: 0, y: 0, width: screen.width, height: screen.height },
     ctx,
     rootVar
   );
-  emitChildren(root, rootVar, ctx);
-  const body = ctx.w.toString();
+  const viewport = rootInner ?? { var: rootVar, inset: 0 };
+  // The inner box of the root is a scrollable box: the program scrolls it by moving its
+  // childBase (see ui-runtime.js).
+  ctx.w
+    .line(
+      `ui.viewport(${rootInner ? rootVar : 'null'}, ${viewport.var}, ${contentBottom(root, viewport.inset)});`
+    )
+    .line();
+  emitChildren(root, viewport.var, ctx, viewport.inset);
+  const body = ctx.w.toString().trimEnd();
 
   const out = new CodeWriter('  ', 0);
   const title = oneLine(screen.name || screen.ident);
@@ -172,6 +475,11 @@ function generateIndex(screen: IRScreen): string {
     .line(
       '//         Esc closes an open dropdown or modal. In a text field Enter or Esc leaves the field.'
     )
+    .line('//         Ctrl+L shows the log panel; errors open a dialog (Enter or Esc closes it).')
+    .line('//')
+    .line('// Program API: components with a code name are members of `ui` (see ui-runtime.js):')
+    .line('//   const { Ui } = require("./index");  const ui = new Ui();  await ui.start();')
+    .line('//   ui.status.text = "..."; ui.submitBtn.onClick((e) => ...); ui.nameInput.readonly();')
     .line('//')
     .line(
       '// Layout: SNAPSHOT. Every widget is placed at the cell position and size the editor computed for the'
@@ -182,7 +490,9 @@ function generateIndex(screen: IRScreen): string {
     .line(
       "//         (autoPadding is off, so a parent's border does not shift its children). The layout does"
     )
-    .line('//         not reflow when the terminal is resized.')
+    .line(
+      '//         not reflow when the terminal is resized, and hidden widgets leave their space empty.'
+    )
     .line(
       '// Limits: blessed only knows "line" and "bg" borders (double, rounded and bold are drawn as line),'
     )
@@ -190,16 +500,7 @@ function generateIndex(screen: IRScreen): string {
     .line("'use strict';")
     .line()
     .line("const blessed = require('blessed');")
-    .line()
-    .line('const screen = blessed.screen({')
-    .indent()
-    .line('smartCSR: true,')
-    .line('fullUnicode: true,')
-    .line('autoPadding: false,')
-    .line(`title: ${jsStr(screen.name || screen.ident)},`)
-    .line("ignoreLocked: ['C-c'],")
-    .dedent()
-    .line('});')
+    .line("const { Handle, StudioUi } = require('./ui-runtime');")
     .line();
 
   if (ctx.handlers.size) {
@@ -218,202 +519,95 @@ function generateIndex(screen: IRScreen): string {
     }
   }
 
-  emitHelpers(out, ctx);
   out
-    .line('// ── Widgets ───────────────────────────────────────────────────────────────────')
+    .line('// ── The UI ────────────────────────────────────────────────────────────────────')
     .line();
-  out.block(body.replace(/\n$/, ''));
-  out.line();
-  emitInteraction(out, ctx);
+  out.line('class Ui extends StudioUi {').indent();
+  out.line('constructor(options) {').indent();
+  out.line('super(options);');
+  out.line(`this._title = ${jsStr(screen.name || screen.ident)};`);
+  for (const h of model.handles) {
+    const member = facade.get(h.tag)!;
+    const props: Record<string, { type: string; value: unknown }> = {};
+    for (const p of h.properties)
+      props[apiName(p.name, 'camel')] = { type: p.type, value: p.initial };
+    out.line(`/** ${h.type}: ${oneLine(h.node.name || h.type)} */`);
+    out.line(`this${memberAccess(member)} = new Handle(this, ${jsStr(h.tag)}, {`).indent();
+    out.line(`type: ${jsStr(h.type)},`);
+    out.line(`states: ${jsJson(h.states.map((s) => s))},`);
+    out.line(`state: ${jsStr(h.initialState === 'hidden' ? 'active' : h.initialState)},`);
+    out.line(`props: ${jsJson(props)},`);
+    out.line(`events: ${jsJson(h.events.map((e) => e.name))},`);
+    out.dedent().line('});');
+  }
+  out.dedent().line('}').line();
+  out.line('/** Creates the widgets (called by start()). */');
+  out.line('_build(screen) {').indent();
+  out.line('const ui = this;');
+  out.block(body);
+  out.dedent().line('}');
+  out.dedent().line('}').line();
+  out.line('module.exports = { Ui };').line();
+  out.line('if (require.main === module) {').indent();
+  out.line('const ui = new Ui();');
+  out.line('ui.installExcepthooks();');
+  out.line('ui.run().then(');
+  out.indent().line('() => process.exit(0),').line('(err) => {').indent();
+  out.line('console.error(err);').line('process.exit(1);').dedent().line('}').dedent();
+  out.line(');').dedent().line('}');
   return out.toString();
 }
 
-function emitHelpers(out: CodeWriter, ctx: Ctx): void {
-  const h = ctx.helpers;
-  if (!h.size && !ctx.modals.length) return;
-  out
-    .line('// ── Helpers ───────────────────────────────────────────────────────────────────')
-    .line();
-  if (h.has('dropdown') || ctx.modals.length) out.line('let overlayOpen = false;').line();
-  if (h.has('dropdown')) {
-    out.block(`/** A closed box that opens a list of options below it (Select). */
-function dropdown(box, options, selected, onChange) {
-  const popup = blessed.list({
-    parent: screen,
-    hidden: true,
-    tags: false,
-    keys: true,
-    mouse: true,
-    items: options,
-    border: { type: 'line' },
-    width: box.width,
-    height: Math.min(Math.max(options.length, 1), 8) + 2,
-    style: { fg: box.style.fg, bg: box.style.bg, border: box.style.border, selected: { bold: true, inverse: true } },
-  });
-  let current = selected;
-  function close() {
-    overlayOpen = false;
-    popup.hide();
-    box.focus();
-    screen.render();
-  }
-  function open() {
-    popup.left = box.aleft;
-    popup.top = box.atop + box.height;
-    popup.show();
-    popup.setFront();
-    popup.select(current);
-    popup.focus();
-    overlayOpen = true;
-    screen.render();
-  }
-  popup.on('select', (item, index) => {
-    current = index;
-    box.setContent(options[index] + ' \\u25be');
-    close();
-    if (onChange) onChange(options[index], index);
-  });
-  popup.key(['escape'], close);
-  box.key(['enter', 'space'], open);
-  box.on('click', open);
+/** `ui.submitBtn` for plain names, `ui["x"]` never needed: members are identifiers. */
+function memberAccess(member: string): string {
+  return `.${member}`;
 }
-`);
-    out.line();
+
+/** Facade member per code name: camelCase, keywords and clashes with the base class get a `_`. */
+function facadeNames(model: ApiModel): Map<string, string> {
+  const used = new Set<string>(BASE_MEMBERS);
+  const out = new Map<string, string>();
+  for (const h of model.handles) {
+    let name = safeIdent(apiName(h.tag, 'camel'), 'ts');
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) name = 'n' + name.replace(/[^A-Za-z0-9_$]/g, '_');
+    while (used.has(name) || name.startsWith('_')) name += '_';
+    used.add(name);
+    out.set(h.tag, name);
   }
-  if (h.has('placeholder')) {
-    out.block(`/** Shows \`text\` dimmed while a text field is empty. */
-function withPlaceholder(el, text) {
-  const fg = el.style.fg;
-  let shown = !el.getValue();
-  const paint = () => {
-    if (shown) {
-      el.setValue(text);
-      el.style.fg = ${jsStr(HINT_COLOR)};
-    } else {
-      el.style.fg = fg;
+  return out;
+}
+
+const TS_TYPES: Record<string, string> = {
+  str: 'string',
+  int: 'number',
+  float: 'number',
+  bool: 'boolean',
+  str_list: 'string[]',
+  rows: 'string[][]',
+};
+
+/** `index.d.ts`: the typed facade. */
+function generateTypes(model: ApiModel): string {
+  const facade = facadeNames(model);
+  const out = new CodeWriter('  ', 0);
+  out.line("import { Handle, StudioUi, UiEvent } from './ui-runtime';");
+  out.line("export * from './ui-runtime';").line();
+  out.line('type Listener = (event: UiEvent) => unknown;').line();
+  out.line('export declare class Ui extends StudioUi {').indent();
+  for (const h of model.handles) {
+    const parts: string[] = [];
+    for (const p of h.properties) {
+      parts.push(`${apiName(p.name, 'camel')}: ${TS_TYPES[p.type] ?? 'unknown'}`);
     }
-  };
-  el.on('focus', () => {
-    if (!shown) return;
-    shown = false;
-    el.clearValue();
-    el.style.fg = fg;
-  });
-  const restore = () => {
-    shown = !el.getValue();
-    paint();
-    screen.render();
-  };
-  el.on('submit', restore);
-  el.on('cancel', restore);
-  paint();
-}
-`);
-    out.line();
+    for (const e of h.events)
+      parts.push(`on${e.name.charAt(0).toUpperCase()}${e.name.slice(1)}(fn: Listener): Listener`);
+    if (h.type === 'Modal') parts.push('open(): void', 'close(): void', 'readonly isOpen: boolean');
+    const extra = parts.length ? ` & { ${parts.join('; ')} }` : '';
+    out.line(`/** ${h.type}: ${oneLine(h.node.name || h.type).replace(/\*\//g, '* /')} */`);
+    out.line(`readonly ${facade.get(h.tag)}: Handle${extra};`);
   }
-  if (h.has('mark')) {
-    out.block(`/** Replaces blessed's built-in "[x]" / "(*)" marker by the glyphs of the design. */
-function setMark(el, on, off) {
-  el.render = function () {
-    this.clearPos(true);
-    this.setContent((this.checked ? on : off) + ' ' + this.text, true);
-    return this._render();
-  };
-}
-`);
-    out.line();
-  }
-  if (h.has('spin')) {
-    out.block(`const SPINNER_FRAMES = ${JSON.stringify(SPINNER_FRAMES)};
-
-/** Animates a spinner box. */
-function spin(el, label) {
-  let frame = 0;
-  setInterval(() => {
-    frame = (frame + 1) % SPINNER_FRAMES.length;
-    el.setContent(SPINNER_FRAMES[frame] + ' ' + label);
-    screen.render();
-  }, 80);
-}
-`);
-    out.line();
-  }
-  if (ctx.modals.length) {
-    out.block(`function showModal(modal) {
-  modal.show();
-  modal.setFront();
-  modal.focus();
-  screen.render();
-}
-
-function closeTopModal() {
-  for (let i = modals.length - 1; i >= 0; i--) {
-    if (modals[i].visible) {
-      modals[i].hide();
-      return true;
-    }
-  }
-  return false;
-}
-`);
-    out.line();
-  }
-}
-
-function emitInteraction(out: CodeWriter, ctx: Ctx): void {
-  const overlay = ctx.helpers.has('dropdown') || ctx.modals.length > 0;
-  out
-    .line('// ── Keys and focus ────────────────────────────────────────────────────────────')
-    .line();
-  out
-    .line('function quit() {')
-    .indent()
-    .line('screen.destroy();')
-    .line('process.exit(0);')
-    .dedent()
-    .line('}')
-    .line();
-  out
-    .line('function overlayOpenNow() {')
-    .indent()
-    .line(overlay ? 'return overlayOpen;' : 'return false;')
-    .dedent()
-    .line('}')
-    .line();
-  if (ctx.focusables.length) {
-    out.line(`const focusables = [${ctx.focusables.join(', ')}];`);
-    out.line('let focusIndex = 0;').line();
-    out.line('function focusAt(index) {').indent();
-    out.line('focusIndex = (index + focusables.length) % focusables.length;');
-    out.line('focusables[focusIndex].focus();');
-    out.line('screen.render();');
-    out.dedent().line('}').line();
-    out.line("focusables.forEach((el, i) => el.on('focus', () => { focusIndex = i; }));");
-    out.line("screen.key(['tab'], () => { if (!overlayOpenNow()) focusAt(focusIndex + 1); });");
-    out
-      .line("screen.key(['S-tab'], () => { if (!overlayOpenNow()) focusAt(focusIndex - 1); });")
-      .line();
-  }
-  if (ctx.modals.length) out.line(`const modals = [${ctx.modals.join(', ')}];`).line();
-  out.line("screen.key(['q', 'C-c'], quit);");
-  out.line("screen.key(['escape'], () => {").indent();
-  out.line('if (overlayOpenNow()) return;');
-  if (ctx.modals.length) {
-    out
-      .line('if (closeTopModal()) {')
-      .indent()
-      .line('screen.render();')
-      .line('return;')
-      .dedent()
-      .line('}');
-  }
-  out.line('quit();').dedent().line('});').line();
-  if (ctx.focusables.length) {
-    // Start on something that is not a text field: a focused text field swallows the q key.
-    out.line("const firstStop = focusables.findIndex((el) => el.type !== 'textbox');");
-    out.line('focusAt(firstStop < 0 ? 0 : firstStop);');
-  }
-  out.line('screen.render();');
+  out.dedent().line('}');
+  return out.toString();
 }
 
 // ── Names ─────────────────────────────────────────────────────────────────────
@@ -425,6 +619,18 @@ function oneLine(s: string): string {
 /** JSON array literal that is also valid JavaScript. */
 function jsJson(v: unknown): string {
   return JSON.stringify(v).replace(SEPARATOR_RE, (c) => '\\u' + c.charCodeAt(0).toString(16));
+}
+
+/** First row below the design, relative to the inner box of the root; at least one row. */
+function contentBottom(root: IRNode, inset: number): number {
+  let bottom = 1;
+  for (const c of visibleChildren(root)) {
+    // A modal the program opens floats over the screen: it takes no room in the design.
+    if (c.type === 'Spacer' || (c.type === 'Modal' && c.tag)) continue;
+    const b = blessedPlacement(c);
+    bottom = Math.max(bottom, b.y - (FLOW.has(c) ? 0 : inset) + b.height);
+  }
+  return bottom;
 }
 
 function nameFor(node: IRNode, ctx: Ctx): string {
@@ -460,7 +666,14 @@ function collectHandlers(node: IRNode, ctx: Ctx): void {
 
 // ── Emission ──────────────────────────────────────────────────────────────────
 
-function emitChildren(node: IRNode, parentVar: string, ctx: Ctx): void {
+function emitChildren(node: IRNode, parentVar: string, ctx: Ctx, inset: number): void {
+  // Positions of the IR are relative to the outer box of the parent; the children of a framed
+  // container sit in its inner box, one cell in.
+  const place = (n: IRNode): IRBox => {
+    const b = blessedPlacement(n);
+    if (FLOW.has(n)) return b;
+    return { ...b, x: b.x - inset, y: b.y - inset };
+  };
   const kids = visibleChildren(node).filter((c) => c.type !== 'Spacer');
   for (let i = 0; i < kids.length; i++) {
     const kid = kids[i];
@@ -468,17 +681,24 @@ function emitChildren(node: IRNode, parentVar: string, ctx: Ctx): void {
       // Consecutive radios form one group (blessed.radioset makes them exclusive).
       let j = i;
       while (j < kids.length && kids[j].type === 'Radio') j++;
-      emitRadioGroup(kids.slice(i, j), parentVar, ctx);
+      emitRadioGroup(
+        kids.slice(i, j).map((r) => ({ node: r, box: place(r) })),
+        parentVar,
+        ctx
+      );
       i = j - 1;
       continue;
     }
-    emitWidget(kid, parentVar, blessedPlacement(kid), ctx);
-    if (kid.children.length) emitChildren(kid, nameFor(kid, ctx), ctx);
+    const inner = emitWidget(kid, parentVar, place(kid), ctx);
+    if (kid.children.length) {
+      emitChildren(kid, inner?.var ?? nameFor(kid, ctx), ctx, inner?.inset ?? 0);
+    }
   }
 }
 
-function emitRadioGroup(radios: IRNode[], parentVar: string, ctx: Ctx): void {
-  const boxes = radios.map(blessedPlacement);
+function emitRadioGroup(items: { node: IRNode; box: IRBox }[], parentVar: string, ctx: Ctx): void {
+  const radios = items.map((i) => i.node);
+  const boxes = items.map((i) => i.box);
   const x0 = Math.min(...boxes.map((b) => b.x));
   const y0 = Math.min(...boxes.map((b) => b.y));
   const x1 = Math.max(...boxes.map((b) => b.x + b.width));
@@ -497,7 +717,7 @@ function emitRadioGroup(radios: IRNode[], parentVar: string, ctx: Ctx): void {
     `height: ${y1 - y0}`,
     'tags: false',
   ]);
-  w.line();
+  w.line(`ui.nest(${setVar});`).line();
   radios.forEach((r, i) =>
     emitWidget(r, setVar, { ...boxes[i], x: boxes[i].x - x0, y: boxes[i].y - y0 }, ctx)
   );
@@ -542,18 +762,26 @@ function emitWidget(
   box: IRBox,
   ctx: Ctx,
   forcedName?: string
-): void {
+): Inner | null {
   const w = ctx.w;
+  let inner: Inner | null = null;
+  /** Parent of the frame: the screen itself for a modal the program can open. */
+  let parentRef = parentVar;
   const v = forcedName ?? nameFor(node, ctx);
+  const member = ctx.members.get(node);
   w.line(`// ${node.type}: ${oneLine(node.name || node.type)}`);
 
+  const fill = node.parent === null;
+  const flow = FLOW.get(node);
+  const flowC = isFlowContainer(node);
+  const wide = fill || !!flow?.fill;
   const base = (focus: boolean, extraStyle: string[] = []): string[] => {
     const o = [
-      `parent: ${parentVar}`,
+      `parent: ${parentRef}`,
       `left: ${box.x}`,
       `top: ${box.y}`,
-      `width: ${box.width}`,
-      `height: ${box.height}`,
+      `width: ${wide ? "'100%'" : box.width}`,
+      `height: ${fill ? "'100%'" : box.height}`,
       'tags: false',
     ];
     const b = borderLiteral(node.style);
@@ -561,24 +789,72 @@ function emitWidget(
     o.push(styleLiteral(node.style, { focus: focus && !node.disabled, extra: extraStyle }));
     return o;
   };
-  const focusable = () => {
-    if (!node.disabled) ctx.focusables.push(v);
-  };
+  // Components with a code name can become active later, so they are always focusable.
+  const focusable = `focusable: ${member ? 'true' : String(!node.disabled)}`;
   const selectedStyle = 'selected: { bold: true, inverse: true }';
+  /**
+   * A container: a frame (when it has a border) and, inside it, the scrollable box that holds
+   * the children. Blessed treats the border of a scrolled parent as part of the parent, which
+   * drops the last visible row of a cut container; a borderless inner box has no such border.
+   */
+  const container = (frameOpts: string[], floating = false): Inner => {
+    const fr = flowC ? flowFrame(node) : null;
+    const bordered = !!node.style.border || (!!fr && (fr.h > 0 || fr.v > 0));
+    const origin = (c: 'x' | 'y') => (floating ? "'center'" : String(box[c]));
+    if (floating) parentRef = 'screen';
+    const frame = base(false).map((o) => {
+      if (floating && o.startsWith('left:')) return `left: ${origin('x')}`;
+      if (floating && o.startsWith('top:')) return `top: ${origin('y')}`;
+      return o;
+    });
+    if (!bordered) {
+      obj(w, 'scrollablebox', v, [...frame, ...frameOpts]);
+      return { var: v, inset: 0 };
+    }
+    obj(w, 'box', v, [...frame, ...frameOpts]);
+    let k = `${v}Inner`;
+    for (let i = 2; ctx.used.has(k); i++) k = `${v}Inner${i}`;
+    ctx.used.add(k);
+    const ph = fr ? fr.h : 2;
+    const pv = fr ? fr.v : 2;
+    const pl = fr ? fr.l : 1;
+    const pt = fr ? fr.t : 1;
+    const style = [
+      node.style.fg ? `fg: ${jsStr(node.style.fg)}` : '',
+      node.style.bg ? `bg: ${jsStr(node.style.bg)}` : '',
+    ].filter(Boolean);
+    obj(w, 'scrollablebox', k, [
+      `parent: ${floating ? v : parentRef}`,
+      `left: ${floating ? 1 : fill ? pl : box.x + pl}`,
+      `top: ${floating ? 1 : fill ? pt : box.y + pt}`,
+      `width: ${wide ? `'100%-${ph}'` : Math.max(1, box.width - ph)}`,
+      `height: ${fill ? `'100%-${pv}'` : Math.max(1, box.height - pv)}`,
+      'tags: false',
+      `style: { ${style.join(', ')} }`,
+    ]);
+    return { var: k, inset: pl };
+  };
+  /** Options of `ui.wire`; null = the widget needs no runtime view unless it has a code name. */
+  let wire: string[] | null = null;
 
   switch (node.type) {
     case 'Screen':
     case 'Box':
     case 'Grid':
-      obj(w, 'box', v, base(false));
+      inner = container([]);
+      if (inner.var !== v) wire = [`inner: ${inner.var}`];
       break;
 
     case 'Modal': {
-      const o = base(false);
+      const o: string[] = [];
       if (node.style.border && node.text) o.push(`label: ${jsStr(` ${node.text} `)}`);
       else if (node.text) o.push(`name: ${jsStr(node.text)}`);
-      obj(w, 'box', v, o);
-      ctx.modals.push(v);
+      // A modal the program can open starts closed and belongs to the screen (it is not
+      // scrolled with the design); clicks inside it must not reach the widgets behind it.
+      if (member) o.push('hidden: true');
+      o.push('clickable: true');
+      inner = container(o, !!member);
+      wire = inner.var !== v ? [`inner: ${inner.var}`] : [];
       break;
     }
 
@@ -602,8 +878,7 @@ function emitWidget(
         `content: ${jsStr(`${SPINNER_FRAMES[0]} ${label}`)}`,
         'wrap: false',
       ]);
-      w.line(`spin(${v}, ${jsStr(label)});`);
-      ctx.helpers.add('spin');
+      wire = [`label: ${jsStr(label)}`];
       break;
     }
 
@@ -615,7 +890,11 @@ function emitWidget(
         'mouse: true',
         'keys: true',
       ]);
-      focusable();
+      wire = [
+        `prefix: ${jsStr(node.iconLeft ? `${node.iconLeft} ` : '')}`,
+        `suffix: ${jsStr(node.iconRight ? ` ${node.iconRight}` : '')}`,
+        focusable,
+      ];
       if (node.opensScreen) {
         w.line(
           `// Opens the screen "${oneLine(node.opensScreen)}" in the editor (single-screen export: wire it in the handler).`
@@ -625,48 +904,35 @@ function emitWidget(
 
     case 'TextInput': {
       const o = [...base(true), 'inputOnFocus: true', 'mouse: true', 'keys: true'];
+      if (flow && node.style.border) o.push('padding: { left: 2 }');
       if (node.value) o.push(`value: ${jsStr(node.value)}`);
-      obj(w, 'textbox', v, o);
-      focusable();
-      wireEvents(node, v, ctx);
-      if (node.placeholder) {
-        w.line(`withPlaceholder(${v}, ${jsStr(node.placeholder)});`);
-        ctx.helpers.add('placeholder');
-      }
-      w.line();
-      return;
+      w.line(`const ${v} = ui.textbox({`).indent();
+      for (const x of o) w.line(`${x},`);
+      w.dedent().line('});');
+      wire = [`placeholder: ${jsStr(node.placeholder)}`, focusable];
+      break;
     }
 
     case 'Checkbox':
     case 'Toggle':
-      obj(w, 'checkbox', v, [
+    case 'Radio': {
+      const radio = node.type === 'Radio';
+      obj(w, radio ? 'radiobutton' : 'checkbox', v, [
         ...base(true),
         `text: ${jsStr(node.text)}`,
         `checked: ${node.checked}`,
         'mouse: true',
         'keys: true',
       ]);
-      w.line(
+      const [on, off] =
         node.type === 'Toggle'
-          ? `setMark(${v}, ${jsStr('[ON ]')}, ${jsStr('[OFF]')});`
-          : `setMark(${v}, ${jsStr(`[${node.glyphs.on}]`)}, ${jsStr(`[${node.glyphs.off}]`)});`
-      );
-      ctx.helpers.add('mark');
-      focusable();
+          ? ['[ON ]', '[OFF]']
+          : radio
+            ? [`(${node.glyphs.on})`, `(${node.glyphs.off})`]
+            : [`[${node.glyphs.on}]`, `[${node.glyphs.off}]`];
+      wire = [`on: ${jsStr(on)}`, `off: ${jsStr(off)}`, focusable];
       break;
-
-    case 'Radio':
-      obj(w, 'radiobutton', v, [
-        ...base(true),
-        `text: ${jsStr(node.text)}`,
-        `checked: ${node.checked}`,
-        'mouse: true',
-        'keys: true',
-      ]);
-      w.line(`setMark(${v}, ${jsStr(`(${node.glyphs.on})`)}, ${jsStr(`(${node.glyphs.off})`)});`);
-      ctx.helpers.add('mark');
-      focusable();
-      break;
+    }
 
     case 'Select': {
       obj(w, 'box', v, [
@@ -676,51 +942,37 @@ function emitWidget(
         'keyable: true',
         'mouse: true',
       ]);
-      const idx = Math.max(0, node.options.indexOf(node.value));
       const names = changeHandlers(node, ctx);
-      const cb = names.length
-        ? `, (value, index) => { ${names.map((n) => `${n}(${v}, value, index);`).join(' ')} }`
-        : '';
-      w.line(`dropdown(${v}, ${jsJson(node.options.map(String))}, ${idx}${cb});`);
-      ctx.helpers.add('dropdown');
-      focusable();
-      wireEvents(node, v, ctx);
-      w.line();
-      return;
+      wire = [
+        `options: ${jsJson(node.options.map(String))}`,
+        `value: ${jsStr(node.value || node.options[0] || '')}`,
+        focusable,
+      ];
+      if (flow && node.style.border) wire.push('chevron: true');
+      if (names.length) {
+        wire.push(
+          `onChange: (value, index) => { ${names.map((n) => `${n}(${v}, value, index);`).join(' ')} }`
+        );
+      }
+      break;
     }
 
     case 'ProgressBar': {
-      const ratio = Math.max(0, Math.min(1, node.progress.value / node.progress.max));
-      const inner = Math.max(1, box.width - (node.style.border ? 2 : 0));
-      obj(w, 'progressbar', v, [
-        ...base(false),
-        "orientation: 'horizontal'",
-        `filled: ${Math.round(ratio * 100)}`,
-        "ch: '█'",
-        `content: ${jsStr('░'.repeat(inner))}`,
-        'wrap: false',
-      ]);
+      // A box whose one row is drawn by the runtime: `████░░░░  50%`, as in every export.
+      obj(w, 'box', v, [...base(false), 'wrap: false']);
+      wire = [`value: ${node.progress.value}`, `max: ${node.progress.max}`];
       break;
     }
 
     case 'List':
-    case 'Menu': {
-      const labels = node.items.map((i) => itemText(i, node.type === 'Menu'));
-      obj(w, 'list', v, [
-        ...base(true, [selectedStyle]),
-        `items: ${strArray(labels)}`,
-        'keys: true',
-        'mouse: true',
-        'interactive: true',
-      ]);
-      if (node.selected > 0 && node.selected < labels.length)
-        w.line(`${v}.select(${node.selected});`);
-      focusable();
-      break;
-    }
-
+    case 'Menu':
     case 'Tree': {
-      const labels = treeLines(node.items).map((l) => l.text);
+      const labels =
+        node.type === 'Tree'
+          ? treeLines(node.items).map((l) => l.text)
+          : node.type === 'List' && flow
+            ? node.items.map((i) => i.label)
+            : node.items.map((i) => itemText(i, node.type === 'Menu'));
       obj(w, 'list', v, [
         ...base(true, [selectedStyle]),
         `items: ${strArray(labels)}`,
@@ -728,7 +980,11 @@ function emitWidget(
         'mouse: true',
         'interactive: true',
       ]);
-      focusable();
+      if (node.type !== 'Tree' && node.selected > 0 && node.selected < labels.length) {
+        w.line(`${v}.select(${node.selected});`);
+      }
+      wire = [`items: ${strArray(labels)}`, focusable];
+      if (node.type === 'Tree') wire.push('byLabel: true');
       break;
     }
 
@@ -746,6 +1002,7 @@ function emitWidget(
           extra: ['header: { bold: true }', `cell: { ${cell.join(', ')} }`],
         })
       );
+      if (flow && node.style.border) o.push('padding: { left: 1 }');
       obj(w, 'listtable', v, [
         ...o,
         `rows: ${jsJson(rows.map((r) => r.map(String)))}`,
@@ -755,13 +1012,18 @@ function emitWidget(
         'mouse: true',
         'interactive: true',
       ]);
-      focusable();
+      wire = [
+        `columns: ${jsJson(node.columns.map(String))}`,
+        `rows: ${jsJson(node.rows.map((r) => r.map(String)))}`,
+        focusable,
+      ];
+      if (flow && node.style.border) wire.push('indent: 1');
       break;
     }
 
     case 'Tabs': {
-      const tabs = node.items.map(
-        (t) => (t.status ? '● ' : '') + (t.icon ? `${t.icon} ` : '') + t.label
+      const tabs = node.items.map((t) =>
+        flow ? tabLabel(t) : (t.status ? '● ' : '') + (t.icon ? `${t.icon} ` : '') + t.label
       );
       const names = changeHandlers(node, ctx);
       w.line(`const ${v} = blessed.listbar({`).indent();
@@ -773,24 +1035,33 @@ function emitWidget(
       ])
         w.line(`${x},`);
       w.line('commands: [').indent();
-      tabs.forEach((t, i) =>
-        w.line(
-          `{ text: ${jsStr(t)}, prefix: '', callback: () => { ${names.map((n) => `${n}(${v}, ${i});`).join(' ')} } },`
-        )
-      );
+      for (const t of tabs) w.line(`{ text: ${jsStr(t)}, prefix: '' },`);
       w.dedent().line('],').dedent().line('});');
-      if (node.selected > 0 && node.selected < tabs.length)
+      w.line(`ui.nest(${v});`);
+      if (node.selected > 0 && node.selected < tabs.length) {
         w.line(`${v}.select(${node.selected});`);
-      focusable();
+      }
+      wire = [`tabs: ${strArray(tabs)}`, focusable];
+      if (flow) wire.push('underline: true');
+      if (names.length) {
+        wire.push(`onChange: (index) => { ${names.map((n) => `${n}(${v}, index);`).join(' ')} }`);
+      }
       break;
     }
 
     case 'Spacer':
-      return;
+      return null;
   }
 
+  if (node.style.border?.kind === 'rounded') w.line(`ui.rounded(${v});`);
   wireEvents(node, v, ctx);
+  if (wire || member) {
+    w.line(
+      `ui.wire(${v}, ${jsStr(node.type)}, { ${(wire ?? []).join(', ')} }, ${member ? `ui.${member}` : 'null'});`
+    );
+  }
   w.line();
+  return inner;
 }
 
 function strArray(items: string[]): string {

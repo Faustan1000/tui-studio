@@ -1,6 +1,6 @@
-// Bubble Tea exporter. There is no Go toolchain in the test environment, so besides concrete
-// assertions on the output the generated Go is checked lexically: balanced brackets, every
-// import used, every declared variable used, no duplicate declarations.
+// Bubble Tea exporter: concrete assertions on the output plus a lexical Go checker (balanced
+// brackets, every import used, every local used, no duplicate declarations). The real compiler
+// runs in tests/api.bubbletea.test.ts (go vet / go build / go test) when Go is installed.
 
 import { describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
@@ -82,7 +82,7 @@ function functionsOf(stripped: string): { head: string; body: string }[] {
 const count = (text: string, name: string) =>
   text.match(new RegExp(`(?<![\\w.])${name}(?!\\w)`, 'g'))?.length ?? 0;
 
-/** Structural checks that stand in for `go build`. */
+/** Structural checks that stand in for `go build` on one generated file. */
 function checkGo(src: string): void {
   const stripped = stripGo(src);
   assertBalanced(stripped);
@@ -105,12 +105,14 @@ function checkGo(src: string): void {
     'fmt',
     'os',
     'lipgloss',
+    'errors',
+    'time',
   ]) {
     if (new RegExp(`(?<![\\w.])${pkg}\\.[A-Z]`).test(body))
       expect(imports.has(pkg), `${pkg} not imported`).toBe(true);
   }
 
-  // Every local that is declared is used again; no duplicate package-level functions.
+  // Every local that is declared is used again; no duplicate functions or methods.
   const seen = new Set<string>();
   for (const fn of functionsOf(stripped)) {
     const sig = /^func (?:\(\w+ \*?(\w+)\) )?(\w+)/.exec(fn.head)!;
@@ -132,10 +134,10 @@ function checkGo(src: string): void {
     }
   }
 
-  // Struct fields and consts are unique.
+  // The model: unique fields, methods that do not collide with fields, every called method exists.
   const struct = /type model struct \{\n([\s\S]*?)\n\}/.exec(stripped);
-  expect(struct).not.toBeNull();
-  const fields = [...struct![1].matchAll(/^\s*([a-zA-Z_]\w*(?:, \w+)*) [\w.[\]*]+/gm)].flatMap(
+  if (!struct) return;
+  const fields = [...struct[1].matchAll(/^\s*([a-zA-Z_]\w*(?:, \w+)*)\s+[\w.[\]*]+/gm)].flatMap(
     (m) => m[1].split(', ')
   );
   expect(new Set(fields).size, `duplicate fields in ${fields.join(',')}`).toBe(fields.length);
@@ -143,13 +145,21 @@ function checkGo(src: string): void {
   expect(new Set(methods).size, 'duplicate methods').toBe(methods.length);
   for (const mth of methods)
     expect(fields, `method ${mth} collides with a field`).not.toContain(mth);
-  // Every method that is called on the model exists.
-  const called = new Set([...stripped.matchAll(/\bm\.(\w+)\(/g)].map((m) => m[1]));
+  const called = new Set([...stripped.matchAll(/\bm\.(\w+)[(),]/g)].map((m) => m[1]));
   for (const name of called) {
-    if (fields.includes(name)) continue; // m.field.Method() is matched as m.field(
-    expect(methods, `m.${name}() is not defined`).toContain(name);
+    if (fields.includes(name)) continue;
+    expect(methods, `m.${name} is not defined`).toContain(name);
   }
 }
+
+const run = (root: ComponentNode, screens?: { id: string; root: ComponentNode }[]) =>
+  exportToFiles(root, 'bubbletea', screens);
+const file = (root: ComponentNode, path: string) => run(root).find((f) => f.path === path)!.content;
+const mainGo = (root: ComponentNode) => file(root, 'main.go');
+const uiGo = (root: ComponentNode) => file(root, 'ui.go');
+const checkAll = (root: ComponentNode) => {
+  for (const f of run(root)) if (f.path.endsWith('.go')) checkGo(f.content);
+};
 
 function goModOf(files: { path: string; content: string }[]) {
   const mod = files.find((f) => f.path === 'go.mod')!.content;
@@ -163,10 +173,6 @@ function goModOf(files: { path: string; content: string }[]) {
   };
 }
 
-const run = (root: ComponentNode, screens?: { id: string; root: ComponentNode }[]) =>
-  exportToFiles(root, 'bubbletea', screens);
-const mainGo = (root: ComponentNode) => run(root).find((f) => f.path === 'main.go')!.content;
-
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('bubbletea adapter', () => {
@@ -176,13 +182,13 @@ describe('bubbletea adapter', () => {
       label: 'Bubble Tea (Go)',
       language: 'go',
       multiScreen: false,
-      verification: 'snapshot',
+      verification: 'run',
     });
   });
 
-  it('writes main.go and a go.mod with pinned versions', () => {
+  it('writes main.go, ui.go, ui_runtime.go and a go.mod with pinned versions', () => {
     const files = run(allComponents());
-    expect(files.map((f) => f.path)).toEqual(['main.go', 'go.mod']);
+    expect(files.map((f) => f.path)).toEqual(['main.go', 'ui.go', 'ui_runtime.go', 'go.mod']);
     const mod = goModOf(files);
     expect(mod.module).toBe('tuistudio/main');
     expect(mod.go).toBe(BUBBLETEA_VERSIONS.go);
@@ -196,6 +202,7 @@ describe('bubbletea adapter', () => {
     expect(src).toContain('go run .');
     expect(src).toMatch(/Layout strategy per container kind/);
     expect(src).toMatch(/snapshot/);
+    expect(src).toContain('// your program goes here');
   });
 
   it('is structurally valid Go for every fixture', () => {
@@ -211,7 +218,7 @@ describe('bubbletea adapter', () => {
     for (let i = 0; i < 25; i++) deep = mk('Box', {}, [deep]);
     designs.deep = screen('Deep', undefined, [deep]);
     for (const [name, root] of Object.entries(designs)) {
-      expect(() => checkGo(mainGo(root)), name).not.toThrow();
+      expect(() => checkAll(root), name).not.toThrow();
     }
   });
 
@@ -229,33 +236,31 @@ describe('bubbletea adapter', () => {
         )
       )
     ).toThrow();
-    expect(() => checkGo(base.replace('m.handleChange()', 'm.handleMissing()'))).toThrow();
+    expect(() =>
+      checkGo(base.replace('m.pull()\n\treturn m', 'm.missing()\n\treturn m'))
+    ).toThrow();
   });
 
   describe('components', () => {
     const src = mainGo(allComponents());
+    const ui = uiGo(allComponents());
 
-    it('has a model with a field per component, named from the code names', () => {
+    it('keeps bubbles widgets and cursors in the model, everything else in the store', () => {
       for (const field of [
+        'ui *Ui',
         'nameInput textinput.Model',
-        'agree bool',
-        'optA bool',
-        'optB bool',
-        'color int',
-        'colorOpts []string',
-        'dark bool',
         'progress progress.Model',
         'busy spinner.Model',
         'results table.Model',
-        'files int',
+        'resultsVer uint64',
         'navTree int',
         'navTreeOpen []bool',
-        'mainMenu int',
-        'pages int',
-        'confirm bool',
       ]) {
-        expect(src, field).toMatch(new RegExp(`^\\s+${field.replace(/[[\]]/g, '\\$&')}\\b`, 'm'));
+        expect(src, field).toMatch(
+          new RegExp(`^\\s+${field.replace(/[[\]*]/g, '\\$&').replace(/ /g, '\\s+')}\\b`, 'm')
+        );
       }
+      expect(src).not.toMatch(/^\s+agree bool/m); // checkboxes live in the store
     });
 
     it('implements the Bubble Tea interface', () => {
@@ -264,12 +269,16 @@ describe('bubbletea adapter', () => {
       expect(src).toContain('func (m *model) View() string {');
       expect(src).toContain('case tea.WindowSizeMsg:');
       expect(src).toContain('case tea.KeyMsg:');
+      expect(src).toContain('case refreshMsg:');
+      expect(src).toContain('case frameMsg:');
       expect(src).toContain('case spinner.TickMsg:');
-      expect(src).toContain('tea.NewProgram(newModel(), tea.WithAltScreen())');
-      expect(src).toContain('return tea.Batch(m.applyFocus(), textinput.Blink, m.busy.Tick)');
+      expect(src).toContain('return tea.Batch(m.initialFocus(), textinput.Blink, m.busy.Tick)');
+      expect(src).toContain('m.ui.SetReady()');
+      expect(ui).toContain('tea.NewProgram(newModel(u), u.opts...)');
+      expect(ui).toContain('tea.WithAltScreen()');
     });
 
-    it('cycles the focus ring in tree order and quits on q / ctrl+c', () => {
+    it('cycles the focus ring in tree order, skips unusable components, quits on q / ctrl+c', () => {
       const ring = [...src.matchAll(/^\t(focus\w+)( = iota)?$/gm)].map((m) => m[1]);
       expect(ring).toEqual([
         'focusNameInput',
@@ -291,92 +300,216 @@ describe('bubbletea adapter', () => {
       expect(src).toContain('case "shift+tab":\n\t\treturn m, m.moveFocus(-1)');
       expect(src).toContain('case "ctrl+c":\n\t\treturn m, tea.Quit');
       expect(src).toContain('case "q":\n\t\tif !m.typing() {');
-      expect(src).toMatch(
-        /func \(m \*model\) typing\(\) bool \{\n\tswitch m\.focus \{\n\tcase focusNameInput:\n\t\treturn true/
-      );
+      expect(src).toContain('if m.focusable(i) {');
+      // modals: the button inside is only usable while the modal is open
+      expect(src).toContain('return m.ui.Usable("ok_btn", "confirm")');
+      expect(src).toContain('return m.ui.Usable("name_input")');
     });
 
-    it('TextInput uses bubbles/textinput', () => {
+    it('TextInput uses bubbles/textinput and writes the typed value to the store', () => {
       expect(src).toContain('m.nameInput = textinput.New()');
-      expect(src).toContain('m.nameInput.Placeholder = "Enter text..."');
       expect(src).toContain('m.nameInput, cmd = m.nameInput.Update(msg)');
+      expect(src).toContain('c.UserSet("value", after)');
+      expect(src).toContain('c.Emit("change", after)');
+      expect(src).toContain('c.Emit("submit", m.nameInput.Value())');
       expect(src).toContain('return m.nameInput.Focus()');
       expect(src).toContain('m.nameInput.Blur()');
-      expect(src).toContain('m.nameInput.View()');
+      expect(src).toContain('m.nameInput.SetValue(v)'); // program writes reach the widget
+      expect(ui).toContain('"placeholder": "Enter text...",');
     });
 
-    it('Button, Checkbox, Radio, Toggle, Select', () => {
-      expect(src).toContain('frame("Send", 6, 1, lipgloss.Center, lipgloss.Center)');
+    it('Button, Checkbox, Radio, Toggle, Select send events from the store', () => {
+      expect(src).toContain('c.Emit("click", nil)');
       expect(src).toContain('lipgloss.RoundedBorder()');
-      expect(src).toContain('m.agree = !m.agree');
-      expect(src).toContain('label := "[" + mark + "]" + " Option"');
+      expect(src).toContain('v := !c.Bool("checked")');
+      expect(src).toContain('c.Emit("change", v)');
+      expect(src).toContain('+ line(c.Str("label"))');
       // Radios of a group deselect each other.
-      expect(src).toMatch(/case focusOptA:[\s\S]*?m\.optB = false\n\t\t\tm\.optA = true/);
-      expect(src).toMatch(/case focusOptB:[\s\S]*?m\.optA = false\n\t\t\tm\.optB = true/);
-      expect(src).toContain('m.dark = !m.dark');
+      expect(src).toMatch(/case focusOptA:[\s\S]*?m\.c\("opt_b"\)\.UserSet\("checked", false\)/);
+      expect(src).toMatch(/case focusOptB:[\s\S]*?m\.c\("opt_a"\)\.UserSet\("checked", false\)/);
       expect(src).toContain('mark = "[ON ]"');
-      expect(src).toContain('m.colorOpts = []string{"Option 1", "Option 2", "Option 3"}');
-      expect(src).toContain('m.color = (m.color + 1) % n');
-      expect(src).toContain('current + " ▾"');
+      expect(src).toContain('m.openDropdown(c.Tag())'); // Enter / Space / Down open the popup
+      expect(ui).toContain('"options": []string{"Option 1", "Option 2", "Option 3"},');
     });
 
     it('Text, Spinner, ProgressBar, Breadcrumb', () => {
-      expect(src).toContain('frame("Ready", 5, 1, lipgloss.Left, lipgloss.Top)');
+      expect(src).toContain('content := c.Str("text")');
+      expect(src).toContain('growW(content, 5)'); // auto-sized text grows with its content
       expect(src).toContain('m.busy.Spinner = spinner.MiniDot');
-      expect(src).toContain('m.busy.View() + " " + "Loading..."');
+      expect(src).toContain('label = "Loading..."');
       expect(src).toContain(
-        'm.progress = progress.New(progress.WithSolidFill("#f8f8f2"), progress.WithWidth(18))'
+        'progress.New(progress.WithSolidFill("#f8f8f2"), progress.WithWidth(18))'
       );
-      expect(src).toContain('m.progress.ViewAs(m.progressValue)');
+      expect(src).toContain('m.progress.ViewAs(ratio(c.Float("value"), c.Float("max")))');
       expect(src).toContain('"Home / Documents / File"');
+      expect(ui).toContain('"value": float64(0),');
+      expect(ui).toContain('"max": float64(100),');
     });
 
-    it('Table uses bubbles/table with rows padded to the column count', () => {
-      expect(src).toContain('{Title: "Column 1", Width: 8},');
-      expect(src).toContain('{"Cell 1", "Cell 2"},');
+    it('Table uses bubbles/table and follows the store', () => {
+      expect(ui).toContain('"columns": []string{"Column 1", "Column 2"},');
+      expect(ui).toContain('[][]string{{"Cell 1", "Cell 2"}, {"Cell 3", "Cell 4"}}');
       expect(src).toContain('table.WithStyles(tableStyles("#f8f8f2")),');
+      expect(src).toContain('syncTable(&m.results, c.List("columns"), c.Rows("rows"))');
       expect(src).toContain('m.results, cmd = m.results.Update(msg)');
       expect(src).toContain('func tableStyles(fg string) table.Styles {');
-
-      resetIds();
-      const ragged = screen('R', undefined, [
-        mk('Table', { props: { columns: ['A', 'B'], rows: [['1'], ['1', '2', '3']] } }),
-      ]);
-      const out = mainGo(ragged);
-      expect(out).toContain('{"1", ""},');
-      expect(out).toContain('{"1", "2"},');
-      expect(out).not.toContain('"3"');
+      expect(src).toContain('func syncTable(t *table.Model, cols []string, rows [][]string) {');
     });
 
-    it('List, Menu, Tree and Tabs keep a cursor / index', () => {
-      expect(src).toContain('m.files = moveCursor(m.files, 1, 3)');
-      expect(src).toContain('m.mainMenu = moveCursor(m.mainMenu, -1, 3)');
-      expect(src).toContain('"• Item 1  1"');
+    it('List, Menu, Tree and Tabs keep their selection in the store (tree: in the model)', () => {
+      expect(src).toContain(
+        'c.UserSet("selected", moveCursor(c.Int("selected"), 1, len(c.List("items"))))'
+      );
+      expect(src).toContain('c.UserSet("selected", moveCursor(c.Int("selected"), -1, 3))'); // menu
+      expect(src).toContain('[]string{"Item 1", "Item 2", "Item 3"}'); // lists show labels only
+      expect(src).toContain('c.Emit("select", c.Int("selected"))');
       expect(src).toContain('m.navTree = treeKey(m.navTreeNodes(), m.navTreeOpen, m.navTree, key)');
       expect(src).toContain('{label: "📁 Root", depth: 0, parent: -1, kids: true},');
       expect(src).toContain('m.navTreeOpen = []bool{true, true, false, true, false}');
-      expect(src).toContain('case "left", "h":\n\t\t\tif m.pages > 0 {\n\t\t\t\tm.pages--');
-      expect(src).toContain('if m.pages < 2 {');
-      expect(src).toContain('tabsView([]string{"⌂ Dashboard", "● Agent", "QA Team"}');
+      expect(src).toContain('c.UserSet("active_tab", next)');
+      expect(src).toContain('next = min(cur+1, 2)');
+      expect(src).toContain(
+        'tabsView([]string{"⌂ Dashboard", "Agent ● ^1", "QA Team ^2"}, c.Int("active_tab")'
+      );
     });
 
     it('Grid, Box, Spacer, Modal', () => {
-      expect(src).toContain('c := newCanvas(1, 3)'); // grid: snapshot
-      expect(src).toMatch(
-        /func \(m \*model\) renderPanel\(\) string \{\n\tcontent := lipgloss\.JoinVertical/
-      );
-      expect(src).toContain('m.renderSpacer()');
+      expect(src).toContain('cv := newCanvas(1, 3)'); // grid: snapshot
       expect(src).toContain('lipgloss.DoubleBorder()');
       expect(src).toContain(
-        'out = overlay(out, 2, 0, lipgloss.NewStyle().Bold(true).MaxWidth(36).Render(" Sure? "))'
+        'overlay(out, 2, 0, lipgloss.NewStyle().Bold(true).MaxWidth(36).Render(" " + line(c.Str("title")) + " "))'
       );
-      expect(src).toMatch(
-        /if m\.confirm \{\n\t\tout = overlay\(out, \d+, \d+, m\.renderConfirm\(\)\)/
+      expect(src).toContain('if m.ui.Open("confirm") {');
+      expect(src).toContain('out = overlay(out, mx, my, m.renderConfirm(mx, my))'); // in View, not scrolled
+      expect(src).toContain('m.c("confirm").UserSet("open", false)'); // esc closes it
+      // tagged modals start closed (like the Textual export), untagged ones open
+      expect(ui).toContain('"open": false,');
+      resetIds();
+      expect(uiGo(screen('S', undefined, [mk('Modal', {}, [mk('Text')])]))).toContain(
+        '"open": true,'
       );
-      expect(src).toContain('m.confirm = false'); // esc closes it
     });
 
-    it('wires the event handlers as deduplicated stubs', () => {
+    it('has the error dialog, the log panel and the refresh plumbing', () => {
+      expect(src).toContain('case "ctrl+l":\n\t\tm.ui.ToggleLog()');
+      expect(src).toContain('if len(m.ui.UnseenErrors()) > 0 {');
+      expect(src).toContain('m.ui.MarkErrorsSeen()');
+      expect(src).toContain('out, m.dlg = withDialog(out, errorDialog(errs, w))');
+      expect(src).toContain('logPanel(m.ui.LogEntries()');
+      expect(ui).toContain('func (r *teaRenderer) Refresh() {');
+      expect(ui).toMatch(/select \{\n\tcase r\.wake <- struct\{\}\{\}:\n\tdefault:/); // never blocks
+    });
+
+    it('fills the terminal: the root takes its size from the window, top-left, no centring', () => {
+      expect(src).toMatch(/func \(m \*model\) renderMain_\(ox, oy, w, h int\) string \{/);
+      expect(src).toContain('iw, ih := max(w-2, 1), max(h-2, 1)');
+      expect(src).toContain('w, h = m.winW, m.winH');
+      expect(src).toContain('out := m.renderMain_(0, 0, w, h)');
+      expect(src).toContain('out = frame(out, m.winW, m.winH, lipgloss.Left, lipgloss.Top)');
+      expect(src).not.toMatch(/lipgloss\.Place\(m\.winW/);
+      expect(src).not.toContain('lipgloss.Center, lipgloss.Center, out');
+      // modals are centred over the root at its real size
+      expect(src).toContain('mx, my := max((w-40)/2, 0), max((h-12)/2, 0)');
+      expect(src).not.toMatch(/func \(m \*model\) renderMain_[\s\S]*?overlay\(out, mx, my/);
+    });
+
+    it('is clickable: mouse tracking, a rectangle per interactive component, scoped clicks', () => {
+      expect(ui).toContain('tea.WithMouseCellMotion()');
+      expect(src).toMatch(
+        /case tea\.MouseMsg:\n\t\tprev := m\.focus\n\t\tcmd := m\.updateMouse\(msg\)/
+      );
+      expect(src).toContain('m.hits = m.hits[:0]');
+      // every focusable component records where it was drawn
+      for (const f of [
+        'focusNameInput',
+        'focusSubmitBtn',
+        'focusAgree',
+        'focusColor',
+        'focusFiles',
+        'focusPages',
+      ]) {
+        expect(src, f).toMatch(
+          new RegExp(`return m\\.reg\\(${f}, "[^"]+", "[^"]*", ox, oy, st\\.Render\\(`)
+        );
+      }
+      expect(src).toContain('return m.reg(focusOkBtn, "ok_btn", "confirm", ox, oy, st.Render(');
+      // clicks: the dialog first, then the open modal, then the UI
+      expect(src).toContain('if left && m.dlg.contains(msg.X, msg.Y) {');
+      expect(src).toContain('if h.modal != scope || !h.contains(msg.X, msg.Y) {');
+      expect(src).toContain('if c.State() != StateActive || !m.focusable(h.focus) {');
+      // rows, tabs and options are chosen by position
+      expect(src).toContain('c.UserSet("selected", moveCursor(ry-1, 0, len(c.List("items"))))');
+      expect(src).toContain('tabAt([]string{"⌂ Dashboard", "Agent ● ^1", "QA Team ^2"}, rx-0)');
+      expect(src).toContain('tableRowAt(&m.results, ry-1-1)');
+      expect(src).toContain(
+        'm.navTree = moveCursor(ry-0, 0, len(treeVisible(m.navTreeNodes(), m.navTreeOpen)))'
+      );
+      expect(src).toContain(
+        'tea.Batch(cmd, m.updateFocused(tea.KeyMsg{Type: tea.KeyEnter}, "enter"))'
+      );
+      expect(src).toContain('func (m *model) wheel(h hit, up bool) (tea.Cmd, bool) {');
+      // a design without interactive components still generates the handlers
+      resetIds();
+      expect(() => checkAll(screen('S', undefined, [mk('Text')]))).not.toThrow();
+    });
+
+    it('scrolls the root content: tall render, visible window, click rectangles in screen coordinates', () => {
+      expect(src).toContain('start := len(m.hits)');
+      expect(src).toContain('content = m.scrollWindow(content, start, oy+1, iw, ih)');
+      expect(src).toContain(
+        'func (m *model) scrollWindow(content string, start, top, iw, ih int) string {'
+      );
+      expect(src).toContain('r.scrolls, r.y0, r.fh = true, r.y, r.h');
+      expect(src).toContain('y0, y1 := max(r.y-m.scroll, top), min(r.y-m.scroll+r.h, top+ih)');
+      expect(src).toContain('bar[i] = "▐"'); // the thin scrollbar is only drawn when scrollMax > 0
+      expect(src).toContain('if m.scrollMax == 0 {\n\t\treturn content\n\t}');
+      // wheel: 3 rows per notch, but lists under the pointer scroll first
+      expect(src).toContain('m.scrollBy(-3)');
+      expect(src).toContain('m.scrollBy(3)');
+      expect(src).toContain('if cmd, moved := m.wheel(h, up); moved {');
+      expect(src).toContain('func (m *model) wheel(h hit, up bool) (tea.Cmd, bool) {');
+      // PageUp/PageDown/Home/End unless a text input has the focus
+      expect(src).toContain(
+        'case "pgup", "pgdown", "home", "end":\n\t\tif !m.typing() && m.activeModal() == "" {'
+      );
+      // focusing scrolls the widget into view
+      expect(src).toMatch(/if m\.focus != prev \{\n\t\t\tm\.reveal\(\)/);
+      expect(src).toContain('func (m *model) reveal() {');
+      // a canvas root is as tall as its content
+      resetIds();
+      const abs = mainGo(
+        screen('S', undefined, [
+          mk('Box', { props: { width: 10, height: 3 }, layout: { type: 'absolute' } }, []),
+        ])
+      );
+      expect(abs).toContain('func (m *model) renderS(ox, oy, w, h int) string {');
+    });
+
+    it('Select is a dropdown: popup under the field, rows in the click registry', () => {
+      expect(src).toContain('func (m *model) openDropdown(tag string) {');
+      expect(src).toContain(
+        'if key == "enter" || key == " " || key == "down" {\n\t\t\tm.openDropdown(c.Tag())'
+      );
+      expect(src).toContain('if m.ddTag != "" {\n\t\tm.dropdownKey(key)\n\t\treturn m, nil');
+      expect(src).toContain('case "esc":\n\t\tm.ddTag = ""');
+      expect(src).toContain('out = m.dropdownOverlay(out)');
+      expect(src).toContain(
+        'm.hits = append(m.hits, hit{focus: anchor.focus, tag: m.ddTag, modal: anchor.modal, opt: -1'
+      );
+      expect(src).toContain('m.ddChoose(h.opt - 1)');
+      expect(src).toContain('m.ddTag = "" // a click outside closes it without a change');
+      expect(src).toContain('if i < 0 || i >= len(opts) || opts[i] == c.Str("value") {'); // no event without a change
+      expect(src).toContain('m.openDropdown(h.tag)'); // a click opens it
+      // the dropdown is under the error dialog (View draws the dialog last)
+      expect(src.indexOf('out = m.dropdownOverlay(out)')).toBeLessThan(
+        src.indexOf('withDialog(out')
+      );
+      // designs without a select have no dropdown code
+      resetIds();
+      expect(mainGo(screen('S', undefined, [mk('Text')]))).not.toContain('openDropdown');
+    });
+
+    it('wires the editor event handlers as deduplicated stubs off the UI goroutine', () => {
       for (const name of ['handleChange', 'handleClick', 'handleSelect']) {
         expect(
           src.match(new RegExp(`^func \\(m \\*model\\) ${name}\\(\\) \\{$`, 'gm')),
@@ -384,14 +517,11 @@ describe('bubbletea adapter', () => {
         ).toHaveLength(1);
       }
       expect(src).toMatch(/func \(m \*model\) handleClick\(\) \{\n\t\/\/ TODO: implement\n\}/);
-      // called where the event happens
+      expect(src).toMatch(/case focusSubmitBtn:[\s\S]*?m\.ui\.Defer\(m\.handleClick\)/);
       expect(src).toMatch(
-        /case focusSubmitBtn:\n\t\tif key == "enter" \|\| key == " " \{\n\t\t\tm\.handleClick\(\)/
+        /case focusAgree:[\s\S]*?c\.Emit\("change", v\)\n\t\t\tm\.ui\.Defer\(m\.handleChange\)/
       );
-      expect(src).toMatch(
-        /case focusAgree:[\s\S]*?m\.agree = !m\.agree\n\t\t\tm\.handleChange\(\)/
-      );
-      expect(src).toMatch(/case focusFiles:[\s\S]*?case "enter", " ":\n\t\t\tm\.handleSelect\(\)/);
+      expect(src).not.toMatch(/^\t+m\.handle\w+\(\)$/m); // never called directly in Update
     });
 
     it('uses the colours and border flags of the design', () => {
@@ -418,11 +548,9 @@ describe('bubbletea adapter', () => {
           },
         }),
       ]);
-      const out = mainGo(styled);
-      expect(out).toContain(
+      expect(mainGo(styled)).toContain(
         'lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000")).Background(lipgloss.Color("#00ff00")).Bold(true).Italic(true).Underline(true).Strikethrough(true).BorderStyle(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color("#0000ff")).BorderTop(false).BorderRight(true).BorderBottom(true).BorderLeft(false)'
       );
-      // thick and rounded borders
       for (const [style, fn] of [
         ['bold', 'ThickBorder'],
         ['rounded', 'RoundedBorder'],
@@ -438,27 +566,107 @@ describe('bubbletea adapter', () => {
 
     it('only exports visible components', () => {
       resetIds();
-      const out = mainGo(
-        screen('S', undefined, [
-          mk('TextInput', { tag: 'shown' }),
-          mk('TextInput', { tag: 'gone', hidden: true }),
-        ])
-      );
-      expect(out).toContain('shown textinput.Model');
-      expect(out).not.toContain('gone');
+      const root = screen('S', undefined, [
+        mk('TextInput', { tag: 'present' }),
+        mk('TextInput', { tag: 'gone', hidden: true }),
+      ]);
+      expect(mainGo(root)).toContain('present textinput.Model');
+      expect(mainGo(root) + uiGo(root)).not.toContain('gone');
+      expect(uiGo(root)).toContain('ui.Present = NewInputHandle(core.Define("present"');
     });
 
-    it('leaves disabled components out of the focus ring', () => {
+    it('components that start muted are in the ring but not usable', () => {
       resetIds();
-      const out = mainGo(
+      const root = screen('S', undefined, [
+        mk('Button', { tag: 'a', props: { label: 'A' } }),
+        mk('Button', { tag: 'b', props: { label: 'B', disabled: true } }),
+      ]);
+      expect(mainGo(root)).toContain('focusB');
+      expect(uiGo(root)).toMatch(/Define\("b", "Button", StatesNoReadonly, StateMuted,/);
+      expect(mainGo(root)).toContain('if m.ui.Muted("b") {\n\t\tst = st.Faint(true)');
+    });
+  });
+
+  describe('program API (ui.go)', () => {
+    it('has one typed handle per code name in PascalCase and none for unnamed components', () => {
+      const ui = uiGo(allComponents());
+      for (const [field, type] of [
+        ['Status', 'TextHandle'],
+        ['NameInput', 'InputHandle'],
+        ['SubmitBtn', 'ButtonHandle'],
+        ['Agree', 'CheckHandle'],
+        ['Dark', 'CheckHandle'],
+        ['Color', 'SelectHandle'],
+        ['Progress', 'ProgressHandle'],
+        ['Busy', 'SpinnerHandle'],
+        ['Results', 'TableHandle'],
+        ['Files', 'ListHandle'],
+        ['NavTree', 'TreeHandle'],
+        ['MainMenu', 'MenuHandle'],
+        ['Pages', 'TabsHandle'],
+        ['Panel', 'ContainerHandle'],
+        ['Confirm', 'ModalHandle'],
+      ]) {
+        expect(ui, field).toMatch(new RegExp(`\\t${field} \\*${type} // `));
+        expect(ui).toContain(`ui.${field} = New${type}(core.Define(`);
+      }
+      // the Grid's untagged Text children are defined internally, without a handle
+      expect(ui).toContain('core.Define("~text"');
+      expect(ui).toMatch(/Start\(\) error \{/);
+      expect(ui).toMatch(/Run\(fn func\(\*Ui\)\) error \{/);
+    });
+
+    it('keeps names that are API (Stop, Log, ...) and Go keywords out of the way', () => {
+      resetIds();
+      const ui = uiGo(
         screen('S', undefined, [
-          mk('Button', { tag: 'a', props: { label: 'A' } }),
-          mk('Button', { tag: 'b', props: { label: 'B', disabled: true } }),
+          mk('Text', { tag: 'stop' }),
+          mk('Text', { tag: 'log' }),
+          mk('Text', { tag: 'type' }),
+          mk('Text', { tag: 'a_b' }),
+          mk('Text', { tag: 'aB' }),
         ])
       );
-      expect(out).toContain('focusA = iota');
-      expect(out).not.toContain('focusB');
-      expect(out).toContain('.Faint(true)');
+      expect(ui).toMatch(/\tStop_ \*TextHandle/);
+      expect(ui).toMatch(/\tLog_ \*TextHandle/);
+      expect(ui).toMatch(/\tType \*TextHandle/);
+      expect(ui).toMatch(/\tAB \*TextHandle/);
+      expect(ui).toMatch(/\tAB_ \*TextHandle/);
+      expect(() => checkGo(ui)).not.toThrow();
+    });
+
+    it('uses the model of the API for initial values', () => {
+      resetIds();
+      const ui = uiGo(
+        screen('S', undefined, [
+          mk('Select', { tag: 's', props: { options: ['a', 'b'], value: 'b' } }),
+          mk('List', {
+            tag: 'l',
+            props: { items: [{ label: 'x' }, { label: 'y' }], selectedIndex: 1 },
+          }),
+          mk('Checkbox', { tag: 'c', props: { checked: true, label: 'L' } }),
+          mk('ProgressBar', { tag: 'p', props: { value: 40, max: 80 } }),
+        ])
+      );
+      expect(ui).toContain('"value": "b",');
+      expect(ui).toContain('"items": []string{"x", "y"},');
+      expect(ui).toContain('"selected": 1,');
+      expect(ui).toContain('"checked": true,');
+      expect(ui).toContain('"value": float64(40),');
+      expect(ui).toContain('"max": float64(80),');
+    });
+
+    it('containers with a code-named child join at run time so that hiding frees the space', () => {
+      resetIds();
+      const root = screen('S', undefined, [
+        mk('Text', { tag: 'a', props: { content: 'A' } }),
+        mk('Text', { props: { content: 'B' } }),
+      ]);
+      const src = mainGo(root);
+      expect(src).toMatch(/flexJoin\(false, ox\+\d+, oy\+\d+, \[\]flexItem\{/);
+      expect(src).toContain('{m.renderA, 1, 1, m.ui.Hidden("a")},');
+      expect(src).toMatch(/\{m\.renderText, \d+, \d+, false\},/);
+      expect(() => checkAll(root)).not.toThrow();
     });
   });
 
@@ -468,27 +676,26 @@ describe('bubbletea adapter', () => {
 
     it('flex row and column are native: joins with margins from the editor layout', () => {
       const row = out('row');
-      expect(row).toContain('lipgloss.JoinHorizontal(lipgloss.Top,');
-      expect(row).toContain('shift(m.renderText(), 0, 0),');
-      expect(row).toContain('shift(m.renderText2(), 2, 0),'); // gap 2
-      expect(row).toContain('shift(m.renderText3(), 2, 0),');
+      expect(row).toMatch(/flexJoin\(true, ox\+\d+, oy\+\d+, \[\]flexItem\{/);
+      expect(row).toContain('{m.renderText, 1, 1, false},');
+      expect(row).toContain('{m.renderText2, 2, 1, false},'); // gap 2
+      expect(row).toContain('{m.renderText3, 2, 1, false},');
       expect(row).not.toContain('newCanvas(38');
       const col = out('column');
-      expect(col).toMatch(
-        /renderBox\(\) string \{\n\tcontent := lipgloss\.JoinVertical\(lipgloss\.Left,/
-      );
-      expect(col).toContain('shift(m.renderText2(), 0, 1),'); // gap 1
+      expect(col).toMatch(/renderBox\(ox, oy int\) string \{\n\tcontent := flexJoin\(false, /);
+      expect(col).toContain('{m.renderText2, 1, 1, false},'); // gap 1
     });
 
     it('justify and align become offsets', () => {
       const center = out('center');
-      const offsets = [...center.matchAll(/shift\(m\.renderText2?\(\), (\d+), (\d+)\)/g)].map(
-        (m) => [+m[1], +m[2]]
-      );
+      const offsets = [...center.matchAll(/\{m\.renderText2?, (\d+), (\d+), false\}/g)].map((m) => [
+        +m[1],
+        +m[2],
+      ]);
       expect(offsets.length).toBe(2);
       expect(offsets[0][0] + offsets[0][1]).toBeGreaterThan(0);
       const between = [
-        ...out('spaceBetween').matchAll(/shift\(m\.renderText\d?\(\), (\d+), 0\)/g),
+        ...out('spaceBetween').matchAll(/\{m\.renderText\d?, (\d+), 0, false\}/g),
       ].map((m) => +m[1]);
       expect(between.length).toBe(3);
       expect(between[1]).toBeGreaterThan(0);
@@ -498,20 +705,17 @@ describe('bubbletea adapter', () => {
     it('wrap, grid and absolute are snapshots on a cell canvas', () => {
       for (const name of ['wrapped', 'grid', 'absolute']) {
         const o = out(name);
-        expect(o, name).toContain('c := newCanvas(38, 6)');
-        expect(o, name).toMatch(/c\.put\(\d+, \d+, m\.renderText\(\)\)/);
-        expect(o, name).toContain('content := c.String()');
-        expect(o, name).not.toMatch(/JoinHorizontal\(lipgloss\.Top,\n\t\tshift/);
+        expect(o, name).toContain('cv := newCanvas(38, 6)');
+        expect(o, name).toMatch(/cv\.put\(\d+, \d+, m\.renderText\(ox\+/);
+        expect(o, name).toContain('content := cv.String()');
       }
-      const abs = [...out('absolute').matchAll(/c\.put\((\d+), (\d+), m\.renderText2?\(\)\)/g)].map(
+      const abs = [...out('absolute').matchAll(/cv\.put\((\d+), (\d+), m\.renderText2?\(ox/g)].map(
         (m) => [+m[1], +m[2]]
       );
       expect(abs[1][0] - abs[0][0]).toBe(10);
       expect(abs[1][1] - abs[0][1]).toBe(1);
-      // wrapped: eight 8-wide items in 38 cells -> several rows
-      const ys = new Set([...out('wrapped').matchAll(/c\.put\(\d+, (\d+),/g)].map((m) => m[1]));
+      const ys = new Set([...out('wrapped').matchAll(/cv\.put\(\d+, (\d+),/g)].map((m) => m[1]));
       expect(ys.size).toBeGreaterThan(1);
-      // The canvas helper and overlay are part of the file.
       expect(out('grid')).toContain('func overlay(base string, x, y int, block string) string {');
     });
 
@@ -525,23 +729,23 @@ describe('bubbletea adapter', () => {
 
   describe('text', () => {
     it('escapes every user string', () => {
-      const src = mainGo(nastyDesign());
+      const root = nastyDesign();
+      const src = mainGo(root) + uiGo(root);
       expect(src).toContain('"He said \\"hi\\""');
       expect(src).toContain('"back\\\\slash"');
-      expect(src).toContain('"new line"'); // placeholders and cells are single-line
+      expect(src).toContain('"new\\nline"'); // kept in the store, flattened when drawn
       expect(src).toContain('"{braces} and {{double}}"');
       expect(src).toContain('${dollar} `tick`');
       expect(src).toContain('%s %d {} {0}');
       expect(src).toContain('"/* comment */ // line"');
       expect(src).toContain('ünïcödé ✓ 日本語 🔥');
-      // No raw line break ever ends up inside a string literal (stripGo throws on those).
       expect(() => stripGo(src)).not.toThrow();
     });
 
     it('wide characters count two cells, combining marks none', () => {
       expect(cellWidth('abc')).toBe(3);
       expect(cellWidth('日本')).toBe(4);
-      expect(cellWidth('é')).toBe(1);
+      expect(cellWidth('e\u0301')).toBe(1);
     });
 
     it('turns handler names into Go identifiers', () => {
@@ -552,21 +756,20 @@ describe('bubbletea adapter', () => {
       expect(handlerName('')).toBe('handler');
     });
 
-    it('avoids Go keywords and name clashes', () => {
+    it('avoids Go keywords and name clashes in the model', () => {
       resetIds();
-      const src = mainGo(
-        screen('S', undefined, [
-          mk('Checkbox', { tag: 'type' }),
-          mk('Checkbox', { tag: 'focus' }),
-          mk('Checkbox', { tag: 'x_1' }),
-          mk('Checkbox', { tag: 'x1' }),
-          mk('Button', { tag: 'b', events: { onClick: 'type', onFocus: 'View' } }),
-        ])
-      );
-      expect(() => checkGo(src)).not.toThrow();
-      expect(src).not.toMatch(/^\s+type bool$/m);
-      expect(src).toMatch(/^\ttype_ bool$/m);
-      expect(src).toMatch(/^\tfocus2 bool$/m);
+      const root = screen('S', undefined, [
+        mk('TextInput', { tag: 'type' }),
+        mk('TextInput', { tag: 'focus' }),
+        mk('TextInput', { tag: 'x_1' }),
+        mk('TextInput', { tag: 'x1' }),
+        mk('Button', { tag: 'b', events: { onClick: 'type', onFocus: 'View' } }),
+      ]);
+      const src = mainGo(root);
+      expect(() => checkAll(root)).not.toThrow();
+      expect(src).not.toMatch(/^\s+type textinput\.Model$/m);
+      expect(src).toMatch(/^\ttype_ textinput\.Model$/m);
+      expect(src).toMatch(/^\tfocus2 textinput\.Model$/m);
       expect(src).toContain('func (m *model) type2() {');
       expect(src).toContain('func (m *model) view() {');
     });
@@ -574,7 +777,8 @@ describe('bubbletea adapter', () => {
 
   it('exports only the first screen (single-screen adapter)', () => {
     const screens = multiScreen().map((root) => ({ id: root.id, root }));
-    const out = run(screens[0].root, screens)[0].content;
+    const files = run(screens[0].root, screens);
+    const out = files.map((f) => f.content).join('\n');
     expect(out).toContain('"Ready"');
     expect(out).not.toContain('Settings screen');
     expect(out).not.toContain('Agent content');

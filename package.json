@@ -11,7 +11,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:setup": "npm install --prefix tests/runtime",
+    "examples": "node scripts/examples.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

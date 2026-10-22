@@ -953,7 +953,10 @@ const emitProgressBar: Emitter = (node, indent, ctx) => {
   const max = typeof p.max === 'number' && p.max > 0 ? p.max : 100;
   const value = typeof p.value === 'number' ? Math.min(max, Math.max(0, p.value)) : 0;
 
-  addRule(ctx, node, commonDeclarations(node, ctx));
+  // Textual's own height is 1 including the border, which leaves no row for the bar.
+  const own = commonDeclarations(node, ctx);
+  if (!own.some((l) => l.startsWith('height:'))) own.push('height: auto;');
+  addRule(ctx, node, own);
   // The bar stretches to fill the width the editor gives the component.
   if (cssSize(p.width)) ctx.css.push(`#${id} Bar {\n    width: 1fr;\n}`);
   const color = cssColor(node.style.color, ctx);
@@ -962,9 +965,32 @@ const emitProgressBar: Emitter = (node, indent, ctx) => {
   }
 
   needImport(ctx, 'textual.widgets', 'ProgressBar');
-  ctx.mount.push(`self.query_one(${pyStr('#' + id)}, ProgressBar).update(progress=${value})`);
-  return `${IND.repeat(indent)}yield ProgressBar(total=${max}, show_eta=False, id=${pyStr(id)})\n`;
+  needImport(ctx, 'textual.renderables.bar', 'Bar as BarRenderable');
+  needImport(ctx, 'rich.text', 'Text as RichText');
+  if (!ctx.classNames.has('StudioProgressBar')) {
+    ctx.classNames.set('StudioProgressBar', 'StudioProgressBar');
+    ctx.classes.push(PROGRESS_CLASS);
+  }
+  ctx.mount.push(
+    `self.query_one(${pyStr('#' + id)}, StudioProgressBar).update(progress=${value})`
+  );
+  return `${IND.repeat(indent)}yield StudioProgressBar(total=${max}, show_eta=False, id=${pyStr(id)})\n`;
 };
+
+/** The bar has the same glyphs in every export: filled blocks, light shade for the rest. */
+const PROGRESS_CLASS = `class StudioBarRenderable(BarRenderable):
+    def __rich_console__(self, console, options):
+        width = int(self.width or options.max_width)
+        filled = max(0, min(width, round(self.highlight_range[1])))
+        bar = RichText(end="")
+        bar.append("█" * filled, style=console.get_style(self.highlight_style))
+        bar.append("░" * (width - filled), style=console.get_style(self.background_style))
+        yield bar
+
+
+class StudioProgressBar(ProgressBar):
+    BAR_RENDERABLE = StudioBarRenderable
+`;
 
 const SPINNER_CLASS = `class StudioSpinner(Static):
     FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"

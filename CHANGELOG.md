@@ -10,7 +10,9 @@ All notable changes to TUIStudio are documented here.
 - **Exporters** for Ink, OpenTUI, Blessed, Bubble Tea, tview (new) and Ratatui, each producing a runnable project (entry point plus `package.json` / `go.mod` / `Cargo.toml`).
 - **Textual** — program API (thread, states, events, error dialog, log), multiple screens, screen links, per-item bodies for tabs/menus/lists, layout fidelity (gap, justify, align, wrap, grid, absolute).
 - **Tests** — `npm test` (Vitest): unit tests, a conformance suite for all exporters, per-framework output tests and, with Python + Textual installed, tests against real Textual.
+- **Program API in every framework** — named components, states (active/mute/readonly/hide), properties without echo, events, error dialog and log panel, lifecycle. One contract (`docs/PROGRAM_API.md`), one 14-step scenario (`docs/API_SCENARIO.md`), run against the real Ink, OpenTUI (Bun), blessed, Bubble Tea, tview, Ratatui and Textual.
 - **Roadmap** — `ROADMAP.md`.
+- **Visual consistency** — every framework draws the demo design cell by cell like Textual (the reference): same borders, glyphs, spacing and widget sizes at 100x40. `docs/VISUAL_SPEC.md`, `tests/visual.<framework>.test.ts`, reference frame `tests/visual/reference.apiDesign.100x40.txt`.
 
 ### Fixed
 

@@ -1,0 +1,9 @@
+[package]
+name = "demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# ratatui re-exports crossterm (ratatui::crossterm); the pinned versions belong together.
+ratatui = "0.29.0"
+crossterm = "0.28.1"

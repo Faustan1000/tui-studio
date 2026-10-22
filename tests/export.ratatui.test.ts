@@ -12,7 +12,11 @@ import { NASTY_STRINGS, nastyDesign } from './fixtures/nasty';
 function files(root: ComponentNode) {
   return ratatuiAdapter.generate({ ir: buildIR(root), source: [{ id: root.id, root }] });
 }
-const rs = (root: ComponentNode) => files(root).find((f) => f.path === 'src/main.rs')!.content;
+const file = (root: ComponentNode, path: string) =>
+  files(root).find((f) => f.path === path)!.content;
+/** main.rs and ui.rs together (what the design turns into; the runtime is a fixed file). */
+const rs = (root: ComponentNode) => `${file(root, 'src/main.rs')}\n${file(root, 'src/ui.rs')}`;
+const sources = (root: ComponentNode) => ['src/main.rs', 'src/ui.rs'].map((p) => file(root, p));
 
 // ── Lexical checker ───────────────────────────────────────────────────────────
 
@@ -132,7 +136,7 @@ function items(code: string): string[] {
   return out;
 }
 
-function lexicalProblems(src: string): string[] {
+function lexicalProblems(src: string, needMain = false): string[] {
   const problems: string[] = [];
   let code: string;
   try {
@@ -152,7 +156,7 @@ function lexicalProblems(src: string): string[] {
       if (count < 2) problems.push(`unused variable ${name}`);
     }
   }
-  if (!/fn main\(\)/.test(code)) problems.push('no main');
+  if (needMain && !/fn main\(\)/.test(code)) problems.push('no main');
   return problems;
 }
 
@@ -174,7 +178,9 @@ for (const [name, root] of Object.entries(layouts()))
 
 describe('ratatui lexical checks', () => {
   it.each(Object.keys(designs))('%s is well formed', (name) => {
-    expect(lexicalProblems(rs(designs[name]()))).toEqual([]);
+    const [main, ui] = sources(designs[name]());
+    expect(lexicalProblems(main, true)).toEqual([]);
+    expect(lexicalProblems(ui)).toEqual([]);
   });
 
   it('the checker itself finds mistakes', () => {
@@ -192,8 +198,13 @@ describe('ratatui lexical checks', () => {
 describe('ratatui project', () => {
   it('writes src/main.rs and Cargo.toml', () => {
     const f = files(allComponents());
-    expect(f.map((x) => x.path)).toEqual(['src/main.rs', 'Cargo.toml']);
-    const cargo = f[1].content;
+    expect(f.map((x) => x.path)).toEqual([
+      'src/main.rs',
+      'src/ui.rs',
+      'src/ui_runtime.rs',
+      'Cargo.toml',
+    ]);
+    const cargo = f[3].content;
     expect(cargo).toMatch(
       /^\[package\]\nname = "[a-z_][a-z0-9_]*"\nversion = "0\.1\.0"\nedition = "2021"/
     );
@@ -206,7 +217,7 @@ describe('ratatui project', () => {
 
   it('names the crate after the screen', () => {
     resetIds();
-    const cargo = files(screen('Settings Page', undefined, []))[1].content;
+    const cargo = file(screen('Settings Page', undefined, []), 'Cargo.toml');
     expect(cargo).toContain('name = "settings_page"');
   });
 
@@ -224,7 +235,7 @@ describe('ratatui project', () => {
   it('uses the modern API', () => {
     const out = rs(allComponents());
     for (const s of [
-      'ratatui::init()',
+      'ratatui::try_init()',
       'ratatui::restore()',
       'frame.area()',
       'KeyEventKind::Press',
@@ -245,40 +256,50 @@ describe('ratatui project', () => {
 describe('ratatui components', () => {
   const out = rs(allComponents());
 
-  it('keeps state per interactive component, named after the code names', () => {
-    for (const s of [
-      'name_input_value: String,',
+  it('keeps the UI-only state in App and everything else in the store', () => {
+    for (const x of [
       'name_input_cursor: usize,',
-      'agree_checked: bool,',
-      'opt_a_checked: bool,',
-      'dark_checked: bool,',
-      'color_index: usize,',
       'files_state: ListState,',
       'nav_tree_state: ListState,',
       'main_menu_state: ListState,',
       'results_state: TableState,',
-      'pages_tab: usize,',
-      'confirm_open: bool,',
+      'rt: Runtime,',
     ]) {
-      expect(out, s).toContain(s);
+      expect(out, x).toContain(x);
+    }
+    for (const x of [
+      'Seed::new("name_input", State::Active)',
+      '.prop("value", Value::text(""))',
+      'Seed::new("agree", State::Active)',
+      '.prop("checked", Value::Bool(false))',
+      'Seed::new("color", State::Active)',
+      '.prop("options", Value::list(&["Option 1", "Option 2", "Option 3"]))',
+      'Seed::new("pages", State::Active)',
+      '.prop("active_tab", Value::Int(0))',
+      'Seed::new("confirm", State::Active)',
+      '.prop("open", Value::Bool(false))',
+      'Seed::new("progress", State::Active)',
+      '.prop("max", Value::Float(100.0))',
+    ]) {
+      expect(out, x).toContain(x);
     }
   });
 
   it('renders each widget kind', () => {
     for (const s of [
-      'Paragraph::new("Ready")',
-      'Paragraph::new("Send")',
-      'Span::styled("Enter text..."',
+      'Paragraph::new(st.text("status", "text"))',
+      'Paragraph::new(st.text("submit_btn", "label"))',
+      'Span::styled(st.text("name_input", "placeholder")',
       'frame.set_cursor_position(',
-      'format!("[{}] {}", if app.agree_checked',
-      'format!("({}) {}", if app.opt_a_checked',
-      'format!("{} {}", if app.dark_checked { "[ON ]" } else { "[OFF]" }',
+      'format!("[{}] {}", if st.boolean("agree", "checked")',
+      'format!("({}) {}", if st.boolean("opt_a", "checked")',
+      'format!("{} {}", if st.boolean("dark", "checked") { "[ON ]" } else { "[OFF]" }',
       '"Option 1", "Option 2"',
-      'Gauge::default()',
-      'SPINNER_FRAMES[app.tick % SPINNER_FRAMES.len()]',
-      'Table::new(RESULTS_ROWS',
+      'Span::styled("█".repeat(',
+      'SPINNER_FRAMES[(app.tick / 3) % SPINNER_FRAMES.len()]',
+      'Table::new(results_rows.iter()',
       '"Cell 1"',
-      'List::new(FILES_ITEMS.to_vec())',
+      'List::new(files_items.to_vec())',
       'List::new(NAV_TREE_ITEMS.to_vec())',
       'List::new(MAIN_MENU_ITEMS.to_vec())',
       'Tabs::new(PAGES_TABS.to_vec())',
@@ -291,12 +312,12 @@ describe('ratatui components', () => {
   });
 
   it('draws the modal last, over the screen, with Clear and a title', () => {
-    const modal = out.indexOf('if app.confirm_open {');
+    const modal = out.indexOf('if st.modal_open("confirm") {');
     expect(modal).toBeGreaterThan(out.indexOf('let panel_area'));
     const after = out.slice(modal);
     expect(after).toContain('centered(area, 40, 12)');
     expect(after).toContain('frame.render_widget(Clear,');
-    expect(after).toContain('.title("Sure?")');
+    expect(after).toContain('.title(st.text("confirm", "title"))');
     expect(after).toContain('BorderType::Double');
   });
 
@@ -337,8 +358,9 @@ describe('ratatui components', () => {
     expect(out).toContain('BorderType::Thick');
     expect(out).toContain('Color::Rgb(255, 0, 0)');
     expect(out).toContain('.title("Named")');
-    // Unnamed boxes get no title.
-    expect(out.match(/\.title\(/g)).toHaveLength(1);
+    // Unnamed boxes get no title (the log panel and the error dialog have their own).
+    expect(out.match(/\.title\("Named"\)/g)).toHaveLength(1);
+    expect(out).not.toContain('.title("Box")');
   });
 
   it('applies padding with Block::padding', () => {
@@ -385,31 +407,47 @@ describe('ratatui keyboard handling', () => {
     expect(out).toMatch(/KeyCode::Esc => \{\s+if typing \{\s+self\.focus = None;/);
   });
 
-  it('edits text, toggles, moves in lists and tabs', () => {
-    for (const s of [
-      'self.name_input_value.insert(at, c);',
-      'self.name_input_value.remove(at);',
-      'self.agree_checked = !self.agree_checked;',
-      'self.opt_a_checked = true;',
-      'self.opt_b_checked = false;',
-      'self.files_state.select(Some(i.saturating_sub(1)));',
-      'self.results_state.select(',
-      'self.pages_tab = self.pages_tab.saturating_sub(1);',
-      'if self.color_index + 1 < COLOR_OPTIONS.len()',
+  it('edits text, toggles, moves in lists and tabs through the store', () => {
+    for (const x of [
+      'v.insert(at, c);',
+      'v.remove(at);',
+      'self.rt.user_set("name_input", "value", Value::Str(v), Some("change"));',
+      'self.rt.user_emit("name_input", "submit", Value::Str(v));',
+      'self.rt.user_set("agree", "checked", Value::Bool(on), Some("change"));',
+      'self.rt.user_set("opt_a", "checked", Value::Bool(true), Some("change"))',
+      'self.rt.set("opt_b", "checked", Value::Bool(false));',
+      'self.rt.user_set("files", "selected"',
+      'self.rt.user_emit("files", "select"',
+      'self.rt.user_set("pages", "active_tab"',
+      'self.results_state.select(Some(next));',
+      'self.rt.user_emit("submit_btn", "click", Value::None);',
+      'self.open_dropdown(F_COLOR, "color");',
+      'self.rt.user_set(key, "value", Value::Str(option.clone()), Some("change"));',
     ]) {
-      expect(out, s).toContain(s);
+      expect(out, x).toContain(x);
     }
   });
 
-  it('only focuses the controls of an open modal', () => {
-    expect(out).toContain('F_OK_BTN => self.confirm_open,');
-    expect(out).toContain('if self.confirm_open {\n                    self.confirm_open = false;');
+  it('opens the error dialog, toggles the log with Ctrl+L and ignores input meanwhile', () => {
+    expect(out).toContain('self.rt.toggle_log();');
+    expect(out).toContain('if self.rt.has_pending() {');
+    expect(out).toContain('self.rt.dismiss_errors();');
+    expect(out).toContain('fn render_errors(frame: &mut Frame, st: &Store, full: Rect)');
+    expect(out).toContain('fn render_log(frame: &mut Frame, st: &Store, area: Rect)');
   });
 
-  it('writes deduplicated handler stubs and calls them', () => {
-    expect(out.match(/fn handle_change\(&mut self\) \{ \/\* TODO \*\/ \}/g)).toHaveLength(1);
-    expect(out).toContain('fn handle_click(&mut self) { /* TODO */ }');
-    expect(out).toContain('self.handle_click();');
+  it('only focuses the controls of an open modal', () => {
+    expect(out).toContain('F_OK_BTN => st.focusable("ok_btn") && st.modal_open("confirm"),');
+    expect(out).toContain('if self.rt.modal_open("confirm") {');
+    expect(out).toContain('self.rt.set("confirm", "open", Value::Bool(false));');
+  });
+
+  it('writes deduplicated handler stubs and registers them', () => {
+    expect(out.match(/fn handle_change\(_event: &Event\) \{ \/\* TODO \*\/ \}/g)).toHaveLength(1);
+    expect(out).toContain('fn handle_click(_event: &Event) { /* TODO */ }');
+    expect(out).toContain('ui.submit_btn.on_click(handle_click);');
+    expect(out).toContain('ui.name_input.on_change(handle_change);');
+    expect(out).toContain('ui.agree.on_change(handle_change);');
   });
 
   it('turns odd handler names into valid, non-clashing methods', () => {
@@ -422,9 +460,10 @@ describe('ratatui keyboard handling', () => {
         mk('Button', { events: { onClick: 'do_it' } }),
       ])
     );
-    expect(o).toContain('fn type_handler(&mut self)');
-    expect(o).toContain('fn on_key_handler(&mut self)');
-    expect(o.match(/fn do_it\(&mut self\)/g)).toHaveLength(1);
+    expect(o).toContain('fn type_handler(_event: &Event)');
+    expect(o).toContain('fn on_key(_event: &Event)');
+    expect(o.match(/fn do_it\(_event: &Event\)/g)).toHaveLength(1);
+    expect(o).toContain('Arc::new(type_handler)');
     expect(lexicalProblems(o)).toEqual([]);
   });
 
@@ -436,12 +475,12 @@ describe('ratatui keyboard handling', () => {
     expect(o).toContain('self.quit = true;');
   });
 
-  it('animates spinners only when there are some', () => {
-    expect(out).toContain('event::poll(Duration::from_millis(100))');
+  it('ticks the spinner from the idle loop and only has the frames when needed', () => {
+    expect(out).toContain('SPINNER_FRAMES');
+    expect(out).toContain('None => app.on_tick(),');
     resetIds();
     const o = rs(screen('S', undefined, [mk('Text')]));
-    expect(o).not.toContain('poll(');
-    expect(o).not.toContain('Duration');
+    expect(o).not.toContain('SPINNER_FRAMES');
   });
 });
 
@@ -463,7 +502,7 @@ describe('ratatui escaping', () => {
   it('keeps user text out of format strings', () => {
     // `{}` inside user labels must only ever be an argument, never part of the template.
     for (const m of out.matchAll(/format!\("([^"]*)"/g))
-      expect(m[1]).toMatch(/^[[(]?\{\}[\])]? ?(\{\})?( ▾)?$/);
+      expect(m[1]).toMatch(/^([[(]?\{\}[\])]? ?(\{\})?( ▾)?|\{:>7\} \{\}| {2}\{\}| {2}\{\}\{\}▼ {2})$/);
   });
 
   it('survives every nasty string in every component', () => {
@@ -548,7 +587,115 @@ describe('ratatui layout', () => {
   it('emits helpers only when they are used', () => {
     const o = rs(screen('S', undefined, [mk('Text')]));
     expect(o).not.toContain('fn clamp_rect');
-    expect(o).not.toContain('fn centered');
     expect(o).not.toContain('fn focus_style');
+    expect(o).not.toContain('fn slots');
+  });
+});
+
+describe('ratatui mouse and terminal events', () => {
+  const out = rs(allComponents());
+
+  it('captures the mouse and gives it back on exit and in the panic hook', () => {
+    expect(out).toContain('execute!(io::stdout(), EnableMouseCapture)');
+    expect(out.match(/DisableMouseCapture\)/g)!.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('hit-tests left clicks against the rectangles drawn this frame', () => {
+    expect(out).toContain('app.hits.clear();');
+    expect(out).toContain(
+      'app.hits.push(Hit { rect: name_input_area, focus: F_NAME_INPUT, modal: false, scrolls: true });'
+    );
+    expect(out).toContain('MouseEventKind::Down(MouseButton::Left)');
+    expect(out).toContain('F_OK_BTN');
+    expect(out).toMatch(
+      /Hit \{ rect: ok_btn_area, focus: F_OK_BTN, modal: true, scrolls: false \}/
+    );
+    // The error dialog gets the click first.
+    expect(out.indexOf('self.rt.dismiss_errors();')).toBeLessThan(
+      out.indexOf('let hit = self.hits.iter().rev().copied()')
+    );
+  });
+
+  it('handles presses, repeats of navigation keys and ignores releases', () => {
+    expect(out).toContain('KeyEventKind::Press => self.on_key(key)');
+    expect(out).toContain('KeyEventKind::Repeat');
+    expect(out).toContain('app.on_event(event)');
+  });
+
+  it('cuts fixed-size content at the terminal edge instead of squeezing it', () => {
+    expect(out).toMatch(/let \w+_virt = Rect \{ height:/);
+    expect(out).toContain('.intersection(');
+  });
+
+  it('starts modals with a code name closed', () => {
+    expect(out).toContain('Seed::new("confirm", State::Active)');
+    expect(out).toContain('.prop("open", Value::Bool(false))');
+  });
+});
+
+describe('ratatui select, scrolling and table', () => {
+  const out = rs(allComponents());
+
+  it('opens a list of options under the select and draws it above everything but the dialogs', () => {
+    expect(out).toContain('fn open_dropdown(&mut self, focus: usize, key: &str)');
+    expect(out).toContain('fn dropdown_key(&mut self, key: KeyEvent)');
+    expect(out).toContain('fn click_dropdown(&mut self, m: MouseEvent)');
+    expect(out).toContain(
+      'fn dropdown_area(field: Rect, count: usize, widest: usize, bounds: Rect) -> Rect'
+    );
+    const popup = out.indexOf('if app.dropdown == Some(F_COLOR)');
+    expect(popup).toBeGreaterThan(out.indexOf('if st.modal_open("confirm") {'));
+    expect(popup).toBeLessThan(out.indexOf('render_errors(frame, &st, full);'));
+    expect(out.slice(popup)).toContain('frame.render_widget(Clear, popup);');
+    // Only a different option is a change; Esc and clicks outside close without one.
+    expect(out).toContain('if *option != self.rt.get_text(key, "value")');
+    expect(out).toContain('KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => self.dropdown = None');
+    expect(out).toContain('format!("  {}{}▼  ", color_value,');
+  });
+
+  it('scrolls the screen content on an off-screen canvas', () => {
+    expect(out).toContain('struct Canvas');
+    expect(out).toContain('cv.blit(frame, ');
+    expect(out).toMatch(/app\.scroll_max = \w+_need\.saturating_sub\(/);
+    expect(out).toContain('Scrollbar::new(ScrollbarOrientation::VerticalRight)');
+    expect(out).toContain('MouseEventKind::ScrollDown');
+    expect(out).toContain('self.scroll_by(3);');
+    expect(out).toContain('KeyCode::PageDown');
+    expect(out).toContain('KeyCode::End if !typing');
+    expect(out).toContain('self.reveal(next);');
+    expect(out).toContain('self.reveal(hit.focus);');
+    // Children are drawn on the canvas, the dialog and the log are not.
+    expect(out).toContain('cv.render_widget(');
+    expect(out).toMatch(/frame\.render_widget\(Clear, \w+_area\)/);
+  });
+
+  it('only scrolls a column of fixed-size children', () => {
+    const o = rs(screen('S', undefined, [mk('Box', { props: { height: 'fill' } }, [mk('Text')])]));
+    expect(o).not.toContain('struct Canvas');
+    expect(o).not.toContain('scroll_by');
+  });
+
+  it('formats a table: widths from the content, bold heading, all rows shown', () => {
+    expect(out).toContain('.column_spacing(2)');
+    expect(out).toMatch(/Constraint::Length\(\*w as u16\)/);
+    expect(out).toContain('.header(results_head)');
+    // Its height holds the heading (1 row), the rows and the border.
+    resetIds();
+    const o = rs(
+      screen('S', undefined, [
+        mk('Table', {
+          props: {
+            columns: ['A', 'B'],
+            rows: [
+              ['1', '2'],
+              ['3', '4'],
+              ['5', '6'],
+            ],
+          },
+        }),
+        mk('Text'),
+      ])
+    );
+    expect(o).toContain('Constraint::Length(6)');
   });
 });

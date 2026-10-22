@@ -42,3 +42,10 @@ temp/
 projects/
 # Local tool configs
 .superset
+
+# generated apps that tests run against real frameworks
+tests/runtime/.generated
+tests/runtime/.generated/
+
+# build output of the example projects
+examples/**/target

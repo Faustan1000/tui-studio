@@ -16,22 +16,58 @@ const one = (node: ComponentNode, over: Partial<ComponentNode> = {}) => {
 describe('opentui export', () => {
   it('ships index.tsx, package.json and tsconfig.json', () => {
     const files = gen(allComponents());
-    expect(files.map((f) => f.path)).toEqual(['src/index.tsx', 'package.json', 'tsconfig.json']);
-    const pkg = JSON.parse(files[1].content);
+    expect(files.map((f) => f.path)).toEqual([
+      'src/index.tsx',
+      'src/ui-runtime.tsx',
+      'package.json',
+      'tsconfig.json',
+    ]);
+    const pkg = JSON.parse(files[2].content);
     expect(pkg.dependencies['@opentui/core']).toBe('0.6.6');
     expect(pkg.dependencies['@opentui/react']).toBe('0.6.6');
     expect(pkg.dependencies.react).toMatch(/^\d/);
     expect(pkg.scripts.start).toContain('bun run src/index.tsx');
-    expect(JSON.parse(files[2].content).compilerOptions.jsxImportSource).toBe('@opentui/react');
+    expect(JSON.parse(files[3].content).compilerOptions.jsxImportSource).toBe('@opentui/react');
   });
 
   it('explains how to run and uses the real API', () => {
     const out = index(allComponents());
     expect(out).toContain('bun install && bun run src/index.tsx');
-    expect(out).toContain('createCliRenderer');
-    expect(out).toContain('createRoot(renderer).render(<App />)');
     expect(out).toContain('useKeyboard');
-    expect(out).toContain('renderer.destroy()');
+    expect(out).toContain('ui.stop()');
+    expect(out).toContain('ui.handleKey(key)');
+    const runtime = gen(allComponents()).find((f) => f.path === 'src/ui-runtime.tsx')!.content;
+    expect(runtime).toContain('createCliRenderer');
+    expect(runtime).toContain('createRoot(renderer)');
+    expect(runtime).toContain('renderer?.destroy()');
+  });
+
+  it('ships the same runtime for every design', () => {
+    const runtime = (root: ComponentNode) =>
+      gen(root).find((f) => f.path === 'src/ui-runtime.tsx')!.content;
+    expect(runtime(allComponents())).toBe(runtime(nastyDesign()));
+  });
+
+  it('generates a typed facade with one handle per code name', () => {
+    const out = index(allComponents());
+    expect(out).toContain('export class Ui extends UiCore');
+    expect(out).toContain('readonly submitBtn: SubmitBtnHandle;');
+    expect(out).toContain('onClick(handler: UiHandler)');
+    expect(out).toContain('set text(value: string)');
+    expect(out).toContain('this._set("text", String(value))');
+    expect(out).toContain('get activeTab(): number');
+    expect(out).toContain('get isOpen(): boolean');
+    expect(out).toContain(
+      'this.agree = this.add(new AgreeHandle(this), { state: "active", checked: false'
+    );
+    // Components with a code name read the store; the others keep local state.
+    expect(out).toContain(
+      'useSlice<{ state: UiState; checked: boolean; label: string }>(ui, "agree")'
+    );
+    resetIds();
+    const plain = index(screen('S', undefined, [mk('Checkbox'), mk('TextInput')]));
+    expect(plain).toContain('useState(false)');
+    expect(plain).not.toContain('useSlice<{ state');
   });
 
   it('parses every generated file', () => {
@@ -43,19 +79,20 @@ describe('opentui export', () => {
 
   it('uses the native elements', () => {
     const out = index(allComponents());
-    for (const tag of ['<box', '<text', '<input', '<select', '<tab-select'])
+    for (const tag of ['<box', '<text', '<input', '<select'])
       expect(out).toContain(tag);
     expect(out).toContain('onInput=');
-    expect(out).toContain('focused={focus === "name_input"}');
-    expect(out).toContain('title={"Sure?"}');
+    expect(out).toContain('focused={focusId === "name_input"}');
+    expect(out).toContain('title={confirmS.title}');
+    expect(out).toContain('title: "Sure?"');
     expect(out).toContain('position="absolute"');
   });
 
   it('keeps code names as state and event names as stubs', () => {
     const out = index(allComponents());
-    expect(out).toContain('const [nameInput, setNameInput] = useState("")');
-    expect(out).toContain('const [agree, setAgree] = useState(false)');
+    expect(out).toContain('const nameInputS = useSlice');
     expect(out).toContain('case "submit_btn":');
+    expect(out).toContain('ui.emit("submit_btn", "click", null, [handleClick])');
     resetIds();
     const dup = screen('S', undefined, [
       mk('Button', { events: { onClick: 'on save!' } }),
@@ -68,8 +105,8 @@ describe('opentui export', () => {
 
   it('renders widgets with their text', () => {
     const t = one(mk('Table', { props: { columns: ['A', 'B'], rows: [['1', '2']] } }));
-    expect(t).toContain('"A │ B"');
-    expect(t).toContain('"1 │ 2"');
+    expect(t).toContain('"A  B"');
+    expect(t).toContain('"1  2"');
     expect(one(mk('ProgressBar', { props: { value: 50, max: 100, width: 10 } }))).toContain('50%');
     expect(one(mk('Spinner'))).toContain('<SpinnerText');
     expect(

@@ -1,0 +1,14 @@
+{
+  "name": "tui-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Terminal UI exported from TUI Studio (Blessed)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "blessed": "0.1.81"
+  }
+}

@@ -1,0 +1,42 @@
+// Renders the generated OpenTUI project on terminals of different sizes (OpenTUI's test renderer
+// under Bun) and checks that the expected texts are in the frame and that bordered widgets keep
+// their height. Copied next to the generated project as frames.ts; argv[2] is a JSON list of
+// { width, height, texts } cases. Prints the results as JSON on the last line.
+// Stored with a .txt suffix so that the editor's tsc/eslint do not try to compile it.
+
+import { createTestRenderer } from '@opentui/core/testing';
+import { Ui } from './src/index';
+
+const cases = JSON.parse(process.argv[2]) as { width: number; height: number; texts: string[]; scrolled?: string[] }[];
+const results: { name: string; ok: boolean; info?: string }[] = [];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+for (const c of cases) {
+  const setup = await createTestRenderer({ width: c.width, height: c.height, exitOnCtrlC: false });
+  const ui = new Ui();
+  await ui.start({ renderer: setup.renderer });
+  await sleep(150);
+  await setup.renderOnce();
+  const frame = setup.captureCharFrame();
+  const label = `${c.width}x${c.height}`;
+  for (const text of c.texts) {
+    const ok = frame.includes(text);
+    results.push({ name: `${label} shows "${text}"`, ok, info: ok ? undefined : frame });
+  }
+  if (c.scrolled) {
+    ui.scrollRef.current?.scrollTo(100000);
+    await sleep(100);
+    await setup.renderOnce();
+    const bottom = setup.captureCharFrame();
+    for (const text of c.scrolled) {
+      const ok = bottom.includes(text);
+      results.push({ name: `${label} scrolled shows "${text}"`, ok, info: ok ? undefined : bottom });
+    }
+  }
+  // A bordered widget keeps its rows: the label never sits on a border line.
+  const onBorder = frame.split('\n').filter((l) => /[─]\s?(Send|OK)\s?[─]/.test(l) && /[╭╰┌└]|[╮╯┐┘]/.test(l));
+  results.push({ name: `${label} label not on a border`, ok: onBorder.length === 0, info: onBorder.join('\n') });
+  ui.stop();
+}
+console.log('RESULTS ' + JSON.stringify(results));
+process.exit(0);

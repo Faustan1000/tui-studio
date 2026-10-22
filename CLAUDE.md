@@ -18,7 +18,8 @@ npm test          # Vitest: unit, exporter and (if Python + Textual are installe
 
 Tests live in `tests/` (fixtures in `tests/fixtures`, Python scripts in `tests/python`). Set
 `TUISTUDIO_PYTHON` to an interpreter that has `textual` installed to run the real-Textual suites;
-without it they are skipped.
+without it they are skipped. `npm run test:setup` installs the Node/Bun packages the generated
+apps need (`tests/runtime`); Go, Rust and Bun are expected on PATH, otherwise those suites are skipped.
 
 ## Architecture
 

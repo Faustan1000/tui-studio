@@ -1,0 +1,19 @@
+{
+  "name": "tuistudio-runtime-tests",
+  "private": true,
+  "description": "Dependencies of the generated Node/Bun apps, used only to run them in tests. Install with `npm run test:setup` from the repository root.",
+  "type": "module",
+  "dependencies": {
+    "ink": "^6",
+    "ink-select-input": "^6",
+    "ink-spinner": "^5",
+    "ink-testing-library": "^4",
+    "ink-text-input": "^6",
+    "react": "^19",
+    "blessed": "0.1.81",
+    "@opentui/core": "*",
+    "@opentui/react": "*",
+    "tsx": "^4",
+    "typescript": "^5"
+  }
+}

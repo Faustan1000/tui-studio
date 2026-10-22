@@ -10,7 +10,14 @@ function files(root: ComponentNode) {
   const ir = buildIR(root);
   return tviewAdapter.generate({ ir, source: [{ id: root.id, root }] });
 }
-const mainGo = (root: ComponentNode) => files(root).find((f) => f.path === 'main.go')!.content;
+const MINE = ['main.go', 'ui.go', 'ui_tview.go'];
+/** The generated Go of the design (main + facade + tview UI), without the shared runtime. */
+const mainGo = (root: ComponentNode) =>
+  files(root)
+    .filter((f) => MINE.includes(f.path))
+    .map((f) => f.content)
+    .join('\n');
+const uiFile = (root: ComponentNode) => files(root).find((f) => f.path === 'ui_tview.go')!.content;
 
 /** Replace string/rune literals and comments by empty ones so structure can be checked. */
 function stripLiterals(src: string): string {
@@ -87,7 +94,6 @@ function checkGo(src: string): void {
   }
   // top-level structure
   expect(code).toMatch(/^package main$/m);
-  expect(code).toMatch(/^func main\(\) \{$/m);
   expect(code).not.toMatch(/\bundefined\b|NaN|\[object/);
 }
 
@@ -100,13 +106,19 @@ const allDesigns = (): [string, ComponentNode][] => [
 
 describe('tview export', () => {
   it('ships main.go and go.mod', () => {
-    expect(files(allComponents()).map((f) => f.path)).toEqual(['main.go', 'go.mod']);
+    expect(files(allComponents()).map((f) => f.path)).toEqual([
+      'main.go',
+      'ui.go',
+      'ui_tview.go',
+      'ui_runtime.go',
+      'go.mod',
+    ]);
   });
 
   it('is structurally valid Go for every fixture', () => {
     for (const [name, root] of allDesigns()) {
       try {
-        checkGo(mainGo(root));
+        for (const f of files(root)) if (MINE.includes(f.path)) checkGo(f.content);
       } catch (e) {
         throw new Error(`${name}: ${(e as Error).message}`);
       }
@@ -169,7 +181,7 @@ describe('tview export', () => {
     expect(out).toContain('"time"');
     expect(out).toContain('app.QueueUpdateDraw');
     resetIds();
-    const plain = mainGo(screen('P', undefined, [mk('Text', { props: { content: 'hi' } })]));
+    const plain = uiFile(screen('P', undefined, [mk('Text', { props: { content: 'hi' } })]));
     expect(plain).not.toContain('"time"');
   });
 
@@ -190,14 +202,14 @@ describe('tview export', () => {
   it('turns events into deduplicated stubs', () => {
     resetIds();
     const root = screen('S', undefined, [
-      mk('Button', { tag: 'a', props: { label: 'A' }, events: { onClick: 'handleClick' } }),
-      mk('Button', { tag: 'b', props: { label: 'B' }, events: { onClick: 'handleClick' } }),
-      mk('TextInput', { tag: 'c', events: { onChange: 'on-change!' } }),
+      mk('Button', { tag: 'first', props: { label: 'A' }, events: { onClick: 'handleClick' } }),
+      mk('Button', { tag: 'second', props: { label: 'B' }, events: { onClick: 'handleClick' } }),
+      mk('TextInput', { tag: 'third', events: { onChange: 'on-change!' } }),
       mk('Text', { tag: 'func', props: { content: 'x' } }),
     ]);
     const out = mainGo(root);
     expect(out.match(/^func handleClick\(\) \{$/gm)).toHaveLength(1);
-    expect(out).toContain('a.SetSelectedFunc(func() {');
+    expect(out).toContain('first.SetSelectedFunc(func() {');
     expect(out).toContain('func handlerOnChange() {');
     expect(out).toContain('func_ := ');
     checkGo(out);
@@ -263,6 +275,33 @@ describe('tview export', () => {
     expect(out).toContain('"[::bu]" + tview.Escape("hello") + "[::-]"');
     expect(out).toContain('SetTextColor(tcell.GetColor("#ff0000"))');
     checkGo(out);
+  });
+
+  it('generates the typed program API from the code names', () => {
+    const ui = files(allComponents()).find((f) => f.path === 'ui.go')!.content;
+    for (const field of [
+      'Status *TextHandle',
+      'NameInput *InputHandle',
+      'SubmitBtn *ButtonHandle',
+      'Agree *CheckHandle',
+      'Results *TableHandle',
+      'Confirm *ModalHandle',
+    ]) {
+      expect(ui, field).toContain(field);
+    }
+    expect(ui).toContain('core.Define("status", "Text"');
+    expect(ui).toContain('"open": false');
+    expect(ui).toContain('func (u *Ui) Start() error');
+    expect(ui).toContain('func (u *Ui) Run(fn func(*Ui)) error');
+    const tv = uiFile(allComponents());
+    // user input is written back to the store and reported as an event, off the UI goroutine
+    expect(tv).toContain('submitBtnC.Emit("click", nil)');
+    expect(tv).toContain('nameInputC.UserSet("value", text)');
+    expect(tv).toContain('if syncing {');
+    expect(tv).toContain('gate(submitBtnC, submitBtn)');
+    expect(tv).toContain('core.ToggleLog()');
+    expect(tv).toContain('go t.app.QueueUpdateDraw(');
+    expect(files(allComponents()).map((f) => f.path)).toContain('ui_runtime.go');
   });
 
   it('only exports visible components', () => {
