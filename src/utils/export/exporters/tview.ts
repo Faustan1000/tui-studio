@@ -2106,41 +2106,45 @@ func dropdownPopup(screen tcell.Screen, d *tview.DropDown, unsel, sel tcell.Styl
 		}
 	}
 	// Drawn after the whole frame, so that widgets below the field do not paint over it.
-	popups = append(popups, func() {
-		drawPopup(screen, ox, ow, iy, texts, cur, unsel, sel)
-	})
+	// The border of the field (a decor may have swapped tview.Borders for this widget).
+	b := tview.Borders
+	frame := [6]rune{b.HorizontalFocus, b.VerticalFocus, b.TopLeftFocus, b.TopRightFocus, b.BottomLeftFocus, b.BottomRightFocus}
+	// One popup per drop-down: a frame that is drawn twice (scrolling into view) keeps the last.
+	popups[d] = func() {
+		drawPopup(screen, ox, ow, iy, texts, cur, unsel, sel, frame)
+	}
 }
 
 // popups are the open drop-down lists of this frame; the application draws them last.
-var popups []func()
+var popups = map[*tview.DropDown]func(){}
 
 func drawPopups(tcell.Screen) {
-	for _, p := range popups {
+	for d, p := range popups {
 		p()
+		delete(popups, d)
 	}
-	popups = popups[:0]
 }
 
-func drawPopup(screen tcell.Screen, ox, ow, iy int, texts []string, cur int, unsel, sel tcell.Style) {
+func drawPopup(screen tcell.Screen, ox, ow, iy int, texts []string, cur int, unsel, sel tcell.Style, frame [6]rune) {
 	n := len(texts)
 	put := func(x, y int, r rune, st tcell.Style) { screen.SetContent(x, y, r, nil, st) }
 	top, bottom := iy+1, iy+2+n
 	for x := ox; x < ox+ow; x++ {
-		put(x, top, '─', unsel)
-		put(x, bottom, '─', unsel)
+		put(x, top, frame[0], unsel)
+		put(x, bottom, frame[0], unsel)
 	}
-	put(ox, top, '┌', unsel)
-	put(ox+ow-1, top, '┐', unsel)
-	put(ox, bottom, '└', unsel)
-	put(ox+ow-1, bottom, '┘', unsel)
+	put(ox, top, frame[2], unsel)
+	put(ox+ow-1, top, frame[3], unsel)
+	put(ox, bottom, frame[4], unsel)
+	put(ox+ow-1, bottom, frame[5], unsel)
 	for i := 0; i < n; i++ {
 		st := unsel
 		if i == cur {
 			st = sel
 		}
 		y := top + 1 + i
-		put(ox, y, '│', unsel)
-		put(ox+ow-1, y, '│', unsel)
+		put(ox, y, frame[1], unsel)
+		put(ox+ow-1, y, frame[1], unsel)
 		runes := []rune(texts[i])
 		for x := ox + 1; x < ox+ow-1; x++ {
 			r := ' '

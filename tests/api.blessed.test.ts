@@ -104,6 +104,20 @@ describe.skipIf(!HAS_BLESSED)(
       expect(seen()).toContain('your name');
     });
 
+    it('a text keeps its designed width when a shorter one is written and grows for a longer one', async () => {
+      const widget = ui.status._views[0].widget;
+      const designed = 'Ready'.length; // the design's own text
+      ui.status.text = 'Hi';
+      await tick(30);
+      expect(widget.width).toBe(designed);
+      ui.status.text = 'A much longer status text';
+      await tick(30);
+      expect(widget.width).toBe(25);
+      ui.status.text = 'Ready';
+      await tick(30);
+      expect(widget.width).toBe(designed);
+    });
+
     it('S4 a muted button is still drawn but fires nothing', async () => {
       const clicks: any[] = [];
       ui.submitBtn.onClick((e: any) => clicks.push(e));

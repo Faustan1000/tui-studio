@@ -277,13 +277,25 @@ class View {
 }
 
 class TextView extends View {
+  constructor(ui, widget, opts, handle) {
+    super(ui, widget, opts, handle);
+    // The design's width stays: a text only grows when a longer one is written (alignment and
+    // background keep the block they were designed with).
+    this.minWidth = typeof widget.position.width === 'number' ? widget.position.width : 0;
+  }
+
   apply(name, value) {
     if (name !== 'text') return;
     this.widget.setContent(value);
-    // A text is as wide as its content (the width was measured for the design's own text).
+    if (!this.minWidth) return;
     const NL = String.fromCharCode(10);
-    const widest = Math.max(1, ...String(value).split(NL).map((l) => l.length));
-    this.widget.width = widest + (this.widget.border ? 2 : 0);
+    const widest = Math.max(
+      1,
+      ...String(value)
+        .split(NL)
+        .map((l) => blessed.unicode.strWidth(l))
+    );
+    this.widget.width = Math.max(this.minWidth, widest + (this.widget.border ? 2 : 0));
   }
 }
 

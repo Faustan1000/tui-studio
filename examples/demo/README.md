@@ -5,7 +5,7 @@ it are its export for every framework; each is a complete, runnable project.
 
 | Framework | Folder | Needs | Start (inside the folder) |
 | --- | --- | --- | --- |
-| Textual (Python) | `textual/` | Python 3.9+ | `pip install textual && python ui.py` |
+| Textual (Python) | `textual/` | Python 3.9+ | `pip install "textual>=6" && python ui.py` |
 | Ink (React) | `ink/` | Node.js 20+ | `npm install && npm start` |
 | OpenTUI (React) | `opentui/` | Bun 1.2+ | `bun install && bun start` |
 | Blessed (Node.js) | `blessed/` | Node.js 18+ | `npm install && npm start` |

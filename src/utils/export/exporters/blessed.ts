@@ -482,7 +482,10 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
     .line('//   ui.status.text = "..."; ui.submitBtn.onClick((e) => ...); ui.nameInput.readonly();')
     .line('//')
     .line(
-      '// Layout: SNAPSHOT. Every widget is placed at the cell position and size the editor computed for the'
+      '// Layout: columns of auto-sized children are stacked like Textual does (natural size, padding adds).'
+    )
+    .line(
+      '//         Everything else is a SNAPSHOT: each widget sits at the cell position and size the editor computed for the'
     )
     .line(
       `//         design size ${screen.width}x${screen.height}. left/top are relative to the parent's outer box`

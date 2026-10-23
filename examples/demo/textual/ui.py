@@ -24,6 +24,7 @@ class StudioBarRenderable(BarRenderable):
 
 
 class StudioProgressBar(ProgressBar):
+    # BAR_RENDERABLE needs Textual 6.0 or newer (older versions draw their own thin bar).
     BAR_RENDERABLE = StudioBarRenderable
 
 

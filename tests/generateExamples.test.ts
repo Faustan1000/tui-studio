@@ -14,7 +14,7 @@ const FRAMEWORKS: { id: string; label: string; needs: string; steps: string[] }[
     id: 'textual',
     label: 'Textual (Python)',
     needs: 'Python 3.9+',
-    steps: ['pip install textual', 'python ui.py'],
+    steps: ['pip install "textual>=6"', 'python ui.py'],
   },
   {
     id: 'ink',

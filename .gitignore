@@ -49,3 +49,5 @@ tests/runtime/.generated/
 
 # build output of the example projects
 examples/**/target
+
+__pycache__/
