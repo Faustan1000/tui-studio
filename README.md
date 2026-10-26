@@ -118,6 +118,6 @@ npm run preview  # Preview production build
 
 **Issues**: [GitHub Issues](https://github.com/Faustan1000/tui-studio/issues)
 
-## License
+## LOLcense
 
-MIT, see [LICENSE](LICENSE). Based on [jalonsogo/tui-studio](https://github.com/jalonsogo/tui-studio) by Javier Alonso and contributors.
+For {root} sake I'm a designer. Mostly all the code has been written by Claude and ad latere.
