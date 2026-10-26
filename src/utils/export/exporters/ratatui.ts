@@ -13,7 +13,8 @@
 
 import type { ExportAdapter } from '../adapter';
 import { API_SPEC } from '../api/spec';
-import { apiEventMethod, apiName, safeIdent } from '../api/model';
+import { renderFacade } from '../api/facade';
+import { apiEventMethod, apiName, safeIdent, buildApiModel, type ApiHandleModel } from '../api/model';
 import runtimeSource from '../api/rust/ui_runtime.rs?raw';
 import type { IRBorder, IRNode, IRStyle } from '../ir';
 import { inlineText, itemText, treeLines, visibleChildren, walkIR } from '../ir';
@@ -344,6 +345,8 @@ class Gen {
   private strategies: string[] = [];
   private spinner = false;
   private handles: HandleField[] = [];
+  /** Handles of the flat `Api` (empty: the design has no code names). */
+  private apiHandles: ApiHandleModel[] = [];
   private fieldOf = new Map<string, string>();
 
   constructor(
@@ -355,10 +358,12 @@ class Gen {
   // ── Collect state, key arms and handlers ────────────────────────────────────
 
   private collectHandles(): void {
+    if (this.handles.length) return;
     const used = new Set<string>();
     for (const node of walkIR(this.root)) {
       if (!node.tag || node === this.root) continue;
-      const field = safeIdent(apiName(node.tag, 'snake'), 'rust');
+      let field = safeIdent(apiName(node.tag, 'snake'), 'rust');
+      if (field === 'api') field = 'api_'; // `Ui.api` is the flat Api
       if (used.has(field)) continue;
       used.add(field);
       this.handles.push({ node, field });
@@ -1410,6 +1415,24 @@ class Gen {
   // ── Whole file ──────────────────────────────────────────────────────────────
 
   /** `src/ui.rs`: the typed facade of the design. */
+  /** Hand the model handles over before `build`, so main.rs and ui.rs know about `Api`. */
+  useApi(model: ApiHandleModel[]): void {
+    this.collectHandles();
+    this.apiHandles = model.filter((h) => this.handles.some((f) => f.node === h.node));
+  }
+
+  /** `src/api.rs`: the flat Api over the handles, or null without code names. */
+  buildApi(): string | null {
+    if (!this.apiHandles.length) return null;
+    const fieldOf = (h: ApiHandleModel) => this.handles.find((f) => f.node === h.node)!.field;
+    return renderFacade({
+      lang: 'rust',
+      handles: this.apiHandles,
+      member: fieldOf,
+      rustType: (h) => HANDLE_TYPE[h.node.type],
+    }).code;
+  }
+
   buildFacade(): string {
     const nodes = walkIR(this.root).filter((n) => n !== this.root && needsSeed(n));
     const out = new CodeWriter('    ');
@@ -1417,6 +1440,7 @@ class Gen {
     out.line('#[derive(Clone)]');
     out.line('pub struct Ui {').indent();
     out.line('_runtime: Runtime,');
+    if (this.apiHandles.length) out.line('/// Flat methods over the components (see api.rs).').line('pub api: Api,');
     for (const h of this.handles) out.line(`pub ${h.field}: ${HANDLE_TYPE[h.node.type]},`);
     out.dedent().line('}').line();
     out.line('impl Ui {').indent();
@@ -1428,6 +1452,7 @@ class Gen {
     for (const h of this.handles) {
       out.line(`${h.field}: ${HANDLE_TYPE[h.node.type]}::new(&rt, ${rustStr(h.node.tag!)}),`);
     }
+    if (this.apiHandles.length) out.line('api: Api::new(&rt),');
     out.line('_runtime: rt,');
     out.dedent().line('}').dedent().line('}').line();
     out.block(`pub fn runtime(&self) -> &Runtime {
@@ -1593,6 +1618,7 @@ pub fn install_panic_hook(&self) {
       '#![allow(dead_code)]',
       '',
       `use crate::ui_runtime::{${runtimeNames.join(', ')}};`,
+      ...(this.apiHandles.length ? ['use crate::api::Api;'] : []),
       'use crate::{read_event, run_loop, App};',
       'use ratatui::crossterm::event::{DisableMouseCapture, EnableMouseCapture};',
       'use ratatui::crossterm::execute;',
@@ -1670,6 +1696,7 @@ pub fn install_panic_hook(&self) {
     const n = this.focus.length;
     const textInputs = this.focus.filter((f) => f.node.type === 'TextInput');
 
+    if (this.apiHandles.length) out.line('mod api;');
     out.line('mod ui;');
     out.line('mod ui_runtime;');
     out.line();
@@ -2528,8 +2555,10 @@ export const ratatuiAdapter: ExportAdapter = {
   generate: ({ ir }) => {
     const screen = ir.start;
     const gen = new Gen(screen.ident, screen.root, screen.modals);
+    gen.useApi(buildApiModel(ir).handles);
     const main = gen.build();
     const ui = gen.buildFacade();
+    const api = gen.buildApi();
     const cargo = `[package]
 name = "${crateName(screen.ident)}"
 version = "0.1.0"
@@ -2545,6 +2574,7 @@ crossterm = "${CROSSTERM_VERSION}"
       { path: 'src/ui.rs', content: ui },
       { path: RATATUI_RUNTIME_FILENAME, content: runtimeSource },
       { path: 'Cargo.toml', content: cargo },
+      ...(api ? [{ path: 'src/api.rs', content: api }] : []),
     ];
   },
 };

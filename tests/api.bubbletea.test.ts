@@ -38,8 +38,10 @@ describe('runtime source', () => {
     expect(gen(allComponents()).map((f) => f.path)).toEqual([
       'main.go',
       'ui.go',
+      'api.go',
       'ui_runtime.go',
       'go.mod',
+      'API.md',
     ]);
   });
 

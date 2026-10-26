@@ -19,6 +19,7 @@ import { inlineText, itemText, recase, treeLines, visibleChildren } from '../ir'
 import type { IRBox, IRItem, IRNode, IRScreen, IRStyle } from '../ir';
 import { CodeWriter, jsStr } from '../lang';
 import { apiName, buildApiModel, safeIdent } from '../api/model';
+import { renderFacade } from '../api/facade';
 import type { ApiModel } from '../api/model';
 import {
   BLESSED_RUNTIME_FILENAME,
@@ -59,6 +60,7 @@ const FIXED_NAMES = [
 
 /** Members of the base class: a code name must not shadow them. */
 const BASE_MEMBERS = [
+  'api',
   'start',
   'stop',
   'wait',
@@ -400,12 +402,22 @@ export const blessedAdapter: ExportAdapter = {
     // Only the first screen is exported, so only its components get handles.
     const all = buildApiModel({ screens: [screen], start: screen });
     const model = { ...all, handles: all.handles.filter((h) => h.node.visible) };
+    const names = facadeNames(model);
+    const api = model.handles.length
+      ? renderFacade({ lang: 'js', handles: model.handles, member: (h) => names.get(h.tag)! })
+      : null;
     return [
       { path: 'index.js', content: generateIndex(screen, model) },
       { path: 'index.d.ts', content: generateTypes(model) },
       { path: BLESSED_RUNTIME_FILENAME, content: BLESSED_RUNTIME_SOURCE },
       { path: 'ui-runtime.d.ts', content: BLESSED_RUNTIME_TYPES },
       { path: 'package.json', content: generatePackageJson(screen) },
+      ...(api
+        ? [
+            { path: 'api.js', content: api.code },
+            { path: 'api.d.ts', content: api.types! },
+          ]
+        : []),
     ];
   },
 };
@@ -504,6 +516,7 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
     .line()
     .line("const blessed = require('blessed');")
     .line("const { Handle, StudioUi } = require('./ui-runtime');")
+    .line(model.handles.length ? "const { Api } = require('./api');" : '')
     .line();
 
   if (ctx.handlers.size) {
@@ -543,6 +556,7 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
     out.line(`events: ${jsJson(h.events.map((e) => e.name))},`);
     out.dedent().line('});');
   }
+  if (model.handles.length) out.line('this.api = new Api(this);');
   out.dedent().line('}').line();
   out.line('/** Creates the widgets (called by start()). */');
   out.line('_build(screen) {').indent();
@@ -594,7 +608,9 @@ function generateTypes(model: ApiModel): string {
   const facade = facadeNames(model);
   const out = new CodeWriter('  ', 0);
   out.line("import { Handle, StudioUi, UiEvent } from './ui-runtime';");
-  out.line("export * from './ui-runtime';").line();
+  out.line("export * from './ui-runtime';");
+  if (model.handles.length) out.line("import { Api } from './api';").line("export { Api };");
+  out.line();
   out.line('type Listener = (event: UiEvent) => unknown;').line();
   out.line('export declare class Ui extends StudioUi {').indent();
   for (const h of model.handles) {
@@ -609,6 +625,7 @@ function generateTypes(model: ApiModel): string {
     out.line(`/** ${h.type}: ${oneLine(h.node.name || h.type).replace(/\*\//g, '* /')} */`);
     out.line(`readonly ${facade.get(h.tag)}: Handle${extra};`);
   }
+  if (model.handles.length) out.line('/** Flat methods over the components (see api.js). */').line('readonly api: Api;');
   out.dedent().line('}');
   return out.toString();
 }
@@ -744,7 +761,9 @@ function styleLiteral(s: IRStyle, opts: { focus?: boolean; extra?: string[] } = 
     parts.push(
       s.border
         ? `focus: { border: { fg: ${jsStr(FOCUS_COLOR)} } }`
-        : 'focus: { bold: true, underline: true }'
+        : // not `underline`: blessed applies it to every cell of the widget, blank ones included,
+          // which draws rules across the empty rows of tab bars and wide widgets
+          `focus: { bold: true, fg: ${jsStr(FOCUS_COLOR)} }`
     );
   }
   return `style: { ${parts.join(', ')} }`;

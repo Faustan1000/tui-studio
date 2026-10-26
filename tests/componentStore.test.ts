@@ -102,26 +102,45 @@ describe('history', () => {
 });
 
 describe('code names', () => {
-  it('a pasted component loses its tag when the tag is already used', () => {
+  it('a pasted component gets a generic tag when its tag is already used', () => {
     const first = store().addComponent('root', data('Button', { tag: 'save' }));
     const second = store().addComponent('root', data('Button', { tag: 'save' }));
     expect(store().getComponent(first)?.tag).toBe('save');
-    expect(store().getComponent(second)?.tag).toBeUndefined();
+    expect(store().getComponent(second)?.tag).toMatch(/^[a-z0-9_]+_button\d+$/);
+  });
+
+  it('a component without a tag gets a generic one, free and per type', () => {
+    const a = store().addComponent('root', data('Button'));
+    const b = store().addComponent('root', data('Button'));
+    const t = store().addComponent('root', data('Spinner'));
+    const tags = [a, b, t].map((id) => store().getComponent(id)?.tag);
+    expect(tags[0]).not.toBe(tags[1]);
+    expect(tags[0]).toMatch(/_button1$/);
+    expect(tags[1]).toMatch(/_button2$/);
+    expect(tags[2]).toMatch(/_spinner1$/);
+  });
+
+  it('layout containers stay unnamed until the user names them', () => {
+    const box = store().addComponent('root', data('Box'));
+    expect(store().getComponent(box)?.tag).toBeUndefined();
   });
 
   it('tags are unique across screens', () => {
     store().addComponent('root', data('Button', { tag: 'save' }));
     store().addScreen('Other');
     const id = store().addComponent('root', data('Button', { tag: 'save' }));
-    expect(store().getComponent(id)?.tag).toBeUndefined();
+    expect(store().getComponent(id)?.tag).toMatch(/_button\d+$/);
   });
 
-  it('duplicates start without tags', () => {
+  it('duplicates get fresh tags and never reuse the original ones', () => {
     const box = store().addComponent('root', data('Box', { tag: 'panel' }));
     store().addComponent(box, data('Text', { tag: 'inner' }));
     const copy = store().duplicateComponent(box)!;
     const nodes = [...flattenTree(store().getComponent(copy)!).values()];
-    expect(nodes.every((n) => n.tag === undefined)).toBe(true);
+    const inner = nodes.find((n) => n.type === 'Text')!;
+    expect(nodes.find((n) => n.type === 'Box')!.tag).toBeUndefined();
+    expect(inner.tag).toMatch(/_text\d+$/);
+    expect(inner.tag).not.toBe('inner');
     expect(store().getComponent(box)?.tag).toBe('panel');
   });
 

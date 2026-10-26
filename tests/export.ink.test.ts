@@ -18,6 +18,8 @@ describe('ink export', () => {
       'src/ui-runtime.ts',
       'package.json',
       'tsconfig.json',
+      'src/api.ts',
+      'API.md',
     ]);
     const pkg = JSON.parse(files[2].content);
     expect(pkg.type).toBe('module');
@@ -137,6 +139,7 @@ describe('ink export', () => {
       for (const f of exportToFiles(root, 'ink')) {
         if (f.path.endsWith('.tsx')) assertParses(f.content, 'tsx', f.path);
         else if (f.path.endsWith('.ts')) assertParses(f.content, 'ts', f.path);
+        else if (f.path.endsWith('.md')) expect(f.content).toContain('# Program API');
         else expect(() => JSON.parse(f.content)).not.toThrow();
       }
     }

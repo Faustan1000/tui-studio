@@ -112,6 +112,7 @@ describe('tview export', () => {
       'ui_tview.go',
       'ui_runtime.go',
       'go.mod',
+      'api.go',
     ]);
   });
 

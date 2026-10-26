@@ -29,6 +29,7 @@
 
 import type { ExportAdapter, ExportFile } from '../adapter';
 import { GO_RUNTIME_FILENAME, GO_RUNTIME_SOURCE } from '../api/go/runtime';
+import { renderFacade } from '../api/facade';
 import { apiName, buildApiModel, type ApiHandleModel } from '../api/model';
 import type { ApiValueType } from '../api/spec';
 import {
@@ -2605,6 +2606,19 @@ function goValue(v: unknown, type: ApiValueType): string {
 const statesVar = (n: number) =>
   n >= 4 ? 'StatesAll' : n === 3 ? 'StatesNoReadonly' : 'StatesHideOnly';
 
+/** Field of `Ui` per handle: PascalCase, made unique against the runtime's names. */
+function tviewFields(handles: ApiHandleModel[]) {
+  const used = new Set<string>([...BUBBLETEA_RESERVED_UI, 'Ui', 't', 'Api']);
+  return handles.map((h) => {
+    let name = apiName(h.tag, 'pascal');
+    if (!/^[A-Z]/.test(name)) name = `X${name}`;
+    let candidate = name;
+    for (let i = 2; used.has(candidate); i++) candidate = `${name}${i}`;
+    used.add(candidate);
+    return { h, field: candidate };
+  });
+}
+
 /** ui.go: the typed facade (same surface as every Go export). */
 function uiGo(handles: ApiHandleModel[]): string {
   const w = new CodeWriter('\t');
@@ -2629,21 +2643,14 @@ function uiGo(handles: ApiHandleModel[]): string {
   );
   w.line();
 
-  const used = new Set<string>([...BUBBLETEA_RESERVED_UI, 'Ui', 't']);
-  const fields = handles.map((h) => {
-    let name = apiName(h.tag, 'pascal');
-    if (!/^[A-Z]/.test(name)) name = `X${name}`;
-    let candidate = name;
-    for (let i = 2; used.has(candidate); i++) candidate = `${name}${i}`;
-    used.add(candidate);
-    return { h, field: candidate };
-  });
+  const fields = tviewFields(handles);
 
   w.line('// Ui is the facade of the UI: one typed handle per code name.');
   w.line('type Ui struct {');
   w.indent();
   w.line('*Core');
   w.line('t *tviewUi');
+  if (fields.length) w.line('// Api: flat methods over the components (api.go).').line('Api *Api');
   for (const f of fields) w.line(`${f.field} *${HANDLE_TYPE[f.h.type]}Handle // ${f.h.type}`);
   w.dedent().line('}');
   w.line();
@@ -2671,6 +2678,7 @@ function uiGo(handles: ApiHandleModel[]): string {
     );
   }
   w.line('ui.t = newTviewUi(core)');
+  if (fields.length) w.line('ui.Api = newApi(ui)');
   w.line('return ui');
   w.dedent().line('}');
   w.line();
@@ -2826,6 +2834,18 @@ ${stubs}`;
     { path: 'ui_tview.go', content: uiTview },
     { path: GO_RUNTIME_FILENAME, content: GO_RUNTIME_SOURCE },
     { path: 'go.mod', content: goMod },
+    ...(handles.length
+      ? [
+          {
+            path: 'api.go',
+            content: renderFacade({
+              lang: 'go',
+              handles,
+              member: (h) => tviewFields(handles).find((f) => f.h === h)!.field,
+            }).code,
+          },
+        ]
+      : []),
   ];
 }
 

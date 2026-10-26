@@ -51,3 +51,7 @@ tests/runtime/.generated/
 examples/**/target
 
 __pycache__/
+preview/
+
+# TypeScript build info
+*.tsbuildinfo

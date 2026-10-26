@@ -29,6 +29,7 @@
 
 import type { ExportAdapter, ExportFile } from '../adapter';
 import { apiName, buildApiModel, safeIdent, type ApiHandleModel } from '../api/model';
+import { renderFacade } from '../api/facade';
 import INK_RUNTIME_SOURCE from '../api/ink/ui-runtime.ts.txt?raw';
 import type { ComponentType } from '../../../types';
 import {
@@ -1145,6 +1146,7 @@ function LogPanel({ entries, columns, rows }: { entries: LogEntry[]; columns: nu
 // ── Project files ─────────────────────────────────────────────────────────────
 
 const UI_BASE_MEMBERS = new Set([
+  'api',
   'core',
   'log',
   'ready',
@@ -1248,6 +1250,7 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
     `import { UiBase, rectOf, ${classes.join(', ')}${classes.length ? ', ' : ''}type ErrorEntry, type HandleSpec, type UiCore, type LogEntry, type UiOptions } from "./ui-runtime";`
   );
   out.line('export * from "./ui-runtime";');
+  if (handles.length) out.line('import { Api } from "./api";');
   out.line();
   if (ctx.handlers.size) {
     for (const fn of ctx.handlers.values()) out.line(`function ${fn}() { /* TODO */ }`);
@@ -1263,14 +1266,8 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
   out.block(CHROME).line();
 
   // The facade: one typed handle per code name.
-  const members = new Map<string, ApiHandleModel>();
-  const memberName = (h: ApiHandleModel) => {
-    let name = safeIdent(apiName(h.tag, 'camel'), 'ts');
-    while (UI_BASE_MEMBERS.has(name) || members.has(name)) name += '_';
-    members.set(name, h);
-    return name;
-  };
-  const named = handles.map((h) => [memberName(h), h] as const);
+  const memberNames = inkMembers(handles);
+  const named = handles.map((h) => [memberNames.get(h)!, h] as const);
   out.line('const SPECS: HandleSpec[] = [').indent();
   for (const h of handles) {
     const props = h.properties
@@ -1294,6 +1291,7 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
   for (const [name, h] of named) {
     out.line(`readonly ${name}: ${HANDLE_CLASS[h.type] ?? `${h.type}Handle`};`);
   }
+  if (handles.length) out.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
   out.line('constructor(options?: UiOptions) {').indent();
   out.line('super(SPECS, options);');
   for (const [name, h] of named) {
@@ -1301,6 +1299,7 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
       `this.${name} = new ${HANDLE_CLASS[h.type] ?? `${h.type}Handle`}(this.core, ${jsStr(h.tag)});`
     );
   }
+  if (handles.length) out.line('this.api = new Api(this);');
   out.dedent().line('}');
   out.line('protected element(): ReactElement {').indent();
   out.line('return <App ui={this} />;');
@@ -1423,6 +1422,19 @@ const TSCONFIG =
     2
   ) + '\n';
 
+/** Member of `ui` per handle: camelCase, keywords and clashes with the base class get a `_`. */
+function inkMembers(handles: ApiHandleModel[]): Map<ApiHandleModel, string> {
+  const used = new Set<string>();
+  const names = new Map<ApiHandleModel, string>();
+  for (const h of handles) {
+    let name = safeIdent(apiName(h.tag, 'camel'), 'ts');
+    while (UI_BASE_MEMBERS.has(name) || used.has(name)) name += '_';
+    used.add(name);
+    names.set(h, name);
+  }
+  return names;
+}
+
 export const inkAdapter: ExportAdapter = {
   id: 'ink',
   label: 'Ink (React)',
@@ -1430,12 +1442,22 @@ export const inkAdapter: ExportAdapter = {
   verification: 'run',
   multiScreen: false,
   generate: ({ ir }): ExportFile[] => {
-    const app = generateApp(ir.start, buildApiModel(ir).handles);
+    const handles = buildApiModel(ir).handles;
+    const app = generateApp(ir.start, handles);
+    const names = inkMembers(handles);
     return [
       { path: 'src/app.tsx', content: app },
       { path: 'src/ui-runtime.ts', content: INK_RUNTIME_SOURCE },
       { path: 'package.json', content: packageJson(ir.start, app) },
       { path: 'tsconfig.json', content: TSCONFIG },
+      ...(handles.length
+        ? [
+            {
+              path: 'src/api.ts',
+              content: renderFacade({ lang: 'ts', handles, member: (h) => names.get(h)! }).code,
+            },
+          ]
+        : []),
     ];
   },
 };

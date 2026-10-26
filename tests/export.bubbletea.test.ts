@@ -188,7 +188,7 @@ describe('bubbletea adapter', () => {
 
   it('writes main.go, ui.go, ui_runtime.go and a go.mod with pinned versions', () => {
     const files = run(allComponents());
-    expect(files.map((f) => f.path)).toEqual(['main.go', 'ui.go', 'ui_runtime.go', 'go.mod']);
+    expect(files.map((f) => f.path)).toEqual(['main.go', 'ui.go', 'api.go', 'ui_runtime.go', 'go.mod', 'API.md']);
     const mod = goModOf(files);
     expect(mod.module).toBe('tuistudio/main');
     expect(mod.go).toBe(BUBBLETEA_VERSIONS.go);

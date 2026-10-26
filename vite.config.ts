@@ -16,6 +16,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    watch: {
+      // Files the editor or the preview script write (saved projects, exported apps with their
+      // node_modules/target) are not part of the app: a change there must not reload the page,
+      // which would throw away the open project.
+      ignored: ['**/*.tui', '**/examples/**', '**/preview/**', '**/tests/**', '**/scripts/**'],
+    },
+  },
   build: {
     rollupOptions: {
       input: {

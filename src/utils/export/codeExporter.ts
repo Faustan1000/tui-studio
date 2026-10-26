@@ -7,6 +7,7 @@ import type { ComponentNode } from '../../types';
 import { getAdapter, ADAPTERS } from './exporters';
 import type { ExportFile } from './adapter';
 import { buildIR, type ScreenInput } from './ir';
+import { apiReference } from './api/reference';
 
 export type { ExportFile } from './adapter';
 export type ExportScreen = ScreenInput;
@@ -35,7 +36,10 @@ export function exportToFiles(
 
   const source: ScreenInput[] = screens?.length ? [...screens] : [{ id: root.id, root }];
   const used = adapter.multiScreen ? source : source.slice(0, 1);
-  return adapter.generate({ ir: buildIR(used), source: used });
+  const ir = buildIR(used);
+  const files = adapter.generate({ ir, source: used });
+  const api = apiReference(ir, adapter.id);
+  return api ? [...files, { path: 'API.md', content: api }] : files;
 }
 
 /** The main file of an export as one string. */

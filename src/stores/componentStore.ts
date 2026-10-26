@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import type { ComponentNode } from '../types';
 import { findNodeById, findParentNode, flattenTree, cloneNode } from '../utils/treeUtils';
 import { generateComponentId } from '../utils/idGenerator';
-import { collectTags } from '../utils/apiTag';
+import { assignAutoTags, collectTags } from '../utils/apiTag';
 import { remapShowWhen } from '../utils/navBodies';
 import { treeLinksTo, withoutScreenLinks } from '../utils/screenLinks';
 
@@ -143,6 +143,13 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
         .screens.filter((s) => s.id !== get().activeScreenId)
         .map((s) => s.root);
       if (collectTags([newRoot, ...others]).has(newComponent.tag)) delete newComponent.tag;
+    }
+    // A component the user has not named gets a generic code name (screen_2_button1).
+    {
+      const others = get()
+        .screens.filter((s) => s.id !== get().activeScreenId)
+        .map((s) => s.root);
+      assignAutoTags(newComponent, newRoot.name, collectTags([newRoot, ...others, newComponent]));
     }
 
     // If parent is a container and has explicit height/width, change to auto so it fits children
@@ -283,6 +290,12 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
     cloned.children.forEach(reassignIds);
     // Bodies of a navigation element inside the copy must follow the copy of that element.
     remapShowWhen(cloned, idMap);
+
+    // The copy gets generic code names of its own.
+    const otherRoots = get()
+      .screens.filter((s) => s.id !== get().activeScreenId)
+      .map((s) => s.root);
+    assignAutoTags(cloned, newRoot.name, collectTags([newRoot, ...otherRoots]));
 
     // Insert after original
     const index = parent.children.findIndex((c) => c.id === id);
@@ -616,6 +629,11 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
       node.children.forEach(reassign);
     };
     reassign(copy);
+    assignAutoTags(
+      copy,
+      copy.name,
+      collectTags(get().getScreenRoots().map((s) => s.root))
+    );
     idMap.set(copy.id, copy.id);
     remapShowWhen(copy, idMap);
 
@@ -643,6 +661,9 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
 
   loadProject: (loaded, activeId) => {
     if (loaded.length === 0) return;
+    // Projects saved before generic code names: name what the user did not name.
+    const taken = collectTags(loaded.map((s) => s.root));
+    for (const s of loaded) assignAutoTags(s.root, s.root.name, taken);
     const entries: ScreenEntry[] = loaded.map((s) => ({
       id: s.id,
       root: s.root,

@@ -5,7 +5,7 @@ import { allComponents, multiScreen } from './fixtures/designs';
 describe('textual export', () => {
   it('ships ui.py and the runtime', () => {
     const files = exportToFiles(allComponents(), 'textual');
-    expect(files.map((f) => f.path)).toEqual(['ui.py', 'ui_runtime.py']);
+    expect(files.map((f) => f.path)).toEqual(['ui.py', 'ui_runtime.py', 'ui_api.py', 'API.md']);
   });
 
   it('exposes every code name as a handle', () => {

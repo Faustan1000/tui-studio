@@ -2,6 +2,8 @@
 
 import type { ExportAdapter } from '../adapter';
 import { TEXTUAL_RUNTIME_FILENAME, TEXTUAL_RUNTIME_SOURCE } from '../api/textualRuntime';
+import { renderFacade } from '../api/facade';
+import { buildApiModel } from '../api/model';
 import { blessedAdapter } from './blessed';
 import { bubbleteaAdapter } from './bubbletea';
 import { inkAdapter } from './ink';
@@ -16,10 +18,16 @@ const textualAdapter: ExportAdapter = {
   language: 'py',
   verification: 'run',
   multiScreen: true,
-  generate: ({ source }) => [
-    { path: 'ui.py', content: exportToTextual(source) },
-    { path: TEXTUAL_RUNTIME_FILENAME, content: TEXTUAL_RUNTIME_SOURCE },
-  ],
+  generate: ({ ir, source }) => {
+    const handles = buildApiModel(ir).handles;
+    return [
+      { path: 'ui.py', content: exportToTextual(source) },
+      { path: TEXTUAL_RUNTIME_FILENAME, content: TEXTUAL_RUNTIME_SOURCE },
+      ...(handles.length
+        ? [{ path: 'ui_api.py', content: renderFacade({ lang: 'python', handles, member: (h) => h.tag }).code }]
+        : []),
+    ];
+  },
 };
 
 export const ADAPTERS: readonly ExportAdapter[] = [

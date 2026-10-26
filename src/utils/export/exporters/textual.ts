@@ -1698,14 +1698,16 @@ export function exportToTextual(input: ComponentNode | readonly ExportScreen[]):
     ctx.handles
       .map((h) => `${IND}${IND}self.${h.tag} = ${h.cls}(self, ${pyStr(h.tag)}, ${h.args})\n`)
       .join('');
+  if (ctx.handles.length) needImport(ctx, 'ui_api', 'Api');
   const screenMap = screens.map((s) => `${pyStr(s.key)}: ${s.cls}`).join(', ');
   const uiClass =
     `class Ui(StudioUi):\n` +
     `${IND}"""Your program's access to the screens and components that have a code name."""\n\n` +
-    `${attrs}${attrs ? '\n' : ''}` +
+    `${attrs}${ctx.handles.length ? `${IND}api: Api\n` : ''}${attrs ? '\n' : ''}` +
     `${IND}def __init__(self) -> None:\n` +
     `${IND}${IND}super().__init__(MyApp, screens={${screenMap}}, first=${pyStr(screens[0].key)})\n` +
-    inits;
+    inits +
+    (ctx.handles.length ? `${IND}${IND}self.api = Api(self)\n` : '');
 
   return `${renderImports(ctx)}
 

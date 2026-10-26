@@ -19,6 +19,7 @@
 // write user input into it; components without one keep local React state.
 
 import type { ExportAdapter, ExportFile } from '../adapter';
+import { renderFacade } from '../api/facade';
 import { buildApiModel, apiMember, apiName, safeIdent, type ApiHandleModel } from '../api/model';
 import RUNTIME_SOURCE from '../api/opentui/ui-runtime.tsx.txt?raw';
 import {
@@ -55,7 +56,7 @@ const CORE_MEMBERS = new Set(
   (
     'store errors log ready running renderer root closed closeWaiters queue pending callbacks modals view add ' +
     'start stop wait run markClosed on nextEvent isActive emit defer report addLog installExcepthooks blocked ' +
-    'handleKey constructor'
+    'handleKey constructor api'
   ).split(' ')
 );
 
@@ -202,11 +203,25 @@ export const opentuiAdapter: ExportAdapter = {
       },
       include: ['src'],
     };
+    const names = opentuiMembers(handles);
     const files: ExportFile[] = [
       { path: 'src/index.tsx', content: out.toString() },
       { path: 'src/ui-runtime.tsx', content: RUNTIME_SOURCE },
       { path: 'package.json', content: JSON.stringify(pkg, null, 2) + '\n' },
       { path: 'tsconfig.json', content: JSON.stringify(tsconfig, null, 2) + '\n' },
+      ...(handles.length
+        ? [
+            {
+              path: 'src/api.ts',
+              content: renderFacade({
+                lang: 'ts',
+                handles,
+                uiModule: './index',
+                member: (h) => names.get(h)!,
+              }).code,
+            },
+          ]
+        : []),
     ];
     return files;
   },
@@ -275,6 +290,7 @@ function writeFile(
   if (core.length) w.line(`import { ${core.join(', ')} } from "@opentui/core";`);
   w.line('import { useKeyboard } from "@opentui/react";');
   w.line('import { Handle, UiCore, useSlice, type UiHandler, type UiState } from "./ui-runtime";');
+  if (handles.length) w.line('import { Api } from "./api";');
   w.line();
 
   if (ctx.stubs.size) {
@@ -594,16 +610,24 @@ function initialValues(h: ApiHandleModel): Record<string, unknown> {
   return out;
 }
 
-function writeFacade(w: CodeWriter, ctx: Ctx, handles: ApiHandleModel[]): void {
-  const classNames = new Map<ApiHandleModel, string>();
-  const members = new Map<ApiHandleModel, string>();
-  const usedMembers = new Set(CORE_MEMBERS);
+/** Member of `ui` per handle: camelCase, keywords and clashes with the core get a `_`. */
+function opentuiMembers(handles: ApiHandleModel[]): Map<ApiHandleModel, string> {
+  const used = new Set(CORE_MEMBERS);
+  const names = new Map<ApiHandleModel, string>();
   for (const h of handles) {
     let m = member(h);
-    while (usedMembers.has(m)) m += '_';
-    usedMembers.add(m);
-    members.set(h, m);
-    classNames.set(h, unique(ctx, recase(m.replace(/_$/, ''), 'pascal') + 'Handle'));
+    while (used.has(m)) m += '_';
+    used.add(m);
+    names.set(h, m);
+  }
+  return names;
+}
+
+function writeFacade(w: CodeWriter, ctx: Ctx, handles: ApiHandleModel[]): void {
+  const classNames = new Map<ApiHandleModel, string>();
+  const members = opentuiMembers(handles);
+  for (const h of handles) {
+    classNames.set(h, unique(ctx, recase(members.get(h)!.replace(/_$/, ''), 'pascal') + 'Handle'));
   }
 
   w.line('// ── Program API ───────────────────────────────────────────────────────────────');
@@ -654,6 +678,7 @@ function writeFacade(w: CodeWriter, ctx: Ctx, handles: ApiHandleModel[]): void {
   w.line('export class Ui extends UiCore {');
   w.indent();
   for (const h of handles) w.line(`readonly ${members.get(h)}: ${classNames.get(h)};`);
+  if (handles.length) w.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
   w.line('constructor() {');
   w.indent();
   w.line('super();');
@@ -663,6 +688,7 @@ function writeFacade(w: CodeWriter, ctx: Ctx, handles: ApiHandleModel[]): void {
       .join(', ');
     w.line(`this.${members.get(h)} = this.add(new ${classNames.get(h)}(this), { ${init} });`);
   }
+  if (handles.length) w.line('this.api = new Api(this);');
   w.dedent();
   w.line('}');
   w.line('protected view(): ReactNode {');

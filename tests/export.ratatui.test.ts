@@ -203,6 +203,7 @@ describe('ratatui project', () => {
       'src/ui.rs',
       'src/ui_runtime.rs',
       'Cargo.toml',
+      'src/api.rs',
     ]);
     const cargo = f[3].content;
     expect(cargo).toMatch(

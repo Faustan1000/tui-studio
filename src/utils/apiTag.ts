@@ -116,3 +116,37 @@ export function suggestTag(name: string, taken: ReadonlySet<string>): string {
   for (let i = 2; validateTag(candidate, taken) !== null; i++) candidate = `${base}_${i}`;
   return candidate;
 }
+
+/** Types that only get a code name when the user asks for one (layout containers). */
+const NO_AUTO_TAG: ReadonlySet<string> = new Set(['Screen', 'Box', 'Grid', 'Spacer', 'Modal']);
+
+/**
+ * Generic code name for a component the user did not name: `<screen>_<type><n>`, for example
+ * `screen_2_progressbar1`. Free and valid; `taken` is not changed.
+ */
+export function autoTag(type: string, screenName: string, taken: ReadonlySet<string>): string {
+  let screen = screenName
+    .normalize('NFKD')
+    .replace(/[^ -~]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  if (!/^[a-z]/.test(screen)) screen = `screen${screen ? `_${screen}` : ''}`;
+  const base = `${screen.slice(0, 24)}_${type.toLowerCase()}`;
+  for (let n = 1; ; n++) {
+    const candidate = `${base}${n}`;
+    if (validateTag(candidate, taken) === null) return candidate;
+  }
+}
+
+/**
+ * Give every component below `node` (and `node` itself) that has no code name a generic one,
+ * so the program API reaches it without the user naming everything. Adds the new names to `taken`.
+ */
+export function assignAutoTags(node: ComponentNode, screenName: string, taken: Set<string>): void {
+  if (!node.tag && !NO_AUTO_TAG.has(node.type)) {
+    node.tag = autoTag(node.type, screenName, taken);
+    taken.add(node.tag);
+  }
+  node.children.forEach((c) => assignAutoTags(c, screenName, taken));
+}

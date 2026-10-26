@@ -19,6 +19,7 @@
 //   - modals: rendered as a box and overlaid, centred, on top of their parent.
 
 import type { ExportAdapter, ExportFile } from '../adapter';
+import { renderFacade } from '../api/facade';
 import { apiEventMethod, apiName, buildApiModel, type ApiHandleModel } from '../api/model';
 import { API_SPEC, type ApiValueType } from '../api/spec';
 import { GO_RUNTIME_FILENAME, GO_RUNTIME_SOURCE } from '../api/go/runtime';
@@ -681,8 +682,22 @@ class Gen {
     return [
       { path: 'main.go', content: this.mainGo() },
       { path: 'ui.go', content: this.uiGo() },
+      ...this.apiFile(),
       { path: GO_RUNTIME_FILENAME, content: GO_RUNTIME_SOURCE },
       { path: 'go.mod', content: this.goMod() },
+    ];
+  }
+
+  private apiFile(): ExportFile[] {
+    const fields = this.pubFields();
+    if (!fields.length) return [];
+    const handles = fields.map((f) => f.info.api!);
+    const byHandle = new Map(handles.map((h, i) => [h, fields[i].field] as const));
+    return [
+      {
+        path: 'api.go',
+        content: renderFacade({ lang: 'go', handles, member: (h) => byHandle.get(h)! }).code,
+      },
     ];
   }
 
@@ -709,6 +724,21 @@ class Gen {
 
   // ── ui.go: the typed facade ─────────────────────────────────────────────────
 
+  /** Handles by code name, with the field of `Ui` that holds each. */
+  private pubFields(): { info: Info; field: string }[] {
+    const used = new Set<string>([...BUBBLETEA_RESERVED_UI, 'Api']);
+    const handles: { info: Info; field: string }[] = [];
+    for (const info of this.order) {
+      if (!info.pub) continue;
+      let field = apiName(info.tag, 'pascal');
+      if (!/^[A-Z]/.test(field)) field = `X${field}`;
+      while (used.has(field)) field += '_';
+      used.add(field);
+      handles.push({ info, field });
+    }
+    return handles;
+  }
+
   private uiGo(): string {
     const w = new CodeWriter('\t');
     w.block(`// The typed program API of this UI (see ui_runtime.go for what the handles can do).
@@ -734,23 +764,14 @@ class Gen {
     );
     w.line();
 
-    // Handles by code name
-    const used = new Set<string>(BUBBLETEA_RESERVED_UI);
-    const handles: { info: Info; field: string }[] = [];
-    for (const info of this.order) {
-      if (!info.pub) continue;
-      let field = apiName(info.tag, 'pascal');
-      if (!/^[A-Z]/.test(field)) field = `X${field}`;
-      while (used.has(field)) field += '_';
-      used.add(field);
-      handles.push({ info, field });
-    }
+    const handles = this.pubFields();
 
     w.line('// Ui is the facade of the UI: one typed handle per code name.');
     w.line('type Ui struct {');
     w.indent();
     w.line('*Core');
     w.line('opts []tea.ProgramOption');
+    if (handles.length) w.line('// Api: flat methods over the components (api.go).').line('Api *Api');
     for (const h of handles)
       w.line(`${h.field} *${HANDLE_TYPE[h.info.node.type]}Handle // ${h.info.node.type}`);
     w.dedent();
@@ -776,6 +797,7 @@ class Gen {
       if (handle) w.line(`ui.${handle.field} = New${HANDLE_TYPE[info.node.type]}Handle(${def})`);
       else w.line(def);
     }
+    if (handles.length) w.line('ui.Api = newApi(ui)');
     w.line('return ui');
     w.dedent();
     w.line('}');

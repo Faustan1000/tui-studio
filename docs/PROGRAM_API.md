@@ -22,6 +22,25 @@ as typed in the editor. Components without a code name are not reachable from th
 `src/utils/export/api/spec.ts` is the single table of states, properties and events per
 component; `src/utils/export/api/model.ts` turns a design into the list of handles to generate.
 
+## The flat `Api`: `ui.api`
+
+One generated file (`ui_api.py`, `src/api.ts`, `api.js`, `api.go`, `src/api.rs`) with the class
+`Api`, reachable as `ui.api` (Go: `ui.Api`). It has one method per thing a program does with a
+named component, so everything is in one place and found by autocompletion. `API.md` of an export
+lists them with the exact spelling for its language.
+
+| Method (Python spelling)       | Meaning                                                              |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `submit_btn_was_clicked()`     | True once per user click since the last call (also `_was_changed`, `_was_submitted`, `_was_selected`) |
+| `agree_is_checked()`           | Current value (booleans are `is_<name>`, others `<tag>_<name>()`)   |
+| `status_set_text("x")`         | Change the UI, fires no event (`<tag>_set_<name>(value)`)           |
+| `progress_hide()` / `_show()`  | Visibility; also `_mute()`, `_readonly()` where the component has them |
+| `progress_is_hidden()`         | Whether it is hidden                                                |
+| `confirm_open()` / `_close()`  | Modals                                                              |
+
+The `Api` is a thin layer over the handles (`ui.<code name>`), which stay available for
+handlers and everything else.
+
 ## Naming per language
 
 | Concept        | Python             | TypeScript (Ink/OpenTUI/Blessed) | Go                      | Rust                     |

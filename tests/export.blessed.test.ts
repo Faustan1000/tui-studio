@@ -114,6 +114,9 @@ describe('blessed adapter: files', () => {
       'ui-runtime.js',
       'ui-runtime.d.ts',
       'package.json',
+      'api.js',
+      'api.d.ts',
+      'API.md',
     ]);
     const get = (p: string) => out.find((f) => f.path === p)!.content;
     const json = JSON.parse(get('package.json'));

@@ -21,6 +21,8 @@ describe('opentui export', () => {
       'src/ui-runtime.tsx',
       'package.json',
       'tsconfig.json',
+      'src/api.ts',
+      'API.md',
     ]);
     const pkg = JSON.parse(files[2].content);
     expect(pkg.dependencies['@opentui/core']).toBe('0.6.6');
