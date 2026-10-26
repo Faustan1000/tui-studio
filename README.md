@@ -1,5 +1,6 @@
 <img src="public/logo-tui-studio_light.svg" alt="TUIStudio" width="64" />
-** this is a fork from jalonsogo/tui-studio **
+
+**this is a fork from jalonsogo/tui-studio**
 
 # TUIStudio
 
