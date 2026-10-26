@@ -1,285 +1,32 @@
 {
   "version": "2",
   "meta": {
-    "name": "Demo",
+    "name": "Screen 2",
     "theme": "dracula",
-    "activeScreen": "screen-1"
+    "activeScreen": "screen-2",
+    "savedAt": "2026-10-24T20:38:31.915Z"
   },
   "screens": [
     {
-      "id": "screen-1",
+      "id": "screen-2",
       "tree": {
         "id": "root",
         "type": "Screen",
-        "name": "Demo",
+        "name": "Screen 2",
         "props": {
-          "width": "auto",
-          "height": "auto",
+          "width": 80,
+          "height": 24,
           "theme": "dracula"
         },
         "layout": {
-          "type": "flexbox",
-          "direction": "column",
-          "padding": 1
+          "type": "absolute"
         },
         "style": {
-          "color": "white",
-          "border": true,
-          "borderStyle": "single",
-          "borderColor": "white"
+          "border": false
         },
         "events": {},
         "children": [
           {
-            "id": "id-1",
-            "type": "Text",
-            "name": "Text",
-            "props": {
-              "content": "Ready",
-              "wrap": false,
-              "align": "left"
-            },
-            "layout": {
-              "type": "none"
-            },
-            "style": {
-              "color": "white"
-            },
-            "events": {},
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "status"
-          },
-          {
-            "id": "id-2",
-            "type": "TextInput",
-            "name": "Text Input",
-            "props": {
-              "placeholder": "your name",
-              "value": "",
-              "width": 20
-            },
-            "layout": {
-              "type": "none"
-            },
-            "style": {
-              "color": "white",
-              "border": true,
-              "borderStyle": "single",
-              "borderColor": "white"
-            },
-            "events": {
-              "onChange": "handleChange"
-            },
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "name_input"
-          },
-          {
-            "id": "id-3",
-            "type": "Button",
-            "name": "Button",
-            "props": {
-              "label": "Send",
-              "disabled": false,
-              "iconLeft": "",
-              "iconLeftEnabled": false,
-              "iconRight": "",
-              "iconRightEnabled": false,
-              "separated": false,
-              "width": "auto",
-              "height": "auto"
-            },
-            "layout": {
-              "type": "none",
-              "padding": 1
-            },
-            "style": {
-              "color": "white",
-              "border": true,
-              "borderStyle": "rounded",
-              "borderColor": "white",
-              "bold": true
-            },
-            "events": {
-              "onClick": "handleClick"
-            },
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "submit_btn"
-          },
-          {
-            "id": "id-4",
-            "type": "Checkbox",
-            "name": "Checkbox",
-            "props": {
-              "label": "I agree",
-              "checked": false,
-              "checkedIcon": "✓",
-              "uncheckedIcon": " "
-            },
-            "layout": {
-              "type": "none"
-            },
-            "style": {
-              "color": "white",
-              "checkedColor": "green",
-              "uncheckedColor": "white",
-              "labelColor": "white"
-            },
-            "events": {
-              "onChange": "handleChange"
-            },
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "agree"
-          },
-          {
-            "id": "id-5",
-            "type": "Select",
-            "name": "Select",
-            "props": {
-              "options": [
-                "Red",
-                "Green",
-                "Blue"
-              ],
-              "value": ""
-            },
-            "layout": {
-              "type": "none"
-            },
-            "style": {
-              "color": "white",
-              "border": true,
-              "borderStyle": "single",
-              "borderColor": "white"
-            },
-            "events": {
-              "onChange": "handleChange"
-            },
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "color"
-          },
-          {
-            "id": "id-6",
-            "type": "ProgressBar",
-            "name": "Progress Bar",
-            "props": {
-              "value": 0,
-              "max": 100,
-              "width": 20
-            },
-            "layout": {
-              "type": "none"
-            },
-            "style": {
-              "color": "white",
-              "border": true,
-              "borderStyle": "single",
-              "borderColor": "white"
-            },
-            "events": {},
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "progress"
-          },
-          {
-            "id": "id-7",
-            "type": "Table",
-            "name": "Table",
-            "props": {
-              "columns": [
-                "Column 1",
-                "Column 2"
-              ],
-              "rows": [
-                [
-                  "Cell 1",
-                  "Cell 2"
-                ],
-                [
-                  "Cell 3",
-                  "Cell 4"
-                ]
-              ]
-            },
-            "layout": {
-              "type": "none"
-            },
-            "style": {
-              "color": "white",
-              "border": true,
-              "borderStyle": "single",
-              "borderColor": "white"
-            },
-            "events": {},
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "results"
-          },
-          {
-            "id": "id-8",
-            "type": "List",
-            "name": "List",
-            "props": {
-              "items": [
-                {
-                  "label": "Item 1",
-                  "icon": "•",
-                  "hotkey": "1"
-                },
-                {
-                  "label": "Item 2",
-                  "icon": "•",
-                  "hotkey": "2"
-                },
-                {
-                  "label": "Item 3",
-                  "icon": "•",
-                  "hotkey": "3"
-                }
-              ],
-              "selectedIndex": 0,
-              "width": "auto",
-              "height": "auto"
-            },
-            "layout": {
-              "type": "flexbox",
-              "direction": "column"
-            },
-            "style": {
-              "color": "white",
-              "border": true,
-              "borderStyle": "single",
-              "borderColor": "white"
-            },
-            "events": {
-              "onSelect": "handleSelect"
-            },
-            "children": [],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "files"
-          },
-          {
-            "id": "id-9",
             "type": "Tabs",
             "name": "Tabs",
             "props": {
@@ -303,11 +50,14 @@
                   "hotkey": "^2"
                 }
               ],
-              "activeTab": 0
+              "activeTab": 0,
+              "width": 80
             },
             "layout": {
               "type": "flexbox",
-              "direction": "column"
+              "direction": "column",
+              "x": 0,
+              "y": 0
             },
             "style": {
               "color": "white"
@@ -317,21 +67,22 @@
             "locked": false,
             "hidden": false,
             "collapsed": false,
-            "tag": "pages"
+            "id": "comp-1792873521744-2"
           },
           {
-            "id": "id-11",
             "type": "Box",
             "name": "Box",
             "props": {
-              "width": "auto",
+              "width": 49,
               "height": "auto"
             },
             "layout": {
               "type": "flexbox",
               "direction": "column",
               "padding": 1,
-              "gap": 1
+              "gap": 1,
+              "x": 8,
+              "y": 6
             },
             "style": {
               "color": "white",
@@ -342,88 +93,100 @@
             "events": {},
             "children": [
               {
-                "id": "id-10",
-                "type": "Text",
-                "name": "Text",
+                "type": "Button",
+                "name": "Button",
                 "props": {
-                  "content": "Inside the panel",
-                  "wrap": false,
-                  "align": "left"
+                  "label": "Button",
+                  "disabled": false,
+                  "iconLeft": "",
+                  "iconLeftEnabled": false,
+                  "iconRight": "",
+                  "iconRightEnabled": false,
+                  "separated": false,
+                  "width": 45,
+                  "height": "auto"
                 },
                 "layout": {
-                  "type": "none"
+                  "type": "none",
+                  "padding": 1,
+                  "x": 0,
+                  "y": 0
                 },
                 "style": {
-                  "color": "white"
+                  "color": "white",
+                  "border": true,
+                  "borderStyle": "rounded",
+                  "borderColor": "white",
+                  "bold": true
                 },
-                "events": {},
+                "events": {
+                  "onClick": "handleClick"
+                },
                 "children": [],
                 "locked": false,
                 "hidden": false,
                 "collapsed": false,
-                "tag": "inner"
-              }
-            ],
-            "locked": false,
-            "hidden": false,
-            "collapsed": false,
-            "tag": "panel"
-          },
-          {
-            "id": "id-13",
-            "type": "Modal",
-            "name": "Modal",
-            "props": {
-              "title": "Sure?",
-              "width": 40,
-              "height": 12
-            },
-            "layout": {
-              "type": "flexbox",
-              "direction": "column",
-              "padding": 2
-            },
-            "style": {
-              "color": "white",
-              "border": true,
-              "borderStyle": "double",
-              "borderColor": "white",
-              "backgroundColor": "black"
-            },
-            "events": {},
-            "children": [
+                "id": "comp-1792874234340-3"
+              },
               {
-                "id": "id-12",
-                "type": "Text",
-                "name": "Text",
+                "type": "Checkbox",
+                "name": "Checkbox",
                 "props": {
-                  "content": "Really?",
-                  "wrap": false,
-                  "align": "left"
+                  "label": "Option",
+                  "checked": false,
+                  "checkedIcon": "✓",
+                  "uncheckedIcon": " ",
+                  "width": 45
                 },
                 "layout": {
-                  "type": "none"
+                  "type": "none",
+                  "x": 0,
+                  "y": 0
                 },
                 "style": {
-                  "color": "white"
+                  "color": "white",
+                  "checkedColor": "green",
+                  "uncheckedColor": "white",
+                  "labelColor": "white"
                 },
-                "events": {},
+                "events": {
+                  "onChange": "handleChange"
+                },
                 "children": [],
                 "locked": false,
                 "hidden": false,
-                "collapsed": false
+                "collapsed": false,
+                "id": "comp-1792874244846-4"
               }
             ],
             "locked": false,
             "hidden": false,
             "collapsed": false,
-            "tag": "confirm"
+            "id": "comp-1792874216417-2"
+          },
+          {
+            "type": "Spinner",
+            "name": "Spinner",
+            "props": {},
+            "layout": {
+              "type": "none",
+              "x": 14,
+              "y": 3
+            },
+            "style": {
+              "color": "white"
+            },
+            "events": {},
+            "children": [],
+            "locked": false,
+            "hidden": false,
+            "collapsed": false,
+            "id": "comp-1792874271160-5"
           }
         ],
         "locked": false,
         "hidden": false,
-        "collapsed": false,
-        "tag": "demo"
+        "collapsed": false
       }
     }
   ]
