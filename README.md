@@ -9,6 +9,7 @@
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 
 A Figma-like visual editor for designing Terminal UI applications. Drag-and-drop components onto a live canvas, edit properties visually, and export to multiple TUI frameworks.
+
 <img width="400" height="400" alt="Computer" src="public/screenshot-tokyo-night.png" />
 
 
