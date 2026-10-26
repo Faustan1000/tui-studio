@@ -1,4 +1,3 @@
-# this is a fork from jalonsogo/tui-studio 
 <img src="public/logo-tui-studio_light.svg" alt="TUIStudio" width="64" />
 
 # TUIStudio
@@ -119,6 +118,6 @@ npm run preview  # Preview production build
 
 **Issues**: [GitHub Issues](https://github.com/Faustan1000/tui-studio/issues)
 
-## LOLcense
+## License
 
-For {root} sake I'm a designer. Mostly all the code has been written by Claude and ad latere.
+MIT, see [LICENSE](LICENSE). Based on [jalonsogo/tui-studio](https://github.com/jalonsogo/tui-studio) by Javier Alonso and contributors.

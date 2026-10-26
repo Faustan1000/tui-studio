@@ -361,7 +361,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           Drag-and-drop components, edit properties visually, and export to multiple TUI frameworks.
         </p>
         <div className="text-xs text-muted-foreground">
-          Made by <span className="text-foreground font-medium">Javier Alonso</span>
+          Fork of tui-studio by <span className="text-foreground font-medium">Javier Alonso</span> (MIT)
         </div>
         <a
           href="https://github.com/Faustan1000/tui-studio"
