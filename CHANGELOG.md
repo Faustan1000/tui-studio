@@ -2,7 +2,7 @@
 
 All notable changes to TUIStudio are documented here.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-10-26
 
 ### Added
 
