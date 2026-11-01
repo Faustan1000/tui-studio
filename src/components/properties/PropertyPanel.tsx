@@ -450,6 +450,32 @@ function VisualProperties({ component }: { component: import('../../types').Comp
             onChange={(height) => componentStore.updateProps(component.id, { height })}
           />
         </div>
+        <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+          {(
+            [
+              ['minWidth', 'Min W'],
+              ['maxWidth', 'Max W'],
+              ['minHeight', 'Min H'],
+              ['maxHeight', 'Max H'],
+            ] as const
+          ).map(([key, label]) => (
+            <div key={key}>
+              <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">
+                {label}
+              </label>
+              <NumericInput
+                value={component.props[key] ?? 0}
+                min={0}
+                max={1000}
+                // 0 means no limit
+                onChange={(n) =>
+                  componentStore.updateProps(component.id, { [key]: n || undefined })
+                }
+                className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
+              />
+            </div>
+          ))}
+        </div>
       </Section>
 
       {/* Layout Section */}

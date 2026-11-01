@@ -87,7 +87,9 @@ OpenTUI's `import.meta.main` entry.
 - **`Align: stretch`** is not implemented, neither in the editor engine nor in any export.
 - **Percentage sizes** (`20%`) are native in Ink, OpenTUI and Textual. Blessed, Ratatui, tview and
   Bubble Tea export the fixed cells of the design and warn about it in the export panel.
-- Per-child alignment, flex-grow/shrink per child and min/max sizes in the editor.
+- Per-child alignment and flex-grow/shrink per child in the editor.
+- Min/max sizes are applied by the editor (and written by the Textual export); the other exports
+  only reproduce the limited size at the design size.
 - The root Screen aligns unequal children as a group (Textual limitation).
 - The editor-vs-framework parity harness exists only for Textual (`tests/python/parity.py`); Ink
   layout is measured in a few cases. Extend it to all frameworks.
