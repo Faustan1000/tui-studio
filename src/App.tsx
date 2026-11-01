@@ -149,15 +149,19 @@ function App() {
         return;
       }
 
-      // Undo (Ctrl/Cmd+Z)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      // Undo (Ctrl/Cmd+Z); in a text field the browser undoes the typing instead
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey && !isTyping) {
         e.preventDefault();
         componentStore.undo();
         return;
       }
 
       // Redo (Ctrl/Cmd+Shift+Z or Ctrl+Y)
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        (e.key === 'y' || (e.key === 'z' && e.shiftKey)) &&
+        !isTyping
+      ) {
         e.preventDefault();
         componentStore.redo();
         return;
