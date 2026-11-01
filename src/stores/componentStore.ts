@@ -248,7 +248,10 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
     }
 
     if (index !== undefined) {
-      newParent.children.splice(index, 0, component);
+      // `index` counts the children before the component was taken out; moving down within
+      // the same parent shifts everything after it up by one.
+      const target = newParent === oldParent && index > componentIndex ? index - 1 : index;
+      newParent.children.splice(target, 0, component);
     } else {
       newParent.children.push(component);
     }
@@ -632,7 +635,11 @@ export const useComponentStore = create<ComponentState>((set, get) => ({
     assignAutoTags(
       copy,
       copy.name,
-      collectTags(get().getScreenRoots().map((s) => s.root))
+      collectTags(
+        get()
+          .getScreenRoots()
+          .map((s) => s.root)
+      )
     );
     idMap.set(copy.id, copy.id);
     remapShowWhen(copy, idMap);

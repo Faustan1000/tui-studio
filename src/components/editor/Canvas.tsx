@@ -10,6 +10,7 @@ import { interpolateGradientColor } from '../../utils/rendering/ansi';
 import { ComponentToolbar } from './ComponentToolbar';
 import { NumericInput } from '../properties/LayoutEditor';
 import { readStoredJson } from '../../utils/storage';
+import { getDescendants } from '../../utils/treeUtils';
 
 // ── Canvas size control ───────────────────────────────────────────────────────
 
@@ -454,6 +455,10 @@ const ComponentRenderer = memo(
     const [isDragging, setIsDragging] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [insertionIndex, setInsertionIndex] = useState<number | null>(null);
+    // Dragging over a component that cannot hold children: drop before/after it, as a sibling
+    const [dropSide, setDropSide] = useState<{ side: 'before' | 'after'; row: boolean } | null>(
+      null
+    );
     const [resizing, setResizing] = useState<{
       direction: 'e' | 's' | 'se';
       startX: number;
@@ -1062,7 +1067,28 @@ const ComponentRenderer = memo(
 
     const handleDragEnd = () => {
       setIsDragging(false);
+      setDropSide(null);
       dragStore.endDrag();
+    };
+
+    /**
+     * Where a dragged component can go when dropped on this one although it cannot hold
+     * children: next to it, inside a parent that stacks its children (flexbox or none).
+     */
+    const siblingTarget = () => {
+      const dragData = dragStore.dragData;
+      if (dragData?.type !== 'existing-component' || !dragData.componentId) return null;
+      if (dragData.componentId === node.id) return null;
+      const parent = componentStore.getParent(node.id);
+      if (!parent || (parent.layout.type !== 'flexbox' && parent.layout.type !== 'none')) {
+        return null;
+      }
+      const dragged = componentStore.getComponent(dragData.componentId);
+      // A component cannot be moved into itself
+      if (!dragged || dragged.id === parent.id) return null;
+      if (getDescendants(dragged).some((c) => c.id === parent.id)) return null;
+      const row = parent.layout.type === 'flexbox' && (parent.layout.direction || 'row') === 'row';
+      return { parent, row, dragId: dragged.id };
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -1070,7 +1096,19 @@ const ComponentRenderer = memo(
 
       // Only containers can accept children
       if (!canHaveChildren(node.type)) {
-        e.dataTransfer.dropEffect = 'none';
+        const target = siblingTarget();
+        if (!target) {
+          e.dataTransfer.dropEffect = 'none';
+          setDropSide(null);
+          return;
+        }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = e.currentTarget.getBoundingClientRect();
+        const before = target.row
+          ? e.clientX - rect.left < rect.width / 2
+          : e.clientY - rect.top < rect.height / 2;
+        setDropSide({ side: before ? 'before' : 'after', row: target.row });
         return;
       }
 
@@ -1111,6 +1149,7 @@ const ComponentRenderer = memo(
 
     const handleDragLeave = () => {
       setInsertionIndex(null);
+      setDropSide(null);
     };
 
     const handleDrop = (e: React.DragEvent) => {
@@ -1119,8 +1158,20 @@ const ComponentRenderer = memo(
         return;
       }
 
-      // Only containers can accept children
+      // Only containers can accept children; anything else takes the dragged component next to it
       if (!canHaveChildren(node.type)) {
+        const target = siblingTarget();
+        if (!target || !dropSide) return;
+        e.stopPropagation();
+        e.preventDefault();
+        const index = target.parent.children.findIndex((c) => c.id === node.id);
+        componentStore.moveComponent(
+          target.dragId,
+          target.parent.id,
+          dropSide.side === 'before' ? index : index + 1
+        );
+        setDropSide(null);
+        dragStore.endDrag();
         return;
       }
 
@@ -1296,6 +1347,21 @@ const ComponentRenderer = memo(
               );
             })}
         </div>
+
+        {/* Where the dragged component lands when dropped on this (non-container) component */}
+        {dropSide && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: `${dropSide.row ? (dropSide.side === 'before' ? x - 1 : x + layout.width * cellWidth * zoom - 1) : x}px`,
+              top: `${dropSide.row ? y : dropSide.side === 'before' ? y - 1 : y + layout.height * cellHeight * zoom - 1}px`,
+              width: `${dropSide.row ? 2 : layout.width * cellWidth * zoom}px`,
+              height: `${dropSide.row ? layout.height * cellHeight * zoom : 2}px`,
+              backgroundColor: '#3b82f6',
+              zIndex: 1000,
+            }}
+          />
+        )}
 
         {/* Insertion line indicator */}
         {insertionIndex !== null &&

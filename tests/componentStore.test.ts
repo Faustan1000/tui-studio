@@ -62,6 +62,24 @@ describe('components', () => {
     expect(store().getParent(text)?.id).toBe(box);
   });
 
+  it('reorders within a container: the index is the position before the move', () => {
+    const [a, b, c] = ['Text', 'Text', 'Text'].map((t) =>
+      store().addComponent('root', data(t as 'Text'))
+    );
+    const order = () => store().root!.children.map((n) => n.id);
+
+    store().moveComponent(a, 'root', 3); // after the last one
+    expect(order()).toEqual([b, c, a]);
+    store().moveComponent(a, 'root', 0); // before the first one
+    expect(order()).toEqual([a, b, c]);
+    store().moveComponent(a, 'root', 2); // between b and c
+    expect(order()).toEqual([b, a, c]);
+    store().moveComponent(c, 'root', 0);
+    expect(order()).toEqual([c, b, a]);
+    store().moveComponent(b, 'root', 1); // its own place: nothing changes
+    expect(order()).toEqual([c, b, a]);
+  });
+
   it('refuses to add to a parent that does not exist', () => {
     expect(store().addComponent('missing', data('Text'))).toBe('');
   });
