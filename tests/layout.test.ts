@@ -343,3 +343,59 @@ describe('percentage sizes', () => {
     expect(at('t')!.w).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('min and max sizes', () => {
+  const sized = (id: string, width: Dimension, extra: Record<string, unknown>) =>
+    mk('Button', { id, props: { width, height: 'auto', ...extra } });
+
+  it('limits a fixed width', () => {
+    const at = compute(
+      boxed({ type: 'flexbox', direction: 'row' }, [
+        sized('a', 30, { maxWidth: 12 }),
+        sized('b', 5, { minWidth: 9 }),
+      ])
+    );
+    expect(at('a')!.w).toBe(12);
+    expect(at('b')!.w).toBe(9);
+    expect(at('b')!.x).toBe(at('a')!.x + 12); // the next item follows the limited size
+  });
+
+  it('limits a percentage and a fill width', () => {
+    const at = compute(
+      boxed({ type: 'flexbox', direction: 'row' }, [
+        sized('a', '50%', { maxWidth: 8 }),
+        sized('b', 'fill', { maxWidth: 10 }),
+      ])
+    );
+    expect(at('a')!.w).toBe(8);
+    expect(at('b')!.w).toBe(10);
+  });
+
+  it('limits the height and the cross axis', () => {
+    const filler = (extra: Record<string, unknown>) =>
+      mk('Box', {
+        id: 'f',
+        props: { width: 6, height: 'fill', ...extra },
+        style: { border: false },
+      });
+    expect(
+      compute(boxed({ type: 'flexbox', direction: 'column' }, [filler({ maxHeight: 3 })]))('f')!.h
+    ).toBe(3);
+    expect(
+      compute(boxed({ type: 'flexbox', direction: 'row' }, [filler({ maxHeight: 5 })]))('f')!.h
+    ).toBe(5);
+    const wide = mk('Menu', { id: 'w', props: { width: 'fill', maxWidth: 25, items: ['A'] } });
+    expect(compute(boxed({ type: 'flexbox', direction: 'column' }, [wide]))('w')!.w).toBe(25);
+  });
+
+  it('lets min win over max, and ignores values that are not numbers', () => {
+    const at = compute(
+      boxed({ type: 'absolute' }, [
+        sized('a', 10, { minWidth: 20, maxWidth: 15 }),
+        sized('b', 10, { minWidth: 'x', maxWidth: null }),
+      ])
+    );
+    expect(at('a')!.w).toBe(20);
+    expect(at('b')!.w).toBe(10);
+  });
+});

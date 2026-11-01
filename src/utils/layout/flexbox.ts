@@ -2,7 +2,7 @@
 
 import type { ComponentNode } from '../../types';
 import type { ComputedLayout, FlexItem } from './types';
-import { parsePercent, resolvePercent } from './dimension';
+import { clampSize, parsePercent, resolvePercent } from './dimension';
 
 interface FlexLine {
   items: FlexItem[];
@@ -57,6 +57,8 @@ export function calculateFlexboxLayout(
     };
   });
 
+  const nodeOf = new Map(container.children.map((c) => [c.id, c]));
+
   // Collect items into flex lines
   const lines = wrap
     ? collectFlexLines(flexItems, mainSize, gap, isRow)
@@ -68,7 +70,12 @@ export function calculateFlexboxLayout(
     let mainOffset = padding;
 
     // Calculate sizes for items in this line
-    const sizes = resolveFlexItemSizes(line.items, mainSize, gap, isRow);
+    const sizes = resolveFlexItemSizes(line.items, mainSize, gap, isRow).map((size, i) => {
+      const { props } = nodeOf.get(line.items[i].id)!;
+      return isRow
+        ? clampSize(size, props.minWidth, props.maxWidth)
+        : clampSize(size, props.minHeight, props.maxHeight);
+    });
 
     // Calculate cross size for this line. Like in CSS, the only line of a container that does
     // not wrap is as large as the container itself, so `align` aligns within the container
@@ -94,8 +101,18 @@ export function calculateFlexboxLayout(
       const itemMainSize = sizes[i];
       // 'fill' on the cross axis spans the whole line (e.g. a nav bar at full width in a column)
       const crossProp = isRow ? item.height : item.width;
-      const itemCrossSize =
-        crossProp === 'fill' ? lineCrossSize : isRow ? resolveHeight(item) : resolveWidth(item);
+      const { props } = nodeOf.get(item.id)!;
+      const itemCrossSize = isRow
+        ? clampSize(
+            crossProp === 'fill' ? lineCrossSize : resolveHeight(item),
+            props.minHeight,
+            props.maxHeight
+          )
+        : clampSize(
+            crossProp === 'fill' ? lineCrossSize : resolveWidth(item),
+            props.minWidth,
+            props.maxWidth
+          );
 
       // Calculate cross-axis alignment
       const crossAlignOffset = calculateAlignOffset(align, lineCrossSize, itemCrossSize);

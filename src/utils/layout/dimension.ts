@@ -26,8 +26,10 @@ export function resolvePercent(percent: number, base: number): number {
   return Math.max(1, Math.floor((base * percent) / 100));
 }
 
-/** Resolves a percentage dimension against `base`; other values are returned unchanged. */
-export function resolveDimension<T>(value: T, base: number): T | number {
-  const p = parsePercent(value);
-  return p === null ? value : resolvePercent(p, base);
+/** Applies min/max limits (ignored unless they are numbers); like in CSS, min wins over max. */
+export function clampSize(value: number, min?: unknown, max?: unknown): number {
+  let v = value;
+  if (typeof max === 'number' && Number.isFinite(max)) v = Math.min(v, max);
+  if (typeof min === 'number' && Number.isFinite(min)) v = Math.max(v, min);
+  return v;
 }

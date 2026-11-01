@@ -7,7 +7,7 @@ import { calculateGridLayout } from './grid';
 import { calculateAbsoluteLayout } from './absolute';
 import { flattenTree } from '../treeUtils';
 import { isShownByNav } from '../navBodies';
-import { isPercent, parsePercent, resolvePercent } from './dimension';
+import { clampSize, isPercent, parsePercent, resolvePercent } from './dimension';
 
 export class LayoutEngine {
   private layouts: Map<string, ComputedLayout> = new Map();
@@ -133,6 +133,10 @@ export class LayoutEngine {
     ) {
       height = this.calculateAutoHeight(node);
     }
+
+    // minWidth/maxWidth/minHeight/maxHeight limit whatever size was resolved above
+    width = clampSize(width, node.props.minWidth, node.props.maxWidth);
+    height = clampSize(height, node.props.minHeight, node.props.maxHeight);
 
     // Apply margin
     const margin = typeof node.layout.margin === 'number' ? node.layout.margin : 0;
