@@ -32,9 +32,9 @@ interface CanvasState {
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
-  // Initial state - default terminal size
+  // Initial state: the standard terminal size, the same as a new screen (see createScreenRoot)
   width: 80,
-  height: 25,
+  height: 24,
   sizeMode: 'default',
   zoom: 1.0,
   panX: 0,
@@ -57,7 +57,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setSizeMode: (mode) => {
     set(() => {
       if (mode === 'default') {
-        return { sizeMode: mode, width: 80, height: 25 };
+        return { sizeMode: mode, width: 80, height: 24 };
       }
       return { sizeMode: mode };
     });

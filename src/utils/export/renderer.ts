@@ -22,7 +22,7 @@ export function renderTree(root: ComponentNode | null, options: RenderOptions): 
   layoutEngine.calculateLayout(root, options.width, options.height);
 
   // Use the full canvas dimensions for the CharCanvas so the output matches
-  // the 80×25 (or whatever) terminal view the user designed against.
+  // the 80×24 (or whatever) terminal view the user designed against.
   const canvas = new CharCanvas(options.width, options.height);
 
   // Render all visible components

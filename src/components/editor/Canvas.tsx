@@ -37,7 +37,7 @@ function CanvasSizeControl() {
         onChange={(e) => canvasStore.setSizeMode(e.target.value as any)}
         className="px-2 py-0.5 text-[11px] bg-card border border-border/50 rounded focus:border-primary focus:outline-hidden"
       >
-        <option value="default">Default (80×25)</option>
+        <option value="default">Default (80×24)</option>
         <option value="responsive">Responsive</option>
         <option value="custom">Custom</option>
       </select>
