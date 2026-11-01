@@ -14,6 +14,7 @@ import {
 import { useSelectionStore, useComponentStore } from '../../stores';
 import { LayoutEditor, NumericInput } from './LayoutEditor';
 import { StyleEditor } from './StyleEditor';
+import { DimensionInput } from './DimensionInput';
 import { ColorPicker } from './ColorPicker';
 import type { ComponentNode } from '../../types';
 import { collectTags, suggestTag, validateTag } from '../../utils/apiTag';
@@ -438,38 +439,16 @@ function VisualProperties({ component }: { component: import('../../types').Comp
       {/* Dimensions Section */}
       <Section title="Dimensions" defaultOpen={true}>
         <div className="grid grid-cols-2 gap-1.5">
-          <div>
-            <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">
-              W
-            </label>
-            <input
-              type="text"
-              value={component.props.width ?? 'auto'}
-              onChange={(e) => {
-                const v = e.target.value;
-                componentStore.updateProps(component.id, {
-                  width: v === 'auto' || v === '' ? 'auto' : isNaN(Number(v)) ? 'auto' : Number(v),
-                });
-              }}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
-            />
-          </div>
-          <div>
-            <label className="text-[9px] text-muted-foreground block mb-0.5 uppercase tracking-wide">
-              H
-            </label>
-            <input
-              type="text"
-              value={component.props.height ?? 'auto'}
-              onChange={(e) => {
-                const v = e.target.value;
-                componentStore.updateProps(component.id, {
-                  height: v === 'auto' || v === '' ? 'auto' : isNaN(Number(v)) ? 'auto' : Number(v),
-                });
-              }}
-              className="w-full px-1.5 py-0.5 bg-input border border-border/50 rounded text-[11px] focus:border-primary focus:outline-hidden"
-            />
-          </div>
+          <DimensionInput
+            label="W"
+            value={component.props.width}
+            onChange={(width) => componentStore.updateProps(component.id, { width })}
+          />
+          <DimensionInput
+            label="H"
+            value={component.props.height}
+            onChange={(height) => componentStore.updateProps(component.id, { height })}
+          />
         </div>
       </Section>
 
