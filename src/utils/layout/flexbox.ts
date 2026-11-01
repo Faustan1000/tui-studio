@@ -11,7 +11,8 @@ interface FlexLine {
 export function calculateFlexboxLayout(
   container: ComponentNode,
   availableWidth: number,
-  availableHeight: number
+  availableHeight: number,
+  measureHeight?: (child: ComponentNode) => number
 ): Map<string, ComputedLayout> {
   const layouts = new Map<string, ComputedLayout>();
 
@@ -35,7 +36,11 @@ export function calculateFlexboxLayout(
     flexShrink: 1,
     flexBasis: 'auto',
     width: child.props.width,
-    height: child.props.height,
+    // 'auto' (or unset) means the content's height; only 'fill' takes up the free space.
+    height:
+      child.props.height === 'fill' || typeof child.props.height === 'number' || !measureHeight
+        ? child.props.height
+        : measureHeight(child),
     minWidth: 1,
     minHeight: 1,
   }));
@@ -75,7 +80,10 @@ export function calculateFlexboxLayout(
     // Position each item
     line.items.forEach((item, i) => {
       const itemMainSize = sizes[i];
-      const itemCrossSize = isRow ? resolveHeight(item) : resolveWidth(item);
+      // 'fill' on the cross axis spans the whole line (e.g. a nav bar at full width in a column)
+      const crossProp = isRow ? item.height : item.width;
+      const itemCrossSize =
+        crossProp === 'fill' ? lineCrossSize : isRow ? resolveHeight(item) : resolveWidth(item);
 
       // Calculate cross-axis alignment
       const crossAlignOffset = calculateAlignOffset(align, lineCrossSize, itemCrossSize);

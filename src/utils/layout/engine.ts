@@ -184,7 +184,9 @@ export class LayoutEngine {
 
     switch (container.layout.type) {
       case 'flexbox':
-        childLayouts = calculateFlexboxLayout(container, containerWidth, containerHeight);
+        childLayouts = calculateFlexboxLayout(container, containerWidth, containerHeight, (child) =>
+          this.calculateAutoHeight(child)
+        );
         break;
       case 'grid':
         childLayouts = calculateGridLayout(container, containerWidth, containerHeight);

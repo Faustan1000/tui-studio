@@ -374,7 +374,7 @@ describe('bubbletea adapter', () => {
     });
 
     it('Grid, Box, Spacer, Modal', () => {
-      expect(src).toContain('cv := newCanvas(1, 3)'); // grid: snapshot
+      expect(src).toContain('cv := newCanvas(1, 10)'); // grid: snapshot (auto height = 10 rows)
       expect(src).toContain('lipgloss.DoubleBorder()');
       expect(src).toContain(
         'overlay(out, 2, 0, lipgloss.NewStyle().Bold(true).MaxWidth(36).Render(" " + line(c.Str("title")) + " "))'

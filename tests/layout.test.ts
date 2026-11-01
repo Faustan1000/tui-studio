@@ -53,6 +53,51 @@ describe('flex rows and columns', () => {
     expect(a.x).toBe(b.x);
   });
 
+  it('stacks auto-height items in a column by their own height, not by an equal share', () => {
+    const input = (id: string) => mk('TextInput', { id, props: { width: 20 } });
+    const at = compute(
+      boxed({ type: 'flexbox', direction: 'column' }, [
+        text('a', 6, 'auto'),
+        input('b'),
+        input('c'),
+      ])
+    );
+    expect(at('b')!.y - at('a')!.y).toBe(at('a')!.h);
+    expect(at('c')!.y - at('b')!.y).toBe(at('b')!.h);
+  });
+
+  it('only gives the free space of a column to items with height fill', () => {
+    const filler = mk('Box', {
+      id: 'b',
+      props: { width: 6, height: 'fill' },
+      style: { border: false },
+    });
+    const at = compute(
+      boxed({ type: 'flexbox', direction: 'column' }, [text('a', 6, 'auto'), filler])
+    );
+    expect(at('b')!.y).toBe(at('a')!.y + at('a')!.h);
+    expect(at('b')!.h).toBe(8 - at('a')!.h);
+  });
+
+  it('spans the container with a fill width in a column, also when it is centered', () => {
+    for (const align of ['start', 'center']) {
+      const bar = mk('Menu', { id: 'bar', props: { width: 'fill', items: ['A', 'B'] } });
+      const at = compute(boxed({ type: 'flexbox', direction: 'column', align }, [bar]));
+      expect(at('bar')!.w, align).toBe(40);
+      expect(at('bar')!.x, align).toBe(at('box')!.x);
+    }
+  });
+
+  it('spans the container with a fill height in a row', () => {
+    const filler = mk('Box', {
+      id: 'f',
+      props: { width: 6, height: 'fill' },
+      style: { border: false },
+    });
+    const at = compute(boxed({ type: 'flexbox', direction: 'row' }, [filler]));
+    expect(at('f')!.h).toBe(8);
+  });
+
   it('puts padding between the container edge and its children', () => {
     const at = compute(boxed({ type: 'flexbox', direction: 'row', padding: 3 }, [text('a')]));
     expect(at('a')!.x - at('box')!.x).toBe(3);
