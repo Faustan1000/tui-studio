@@ -156,3 +156,20 @@ describe('parseTuiFile: components', () => {
     expect(Object.keys(result.screens[0].tree.props)).not.toContain('constructor');
   });
 });
+
+describe('parseTuiFile: sizes', () => {
+  const withSize = (value: unknown) =>
+    file([screen('S', undefined, [mk('Text', { props: { width: value } })])]);
+
+  it('accepts numbers, auto, fill and percentages', () => {
+    for (const v of [10, 'auto', 'fill', '20%', '100%', '12.5%']) {
+      expect(() => parse(withSize(v)), String(v)).not.toThrow();
+    }
+  });
+
+  it('rejects anything else', () => {
+    for (const v of ['abc', '0%', '101%', '-5%', '%', '20 %', '20px', true, {}, []]) {
+      expect(() => parse(withSize(v)), JSON.stringify(v)).toThrow('invalid width');
+    }
+  });
+});

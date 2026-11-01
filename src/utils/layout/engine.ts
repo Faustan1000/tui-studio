@@ -7,6 +7,7 @@ import { calculateGridLayout } from './grid';
 import { calculateAbsoluteLayout } from './absolute';
 import { flattenTree } from '../treeUtils';
 import { isShownByNav } from '../navBodies';
+import { isPercent, parsePercent, resolvePercent } from './dimension';
 
 export class LayoutEngine {
   private layouts: Map<string, ComputedLayout> = new Map();
@@ -125,7 +126,11 @@ export class LayoutEngine {
       'Text',
       'Breadcrumb',
     ];
-    if (leafTypes.includes(node.type) && typeof node.props.height !== 'number') {
+    if (
+      leafTypes.includes(node.type) &&
+      typeof node.props.height !== 'number' &&
+      !isPercent(node.props.height)
+    ) {
       height = this.calculateAutoHeight(node);
     }
 
@@ -196,7 +201,7 @@ export class LayoutEngine {
         break;
       default:
         // Stack children vertically for 'none' layout
-        childLayouts = this.calculateStackLayout(container, containerWidth);
+        childLayouts = this.calculateStackLayout(container, containerWidth, containerHeight);
         break;
     }
 
@@ -236,7 +241,8 @@ export class LayoutEngine {
 
   private calculateStackLayout(
     container: ComponentNode,
-    containerWidth: number
+    containerWidth: number,
+    containerHeight: number
   ): Map<string, ComputedLayout> {
     const layouts = new Map<string, ComputedLayout>();
     const padding = typeof container.layout.padding === 'number' ? container.layout.padding : 0;
@@ -253,6 +259,14 @@ export class LayoutEngine {
 
       if (typeof child.props.height === 'number') {
         height = child.props.height;
+      }
+
+      // Percentages are shares of the container's content area
+      const widthPercent = parsePercent(child.props.width);
+      if (widthPercent !== null) width = resolvePercent(widthPercent, containerWidth - padding * 2);
+      const heightPercent = parsePercent(child.props.height);
+      if (heightPercent !== null) {
+        height = resolvePercent(heightPercent, containerHeight - padding * 2);
       }
 
       const x = padding;

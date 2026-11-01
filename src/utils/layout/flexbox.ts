@@ -2,6 +2,7 @@
 
 import type { ComponentNode } from '../../types';
 import type { ComputedLayout, FlexItem } from './types';
+import { parsePercent, resolvePercent } from './dimension';
 
 interface FlexLine {
   items: FlexItem[];
@@ -29,21 +30,32 @@ export function calculateFlexboxLayout(
 
   const isRow = direction === 'row';
   const mainSize = isRow ? contentWidth : contentHeight;
-  // Convert children to flex items
-  const flexItems: FlexItem[] = container.children.map((child) => ({
-    id: child.id,
-    flexGrow: 0,
-    flexShrink: 1,
-    flexBasis: 'auto',
-    width: child.props.width,
-    // 'auto' (or unset) means the content's height; only 'fill' takes up the free space.
-    height:
-      child.props.height === 'fill' || typeof child.props.height === 'number' || !measureHeight
-        ? child.props.height
-        : measureHeight(child),
-    minWidth: 1,
-    minHeight: 1,
-  }));
+  // Convert children to flex items. A percentage is a share of the container's content area
+  // (rounded down); later steps only see cell counts.
+  const flexItems: FlexItem[] = container.children.map((child) => {
+    const { width, height } = child.props;
+    const widthPercent = parsePercent(width);
+    const heightPercent = parsePercent(height);
+    return {
+      id: child.id,
+      flexGrow: 0,
+      flexShrink: 1,
+      flexBasis: 'auto',
+      width:
+        widthPercent === null
+          ? (width as FlexItem['width'])
+          : resolvePercent(widthPercent, contentWidth),
+      // 'auto' (or unset) means the content's height; only 'fill' takes up the free space.
+      height:
+        heightPercent !== null
+          ? resolvePercent(heightPercent, contentHeight)
+          : height === 'fill' || typeof height === 'number' || !measureHeight
+            ? (height as FlexItem['height'])
+            : measureHeight(child),
+      minWidth: 1,
+      minHeight: 1,
+    };
+  });
 
   // Collect items into flex lines
   const lines = wrap

@@ -2,6 +2,7 @@
 
 import type { ComponentNode } from '../../types';
 import type { ComputedLayout } from './types';
+import { parsePercent, resolvePercent } from './dimension';
 
 export function calculateGridLayout(
   container: ComponentNode,
@@ -51,6 +52,8 @@ export function calculateGridLayout(
       width = cellWidth;
     } else if (child.props.width === 'auto') {
       width = Math.min(20, cellWidth); // Default auto width
+    } else if (parsePercent(child.props.width) !== null) {
+      width = resolvePercent(parsePercent(child.props.width)!, cellWidth);
     }
 
     if (typeof child.props.height === 'number') {
@@ -59,6 +62,8 @@ export function calculateGridLayout(
       height = cellHeight;
     } else if (child.props.height === 'auto') {
       height = Math.min(3, cellHeight); // Default auto height
+    } else if (parsePercent(child.props.height) !== null) {
+      height = resolvePercent(parsePercent(child.props.height)!, cellHeight);
     }
 
     layouts.set(child.id, {

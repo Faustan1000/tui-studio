@@ -1,5 +1,7 @@
 // Core component types for TUI Designer
 
+import type { Dimension } from '../utils/layout/dimension';
+
 export type ComponentType =
   // Layout
   | 'Screen'
@@ -62,8 +64,8 @@ export interface ComponentNode {
 
 export interface ComponentProps {
   // Common
-  width?: number | 'fill' | 'auto';
-  height?: number | 'fill' | 'auto';
+  width?: Dimension;
+  height?: Dimension;
   minWidth?: number;
   maxWidth?: number;
   minHeight?: number;

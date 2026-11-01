@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { LayoutEngine } from '../src/utils/layout/engine';
+import type { Dimension } from '../src/utils/layout/dimension';
 import { mk, resetIds, screen } from './fixtures/build';
 import { layouts } from './fixtures/designs';
 
@@ -16,7 +17,7 @@ function compute(root: ComponentNode, w = 80, h = 24) {
   };
 }
 
-const text = (id: string, w: number | 'fill' | 'auto' = 6, h: number | 'fill' | 'auto' = 1) =>
+const text = (id: string, w: Dimension = 6, h: Dimension = 1) =>
   mk('Text', { id, props: { content: id, width: w, height: h } });
 
 /** A fixed 40x8 box without padding or border inside a plain screen. */
@@ -248,5 +249,97 @@ describe('visibility', () => {
     const first = compute(tree)('t2');
     const again = compute(tree)('t2');
     expect(again).toEqual(first);
+  });
+});
+
+describe('percentage sizes', () => {
+  const btn = (id: string, w: Dimension, h: Dimension = 'auto') =>
+    mk('Button', { id, props: { width: w, height: h } });
+  const pct = (id: string, w: `${number}%`) => text(id, w);
+
+  it('takes a share of the container width in a row and leaves the rounding remainder empty', () => {
+    const at = compute(
+      boxed({ type: 'flexbox', direction: 'row' }, [
+        pct('a', '33%'),
+        pct('b', '33%'),
+        pct('c', '33%'),
+      ])
+    );
+    // 33% of 40 cells = 13.2 -> 13
+    expect([at('a')!.w, at('b')!.w, at('c')!.w]).toEqual([13, 13, 13]);
+    expect(at('b')!.x - at('a')!.x).toBe(13);
+  });
+
+  it('gives fill what the percentages leave over', () => {
+    const at = compute(
+      boxed({ type: 'flexbox', direction: 'row' }, [btn('a', '25%'), btn('b', 'fill')])
+    );
+    expect(at('a')!.w).toBe(10);
+    expect(at('b')!.w).toBe(30);
+    expect(at('b')!.x).toBe(at('a')!.x + 10);
+  });
+
+  it('measures a percentage against the content area, without padding', () => {
+    const at = compute(boxed({ type: 'flexbox', direction: 'row', padding: 2 }, [pct('a', '50%')]));
+    expect(at('a')!.w).toBe(18); // (40 - 2 * 2) / 2
+  });
+
+  it('spans the width of a column with 100%, e.g. a nav bar', () => {
+    const bar = mk('Menu', { id: 'bar', props: { width: '100%', items: ['A', 'B'] } });
+    const at = compute(boxed({ type: 'flexbox', direction: 'column' }, [bar, btn('b', '20%')]));
+    expect(at('bar')!.w).toBe(40);
+    expect(at('b')!.w).toBe(8);
+    expect(at('b')!.x).toBe(at('box')!.x);
+  });
+
+  it('takes a share of the container height', () => {
+    const half = mk('Box', {
+      id: 'h',
+      props: { width: 6, height: '50%' },
+      style: { border: false },
+    });
+    expect(compute(boxed({ type: 'flexbox', direction: 'column' }, [half]))('h')!.h).toBe(4);
+    expect(compute(boxed({ type: 'flexbox', direction: 'row' }, [half]))('h')!.h).toBe(4);
+  });
+
+  it('never makes an item smaller than one cell', () => {
+    const at = compute(boxed({ type: 'flexbox', direction: 'row' }, [pct('a', '1%')]));
+    expect(at('a')!.w).toBe(1);
+  });
+
+  it('lets items overflow when the shares add up to more than 100%', () => {
+    const at = compute(
+      boxed({ type: 'flexbox', direction: 'row' }, [pct('a', '60%'), pct('b', '60%')])
+    );
+    expect(at('b')!.x + at('b')!.w).toBeGreaterThan(at('box')!.x + 40);
+  });
+
+  it('works in absolute, grid and stacked layouts', () => {
+    const abs = compute(boxed({ type: 'absolute', padding: 2 }, [pct('a', '50%')]));
+    expect(abs('a')!.w).toBe(18);
+    const grid = compute(
+      boxed({ type: 'grid', columns: 2, rows: 1 }, [pct('a', '50%'), pct('b', '100%')])
+    );
+    expect(grid('a')!.w).toBe(10); // half of a 20 cell column
+    expect(grid('b')!.w).toBe(20);
+    const stack = compute(boxed({ type: 'none', padding: 2 }, [pct('a', '50%')]));
+    expect(stack('a')!.w).toBe(18);
+  });
+
+  it('ignores percentages for the auto size of a container', () => {
+    resetIds();
+    const inner = mk(
+      'Box',
+      {
+        id: 'in',
+        props: { width: 'auto', height: 'auto' },
+        layout: { type: 'flexbox', direction: 'column', padding: 0, gap: 0 },
+        style: { border: false },
+      },
+      [text('t', '50%')]
+    );
+    const at = compute(screen('S', undefined, [inner]));
+    expect(at('in')!.w).toBeGreaterThan(0);
+    expect(at('t')!.w).toBeGreaterThanOrEqual(1);
   });
 });

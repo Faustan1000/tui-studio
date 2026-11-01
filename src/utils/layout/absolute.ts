@@ -2,6 +2,7 @@
 
 import type { ComponentNode } from '../../types';
 import type { ComputedLayout } from './types';
+import { parsePercent, resolvePercent } from './dimension';
 
 export function calculateAbsoluteLayout(
   container: ComponentNode,
@@ -25,12 +26,16 @@ export function calculateAbsoluteLayout(
       width = child.props.width;
     } else if (child.props.width === 'fill') {
       width = availableWidth - x - padding;
+    } else if (parsePercent(child.props.width) !== null) {
+      width = resolvePercent(parsePercent(child.props.width)!, availableWidth - padding * 2);
     }
 
     if (typeof child.props.height === 'number') {
       height = child.props.height;
     } else if (child.props.height === 'fill') {
       height = availableHeight - y - padding;
+    } else if (parsePercent(child.props.height) !== null) {
+      height = resolvePercent(parsePercent(child.props.height)!, availableHeight - padding * 2);
     }
 
     layouts.set(child.id, {

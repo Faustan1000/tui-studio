@@ -1,6 +1,7 @@
 // Validation utilities for component properties
 
 import type { ComponentNode, ComponentType } from '../types';
+import { isPercent, type Dimension } from './layout/dimension';
 
 /**
  * Validate if a component name is valid
@@ -12,8 +13,8 @@ export function isValidComponentName(name: string): boolean {
 /**
  * Validate if a dimension value is valid
  */
-export function isValidDimension(value: number | 'fill' | 'auto'): boolean {
-  if (value === 'fill' || value === 'auto') return true;
+export function isValidDimension(value: Dimension): boolean {
+  if (value === 'fill' || value === 'auto' || isPercent(value)) return true;
   return typeof value === 'number' && value >= 0 && value <= 1000;
 }
 

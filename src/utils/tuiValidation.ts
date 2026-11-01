@@ -3,6 +3,7 @@
 import type { ComponentNode, ComponentType } from '../types/components';
 import { validateTag } from './apiTag';
 import { withoutScreenLinks } from './screenLinks';
+import { isPercent } from './layout/dimension';
 
 export const MAX_TUI_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_TREE_DEPTH = 50;
@@ -104,6 +105,18 @@ function validateNode(
   for (const key of ['props', 'style', 'events'] as const) {
     if (!isPlainObject(raw[key]))
       throw new Error(`Component "${raw.id}": "${key}" must be an object`);
+  }
+  for (const key of ['width', 'height'] as const) {
+    const v = (raw.props as Record<string, unknown>)[key];
+    const ok =
+      v === undefined ||
+      v === null ||
+      (typeof v === 'number' && Number.isFinite(v)) ||
+      v === 'auto' ||
+      v === 'fill' ||
+      v === 'fill_container' ||
+      isPercent(v);
+    if (!ok) throw new Error(`Component "${raw.id}": invalid ${key}`);
   }
   if (!isPlainObject(raw.layout) || !LAYOUT_TYPES.has(raw.layout.type as string))
     throw new Error(`Component "${raw.id}": invalid layout`);
