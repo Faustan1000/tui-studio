@@ -396,6 +396,7 @@ export const blessedAdapter: ExportAdapter = {
   label: 'Blessed (Node.js)',
   language: 'js',
   verification: 'run',
+  percentSizes: 'fixed',
   multiScreen: false,
   generate: ({ ir }): ExportFile[] => {
     const screen = ir.start;

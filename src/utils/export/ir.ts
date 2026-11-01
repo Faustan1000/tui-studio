@@ -14,6 +14,7 @@ import { THEMES } from '../../stores/themeStore';
 import { LayoutEngine } from '../layout/engine';
 import { isShownByNav, navActiveIndex } from '../navBodies';
 import { flattenTree } from '../treeUtils';
+import { parsePercent } from '../layout/dimension';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,8 +108,16 @@ export interface IRNode {
   opensScreen?: string;
   events: Record<string, string>;
 
+  /**
+   * Size as a number of cells, 'fill' or 'auto'. A percentage size is stored here as the cells
+   * the editor lays out (the design size), so exporters that cannot express percentages still
+   * reproduce the design; see `widthPct`.
+   */
   width: Dim;
   height: Dim;
+  /** Set when the width/height is a percentage of the parent's content area (1-100). */
+  widthPct?: number;
+  heightPct?: number;
   layout: IRLayout;
   style: IRStyle;
   /** Position/size in whole screen cells as the editor lays it out; undefined if it is not drawn. */
@@ -257,6 +266,18 @@ function buildNode(
   const p = node.props;
   const visible = parentVisible && !node.hidden && isShownByNav(node, ctx.byId);
   const layout = ctx.engine.getLayout(node.id);
+  // Whole cells: the editor works with fractions (centering an odd gap), a terminal cannot.
+  const box: IRBox | undefined =
+    layout && visible
+      ? {
+          x: Math.round(layout.x),
+          y: Math.round(layout.y),
+          width: Math.max(0, Math.round(layout.width)),
+          height: Math.max(0, Math.round(layout.height)),
+        }
+      : undefined;
+  const widthPct = parsePercent(p.width);
+  const heightPct = parsePercent(p.height);
 
   const ir: IRNode = {
     id: node.id,
@@ -278,20 +299,13 @@ function buildNode(
     events: Object.fromEntries(
       Object.entries(node.events ?? {}).filter(([, v]) => typeof v === 'string')
     ) as Record<string, string>,
-    width: dim(p.width),
-    height: dim(p.height),
+    width: widthPct === null ? dim(p.width) : (box?.width ?? 'auto'),
+    height: heightPct === null ? dim(p.height) : (box?.height ?? 'auto'),
+    widthPct: widthPct ?? undefined,
+    heightPct: heightPct ?? undefined,
     layout: buildLayout(node),
     style: buildStyle(node, ctx.palette),
-    // Whole cells: the editor works with fractions (centering an odd gap), a terminal cannot.
-    box:
-      layout && visible
-        ? {
-            x: Math.round(layout.x),
-            y: Math.round(layout.y),
-            width: Math.max(0, Math.round(layout.width)),
-            height: Math.max(0, Math.round(layout.height)),
-          }
-        : undefined,
+    box,
     text: textOf(node),
     value: str(p.value),
     placeholder: str(p.placeholder),

@@ -2551,6 +2551,7 @@ export const ratatuiAdapter: ExportAdapter = {
   label: 'Ratatui (Rust)',
   language: 'rs',
   verification: 'run',
+  percentSizes: 'fixed',
   multiScreen: false,
   generate: ({ ir }) => {
     const screen = ir.start;

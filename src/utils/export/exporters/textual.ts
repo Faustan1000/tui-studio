@@ -9,6 +9,7 @@ import { THEMES } from '../../../stores/themeStore';
 import { API_SPEC } from '../api/spec';
 import { bodiesOf, navActiveIndex } from '../../navBodies';
 import { LayoutEngine } from '../../layout/engine';
+import { isPercent } from '../../layout/dimension';
 import type { ComputedLayout } from '../../layout/types';
 
 interface Ctx {
@@ -93,6 +94,7 @@ const BORDER_STYLES: Record<string, string> = {
 
 function cssSize(v: unknown): string | null {
   if (typeof v === 'number') return String(Math.round(v));
+  if (isPercent(v)) return v;
   if (v === 'fill') return '1fr';
   if (v === 'auto') return 'auto';
   return null;
@@ -135,7 +137,9 @@ function commonDeclarations(node: ComponentNode, ctx: Ctx): string[] {
   const w = cssSize(node.props.width);
   // The editor gives these a one-line (or bordered) natural height unless it is a number.
   const h =
-    SINGLE_LINE_TYPES.has(node.type) && typeof node.props.height !== 'number'
+    SINGLE_LINE_TYPES.has(node.type) &&
+    typeof node.props.height !== 'number' &&
+    !isPercent(node.props.height)
       ? null
       : cssSize(node.props.height);
   if (w) d.push(`width: ${w};`);
@@ -344,7 +348,7 @@ function flexPlan(node: ComponentNode): FlexPlan {
 function hasFreeSpace(node: ComponentNode, ctx: Ctx, horizontal: boolean): boolean {
   if (node === ctx.root) return true; // a screen fills the terminal
   const size = horizontal ? node.props.width : node.props.height;
-  return typeof size === 'number' || size === 'fill';
+  return typeof size === 'number' || size === 'fill' || isPercent(size);
 }
 
 /** "space-between" / "space-around" need free space; the editor ignores them otherwise. */
@@ -488,7 +492,9 @@ function absoluteRule(
     (typeof child.layout.y === 'number' ? child.layout.y : 0) + pad - border - cssPad('top');
   const lines = ['position: absolute;', `offset: ${x} ${y};`];
   if (child.props.width === 'fill') lines.push('width: 100%;');
+  else if (isPercent(child.props.width)) lines.push(`width: ${child.props.width};`);
   if (child.props.height === 'fill') lines.push('height: 100%;');
+  else if (isPercent(child.props.height)) lines.push(`height: ${child.props.height};`);
   ctx.css.push(`#${widgetIdOfChild} {\n${lines.map((l) => `    ${l}`).join('\n')}\n}`);
 }
 
@@ -971,9 +977,7 @@ const emitProgressBar: Emitter = (node, indent, ctx) => {
     ctx.classNames.set('StudioProgressBar', 'StudioProgressBar');
     ctx.classes.push(PROGRESS_CLASS);
   }
-  ctx.mount.push(
-    `self.query_one(${pyStr('#' + id)}, StudioProgressBar).update(progress=${value})`
-  );
+  ctx.mount.push(`self.query_one(${pyStr('#' + id)}, StudioProgressBar).update(progress=${value})`);
   return `${IND.repeat(indent)}yield StudioProgressBar(total=${max}, show_eta=False, id=${pyStr(id)})\n`;
 };
 

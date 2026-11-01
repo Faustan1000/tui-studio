@@ -3031,6 +3031,7 @@ export const bubbleteaAdapter: ExportAdapter = {
   label: 'Bubble Tea (Go)',
   language: 'go',
   verification: 'run',
+  percentSizes: 'fixed',
   multiScreen: false,
   generate: ({ ir }) => new Gen(ir.start, ir).generate(),
 };

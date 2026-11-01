@@ -6,6 +6,7 @@ import { useComponentStore, useCanvasStore } from '../../stores';
 import {
   exportToText,
   exportToFiles,
+  exportWarnings,
   exportToHtmlFile,
   ansiToHtml,
 } from '../../utils/export';
@@ -47,6 +48,10 @@ export function ExportPanel() {
   const codeFiles =
     mode === 'code' ? getCodeFiles(codeFormat, canvasStore.width, canvasStore.height) : [];
   const shownFile = codeFiles[Math.min(activeFile, Math.max(codeFiles.length - 1, 0))];
+  const warnings =
+    mode === 'code' && codeFormat !== 'html'
+      ? exportWarnings(componentStore.root, codeFormat, allScreens())
+      : [];
 
   const getOutput = () => {
     if (mode === 'code') return shownFile?.content ?? '';
@@ -192,6 +197,15 @@ export function ExportPanel() {
         )}
         {mode === 'code' && (
           <>
+            {warnings.map((w) => (
+              <p
+                key={w}
+                role="note"
+                className="mb-2 text-xs text-amber-500 border border-amber-500/40 rounded px-2 py-1"
+              >
+                {w}
+              </p>
+            ))}
             {codeFiles.length > 1 && (
               <div className="mb-2">
                 <div className="flex gap-1">
@@ -301,4 +315,3 @@ function CodeOutput({ content }: { content: string }) {
     </pre>
   );
 }
-

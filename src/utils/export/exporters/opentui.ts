@@ -105,6 +105,7 @@ export const opentuiAdapter: ExportAdapter = {
   label: 'OpenTUI (React)',
   language: 'tsx',
   verification: 'run',
+  percentSizes: 'native',
   multiScreen: false,
   generate({ ir }) {
     const screen = ir.start;
@@ -678,7 +679,8 @@ function writeFacade(w: CodeWriter, ctx: Ctx, handles: ApiHandleModel[]): void {
   w.line('export class Ui extends UiCore {');
   w.indent();
   for (const h of handles) w.line(`readonly ${members.get(h)}: ${classNames.get(h)};`);
-  if (handles.length) w.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
+  if (handles.length)
+    w.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
   w.line('constructor() {');
   w.indent();
   w.line('super();');
@@ -788,7 +790,8 @@ function posSize(
   }
   const rowParent = isFlowParent(parent) && parent.layout.direction === 'row';
   let grow = false;
-  if (typeof node.width === 'number') props.push(`width={${node.width}}`);
+  if (node.widthPct !== undefined) props.push(`width="${node.widthPct}%"`);
+  else if (typeof node.width === 'number') props.push(`width={${node.width}}`);
   else if (node.width === 'fill') {
     if (rowParent) grow = true;
     else props.push('width="100%"');
@@ -797,7 +800,8 @@ function posSize(
     if (rowParent) grow = true;
     else props.push('width="100%"');
   } else if (autoWidth !== undefined) props.push(`width={${autoWidth}}`);
-  if (typeof node.height === 'number') props.push(`height={${node.height}}`);
+  if (node.heightPct !== undefined) props.push(`height="${node.heightPct}%"`);
+  else if (typeof node.height === 'number') props.push(`height={${node.height}}`);
   else if (node.height === 'fill') {
     if (isFlowParent(parent) && !rowParent) grow = true;
     else props.push('height="100%"');

@@ -41,6 +41,18 @@ Every adapter picks one of two strategies per container, and says which in its f
 
 Both strategies are measured against the editor (see `tests/python/parity.py` for Textual).
 
+### Percentage sizes
+
+`width`/`height` can also be a percentage of the parent's content area (`'20%'`). The IR keeps the
+number in `widthPct`/`heightPct` and puts the cells the editor lays out in `width`/`height`, so an
+adapter that ignores the percentage still reproduces the design at its design size. Every adapter
+declares `percentSizes`:
+
+- `'native'` – the percentage is written as the framework's own (Ink and OpenTUI `width="20%"`,
+  Textual `width: 20%`). It follows the terminal size.
+- `'fixed'` – the cells of the design are used (Blessed, Ratatui, tview, Bubble Tea) and the export
+  panel warns about it through `exportWarnings`.
+
 ## Writing an adapter
 
 1. Create `src/utils/export/exporters/<id>.ts` exporting an `ExportAdapter` and register it in

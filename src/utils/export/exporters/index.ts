@@ -17,6 +17,7 @@ const textualAdapter: ExportAdapter = {
   label: 'Textual (Python)',
   language: 'py',
   verification: 'run',
+  percentSizes: 'native',
   multiScreen: true,
   generate: ({ ir, source }) => {
     const handles = buildApiModel(ir).handles;

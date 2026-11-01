@@ -231,9 +231,11 @@ function parentDirection(n: IRNode): 'row' | 'column' {
 
 function sizeAttrs(n: IRNode, dir: 'row' | 'column'): string[] {
   const a: string[] = [];
-  if (typeof n.width === 'number') a.push(`width={${n.width}}`);
+  if (n.widthPct !== undefined) a.push(`width="${n.widthPct}%"`);
+  else if (typeof n.width === 'number') a.push(`width={${n.width}}`);
   else if (n.width === 'fill') a.push(dir === 'row' ? 'flexGrow={1}' : 'width="100%"');
-  if (typeof n.height === 'number') a.push(`height={${n.height}}`);
+  if (n.heightPct !== undefined) a.push(`height="${n.heightPct}%"`);
+  else if (typeof n.height === 'number') a.push(`height={${n.height}}`);
   else if (n.height === 'fill') a.push(dir === 'column' ? 'flexGrow={1}' : 'height="100%"');
   a.push('flexShrink={0}');
   return a;
@@ -456,7 +458,9 @@ const FILLS = new Set<ComponentType>(['Select', 'List', 'Menu', 'Tree', 'Tabs'])
 function fillAttrs(n: IRNode): string[] {
   const p = n.parent;
   if (!FILLS.has(n.type) || n.width !== 'auto' || !p || p.layout.mode === 'absolute') return [];
-  return [p.layout.mode === 'flex' && p.layout.direction === 'row' ? 'flexGrow={1}' : 'width="100%"'];
+  return [
+    p.layout.mode === 'flex' && p.layout.direction === 'row' ? 'flexGrow={1}' : 'width="100%"',
+  ];
 }
 
 function dedupeWrap(
@@ -534,17 +538,17 @@ function emitLeaf(n: IRNode, w: CodeWriter, ctx: Ctx): void {
       // editor's padding is only the space around the label), one row without a border.
       return wrap(
         () => {
-        w.wrap(
-          `<Focusable center onPress={${press}}>`,
-          () => {
-            w.line('{(focused) => (').indent();
-            w.line(
-              `<Text bold${ta.replace(' bold', '')}${dimAttr} inverse={focused}>{${label}}</Text>`
-            );
-            w.dedent().line(')}');
-          },
-          '</Focusable>'
-        );
+          w.wrap(
+            `<Focusable center onPress={${press}}>`,
+            () => {
+              w.line('{(focused) => (').indent();
+              w.line(
+                `<Text bold${ta.replace(' bold', '')}${dimAttr} inverse={focused}>{${label}}</Text>`
+              );
+              w.dedent().line(')}');
+            },
+            '</Focusable>'
+          );
         },
         typeof n.width === 'number' || !n.style.border ? [] : ['minWidth={16}'],
         false
@@ -1291,7 +1295,8 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
   for (const [name, h] of named) {
     out.line(`readonly ${name}: ${HANDLE_CLASS[h.type] ?? `${h.type}Handle`};`);
   }
-  if (handles.length) out.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
+  if (handles.length)
+    out.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
   out.line('constructor(options?: UiOptions) {').indent();
   out.line('super(SPECS, options);');
   for (const [name, h] of named) {
@@ -1440,6 +1445,7 @@ export const inkAdapter: ExportAdapter = {
   label: 'Ink (React)',
   language: 'tsx',
   verification: 'run',
+  percentSizes: 'native',
   multiScreen: false,
   generate: ({ ir }): ExportFile[] => {
     const handles = buildApiModel(ir).handles;

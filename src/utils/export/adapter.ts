@@ -27,6 +27,12 @@ export interface AdapterInput {
  */
 export type Verification = 'run' | 'syntax' | 'snapshot';
 
+/**
+ * - native: a percentage size (`20%`) is written as a percentage in the framework
+ * - fixed: it is written as the cells the editor lays out for the design size
+ */
+export type PercentSizes = 'native' | 'fixed';
+
 export interface ExportAdapter {
   /** Key used by the UI and `exportToFiles` (e.g. `ink`). */
   id: string;
@@ -34,6 +40,7 @@ export interface ExportAdapter {
   /** File extension of the main file without the dot (`tsx`, `go`, ...). */
   language: string;
   verification: Verification;
+  percentSizes: PercentSizes;
   /** Whether every screen of a project is exported (otherwise only the first). */
   multiScreen: boolean;
   generate(input: AdapterInput): ExportFile[];

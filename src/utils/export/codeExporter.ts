@@ -8,6 +8,8 @@ import { getAdapter, ADAPTERS } from './exporters';
 import type { ExportFile } from './adapter';
 import { buildIR, type ScreenInput } from './ir';
 import { apiReference } from './api/reference';
+import { flattenTree } from '../treeUtils';
+import { isPercent } from '../layout/dimension';
 
 export type { ExportFile } from './adapter';
 export type ExportScreen = ScreenInput;
@@ -49,4 +51,31 @@ export function exportToCode(
   screens?: readonly ExportScreen[]
 ): string {
   return exportToFiles(root, format, screens)[0]?.content ?? '';
+}
+
+/**
+ * Things the user should know about before using an export, e.g. that the framework cannot
+ * express a size the design uses. Empty when the export reproduces the design as it is.
+ */
+export function exportWarnings(
+  root: ComponentNode | null,
+  format: string,
+  screens?: readonly ExportScreen[]
+): string[] {
+  const adapter = getAdapter(format);
+  if (!root || !adapter) return [];
+  const source: ScreenInput[] = screens?.length ? [...screens] : [{ id: root.id, root }];
+  const used = adapter.multiScreen ? source : source.slice(0, 1);
+  const warnings: string[] = [];
+  const usesPercent = used.some((s) =>
+    [...flattenTree(s.root).values()].some(
+      (n) => isPercent(n.props.width) || isPercent(n.props.height)
+    )
+  );
+  if (usesPercent && adapter.percentSizes === 'fixed') {
+    warnings.push(
+      `${adapter.label} has no percentage sizes: they are exported as the fixed sizes of the design and do not follow the terminal size.`
+    );
+  }
+  return warnings;
 }

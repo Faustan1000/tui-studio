@@ -2854,6 +2854,7 @@ export const tviewAdapter: ExportAdapter = {
   label: 'tview (Go)',
   language: 'go',
   verification: 'run',
+  percentSizes: 'fixed',
   multiScreen: false,
   generate: ({ ir }) => generateTview(ir),
 };
