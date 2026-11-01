@@ -31,7 +31,7 @@ interface CanvasState {
   setGridSize: (size: number) => void;
 }
 
-export const useCanvasStore = create<CanvasState>((set) => ({
+export const useCanvasStore = create<CanvasState>((set, get) => ({
   // Initial state - default terminal size
   width: 80,
   height: 25,
@@ -45,10 +45,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
 
   // Set canvas size
   setCanvasSize: (width, height) => {
-    set({
-      width: Math.max(10, Math.min(200, width)),
-      height: Math.max(10, Math.min(100, height)),
-    });
+    const w = Math.max(10, Math.min(200, width));
+    const h = Math.max(10, Math.min(100, height));
+    // No-op when unchanged: zustand notifies subscribers on every set(), which would re-render
+    // components that react to the size (e.g. the responsive sizing effect) in a loop.
+    if (w === get().width && h === get().height) return;
+    set({ width: w, height: h });
   },
 
   // Set size mode

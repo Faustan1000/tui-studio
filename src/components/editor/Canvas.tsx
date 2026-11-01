@@ -99,38 +99,40 @@ export function Canvas() {
   }, []);
 
   // Responsive canvas sizing
+  // Depends only on the mode and zoom: depending on the whole store would re-run this effect
+  // after its own setCanvasSize call and loop forever.
+  const { sizeMode, zoom } = canvasStore;
   useEffect(() => {
-    if (canvasStore.sizeMode !== 'responsive') {
+    const viewport = viewportRef.current;
+    if (sizeMode !== 'responsive' || !viewport) {
       return;
     }
 
     const updateCanvasSize = () => {
-      if (!viewportRef.current) return;
-
       // Get available space from the viewport container
       // The p-4 class adds 16px padding on each side
       // Also account for the dropdown selector at the bottom (~40px)
-      const availableWidth = viewportRef.current.clientWidth - 32; // minus 2*16px padding
-      const availableHeight = viewportRef.current.clientHeight - 72; // minus padding + dropdown space
+      const availableWidth = viewport.clientWidth - 32; // minus 2*16px padding
+      const availableHeight = viewport.clientHeight - 72; // minus padding + dropdown space
 
       const cellWidth = 8;
       const cellHeight = 16;
 
       // Calculate columns and rows that fit
-      const cols = Math.floor(availableWidth / (cellWidth * canvasStore.zoom));
-      const rows = Math.floor(availableHeight / (cellHeight * canvasStore.zoom));
+      const cols = Math.floor(availableWidth / (cellWidth * zoom));
+      const rows = Math.floor(availableHeight / (cellHeight * zoom));
 
-      // Update canvas size
-      canvasStore.setCanvasSize(
-        Math.max(10, Math.min(200, cols)),
-        Math.max(10, Math.min(100, rows))
-      );
+      useCanvasStore
+        .getState()
+        .setCanvasSize(Math.max(10, Math.min(200, cols)), Math.max(10, Math.min(100, rows)));
     };
 
     updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
-  }, [canvasStore, canvasStore.sizeMode, canvasStore.zoom, root]);
+    // The container also changes size when a sidebar opens or closes, not only with the window
+    const observer = new ResizeObserver(updateCanvasSize);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [sizeMode, zoom]);
 
   // Keyboard navigation for selected components
   useEffect(() => {
