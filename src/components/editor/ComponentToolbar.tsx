@@ -18,6 +18,7 @@ import { dragStore } from '../../hooks/useDragAndDrop';
 import { useComponentStore, useSelectionStore } from '../../stores';
 import { COMPONENT_LIBRARY } from '../../constants/components';
 import { getComponentIcon } from './componentIcons';
+import { readStoredJson, setStored } from '../../utils/storage';
 
 type ToolbarPosition = 'TL' | 'T' | 'TR' | 'BL' | 'B' | 'BR' | 'custom';
 
@@ -129,14 +130,10 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [customPosition, setCustomPosition] = useState<ToolbarCoordinates | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<'below' | 'above'>('below');
-  const [isDockedState, setIsDockedState] = useState(() => {
-    const saved = localStorage.getItem('toolbar-docked');
-    return saved ? JSON.parse(saved) : docked;
-  });
-  const [isVertical, setIsVertical] = useState(() => {
-    const saved = localStorage.getItem('toolbar-vertical');
-    return saved ? JSON.parse(saved) : false;
-  });
+  const [isDockedState, setIsDockedState] = useState(() =>
+    readStoredJson('toolbar-docked', docked)
+  );
+  const [isVertical, setIsVertical] = useState(() => readStoredJson('toolbar-vertical', false));
   const dropdownRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -147,13 +144,13 @@ export function ComponentToolbar({ docked = false }: ComponentToolbarProps) {
 
   // Save docked state to localStorage and notify other components
   useEffect(() => {
-    localStorage.setItem('toolbar-docked', JSON.stringify(isDockedState));
+    setStored('toolbar-docked', JSON.stringify(isDockedState));
     // Dispatch custom event to notify other components
     window.dispatchEvent(new CustomEvent('toolbar-docked-changed', { detail: isDockedState }));
   }, [isDockedState]);
 
   useEffect(() => {
-    localStorage.setItem('toolbar-vertical', JSON.stringify(isVertical));
+    setStored('toolbar-vertical', JSON.stringify(isVertical));
   }, [isVertical]);
 
   // Close dropdowns when clicking outside

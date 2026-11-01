@@ -30,6 +30,7 @@ import {
 } from '../../utils/downloadManager';
 import { ColorPicker } from '../properties/ColorPicker';
 import { CHANGELOG } from '../../data/changelog';
+import { getStored, readStoredJson, removeStored, setStored } from '../../utils/storage';
 
 // ── Accent color presets ──────────────────────────────────────────────────────
 
@@ -101,9 +102,9 @@ function applyAccentColor(preset: AccentPreset, customHex?: string) {
   document.documentElement.style.setProperty('--primary', primary);
   document.documentElement.style.setProperty('--primary-foreground', fg);
   document.documentElement.style.setProperty('--ring', primary);
-  localStorage.setItem('settings-accent-preset', preset);
+  setStored('settings-accent-preset', preset);
   if (preset === 'custom' && customHex) {
-    localStorage.setItem('settings-accent-custom', customHex);
+    setStored('settings-accent-custom', customHex);
   }
 }
 
@@ -361,7 +362,8 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           Drag-and-drop components, edit properties visually, and export to multiple TUI frameworks.
         </p>
         <div className="text-xs text-muted-foreground">
-          Fork of tui-studio by <span className="text-foreground font-medium">Javier Alonso</span> (MIT)
+          Fork of tui-studio by <span className="text-foreground font-medium">Javier Alonso</span>{' '}
+          (MIT)
         </div>
         <a
           href="https://github.com/Faustan1000/tui-studio"
@@ -390,11 +392,9 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   const themeStore = useThemeStore();
 
   const [accentPreset, setAccentPresetState] = useState<AccentPreset>(
-    (localStorage.getItem('settings-accent-preset') as AccentPreset) || 'tuigreen'
+    (getStored('settings-accent-preset') as AccentPreset) || 'tuigreen'
   );
-  const [customColor, setCustomColor] = useState(
-    localStorage.getItem('settings-accent-custom') || '#4ade80'
-  );
+  const [customColor, setCustomColor] = useState(getStored('settings-accent-custom') || '#4ade80');
   const [folderName, setFolderName] = useState(getDownloadFolderName);
 
   const handlePresetClick = (preset: AccentPreset, hex?: string) => {
@@ -487,7 +487,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               {folderName && (
                 <button
                   onClick={() => {
-                    localStorage.removeItem('settings-download-folder');
+                    removeStored('settings-download-folder');
                     setFolderName('');
                   }}
                   className="mt-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
@@ -764,13 +764,13 @@ export function Toolbar() {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isToolbarDocked, setIsToolbarDocked] = useState(() =>
-    JSON.parse(localStorage.getItem('toolbar-docked') || 'false')
+    readStoredJson('toolbar-docked', false)
   );
 
   // Apply saved accent color on mount
   useEffect(() => {
-    const preset = (localStorage.getItem('settings-accent-preset') as AccentPreset) || 'tuigreen';
-    const custom = localStorage.getItem('settings-accent-custom') || '#4ade80';
+    const preset = (getStored('settings-accent-preset') as AccentPreset) || 'tuigreen';
+    const custom = getStored('settings-accent-custom') || '#4ade80';
     applyAccentColor(preset, custom);
   }, []);
 
@@ -780,7 +780,7 @@ export function Toolbar() {
   // Listen for toolbar dock state changes
   useEffect(() => {
     const handleDockedChange = () => {
-      setIsToolbarDocked(JSON.parse(localStorage.getItem('toolbar-docked') || 'false'));
+      setIsToolbarDocked(readStoredJson('toolbar-docked', false));
     };
     window.addEventListener('toolbar-docked-changed', handleDockedChange);
     return () => window.removeEventListener('toolbar-docked-changed', handleDockedChange);

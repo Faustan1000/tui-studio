@@ -1,6 +1,7 @@
 // Theme state management
 
 import { create } from 'zustand';
+import { getStored, setStored } from '../utils/storage';
 
 type ColorMode = 'ansi16' | 'ansi256' | 'trueColor';
 type ThemeName =
@@ -249,7 +250,7 @@ export const THEME_NAMES: { value: ThemeName; label: string }[] = [
 ];
 
 const savedDarkMode =
-  typeof window !== 'undefined' ? localStorage.getItem('settings-dark-mode') !== 'false' : true;
+  typeof window !== 'undefined' ? getStored('settings-dark-mode') !== 'false' : true;
 
 export const useThemeStore = create<ThemeState>((set) => ({
   // Initial state
@@ -262,7 +263,7 @@ export const useThemeStore = create<ThemeState>((set) => ({
   toggleDarkMode: () => {
     set((state) => {
       const newDarkMode = !state.darkMode;
-      localStorage.setItem('settings-dark-mode', String(newDarkMode));
+      setStored('settings-dark-mode', String(newDarkMode));
 
       if (newDarkMode) {
         document.documentElement.classList.add('dark');

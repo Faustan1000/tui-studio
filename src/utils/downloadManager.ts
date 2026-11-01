@@ -1,3 +1,5 @@
+import { getStored, setStored } from './storage';
+
 // Manages the user-selected download folder for exports
 
 let _directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -7,7 +9,7 @@ export function isDirectoryPickerSupported(): boolean {
 }
 
 export function getDownloadFolderName(): string {
-  return localStorage.getItem('settings-download-folder') || '';
+  return getStored('settings-download-folder') || '';
 }
 
 export async function selectDownloadFolder(): Promise<string | null> {
@@ -15,7 +17,7 @@ export async function selectDownloadFolder(): Promise<string | null> {
   try {
     _directoryHandle = await (window as any).showDirectoryPicker();
     const name = _directoryHandle!.name;
-    localStorage.setItem('settings-download-folder', name);
+    setStored('settings-download-folder', name);
     return name;
   } catch (err) {
     // User cancelled or permission denied — not an error worth reporting

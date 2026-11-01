@@ -9,6 +9,7 @@ import { THEMES } from '../../stores/themeStore';
 import { interpolateGradientColor } from '../../utils/rendering/ansi';
 import { ComponentToolbar } from './ComponentToolbar';
 import { NumericInput } from '../properties/LayoutEditor';
+import { readStoredJson } from '../../utils/storage';
 
 // ── Canvas size control ───────────────────────────────────────────────────────
 
@@ -85,14 +86,14 @@ export function Canvas() {
 
   const [isDragOver, setIsDragOver] = useState(false);
   const [isToolbarDocked, setIsToolbarDocked] = useState(() =>
-    JSON.parse(localStorage.getItem('toolbar-docked') || 'false')
+    readStoredJson('toolbar-docked', false)
   );
   const viewportRef = useRef<HTMLDivElement>(null);
 
   // Listen for toolbar dock state changes
   useEffect(() => {
     const handleDockedChange = () => {
-      setIsToolbarDocked(JSON.parse(localStorage.getItem('toolbar-docked') || 'false'));
+      setIsToolbarDocked(readStoredJson('toolbar-docked', false));
     };
     window.addEventListener('toolbar-docked-changed', handleDockedChange);
     return () => window.removeEventListener('toolbar-docked-changed', handleDockedChange);
