@@ -19,6 +19,7 @@ const textualAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'native',
   multiScreen: true,
+  navBodies: true,
   generate: ({ ir, source }) => {
     const handles = buildApiModel(ir).handles;
     return [

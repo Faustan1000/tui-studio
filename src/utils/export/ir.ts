@@ -12,7 +12,7 @@
 import type { ComponentNode, ComponentType } from '../../types';
 import { THEMES } from '../../stores/themeStore';
 import { LayoutEngine } from '../layout/engine';
-import { isShownByNav, navActiveIndex } from '../navBodies';
+import { bodiesOf, collectNavElements, isShownByNav, navActiveIndex } from '../navBodies';
 import { flattenTree } from '../treeUtils';
 import { parsePercent } from '../layout/dimension';
 
@@ -104,6 +104,12 @@ export interface IRNode {
   visible: boolean;
   /** Body of a navigation element: shown only while `nav` has `item` selected. */
   showWhen?: { nav: string; item: number };
+  /**
+   * Not shown when the design is opened, but shown once the item of its tab/menu that it belongs
+   * to is selected. Set on the body and on everything inside it; `box` is the position it has
+   * then (laid out with that item selected).
+   */
+  latent?: boolean;
   /** Button: id of the screen it opens. */
   opensScreen?: string;
   events: Record<string, string>;
@@ -229,6 +235,7 @@ function buildScreen(input: ScreenInput, index: number, usedIdents: Set<string>)
   const usedNodeIdents = new Set<string>();
   const ctx: BuildCtx = { palette, engine, byId, usedNodeIdents };
   const ir = buildNode(root, null, true, ctx);
+  layoutLatentBodies(ir, root, width, height);
   relativeBoxes(ir);
 
   const ident = uniqueIdent(
@@ -248,6 +255,43 @@ function buildScreen(input: ScreenInput, index: number, usedIdents: Set<string>)
     root: ir,
     modals: walkIR(ir).filter((n) => n.type === 'Modal'),
   };
+}
+
+/**
+ * Boxes of the bodies of the items that are not selected: the design is laid out again with each
+ * of those items selected, and the boxes of that item's bodies are kept on the IR nodes.
+ */
+function layoutLatentBodies(ir: IRNode, root: ComponentNode, width: number, height: number): void {
+  const irById = new Map(walkIR(ir).map((n) => [n.id, n]));
+  for (const nav of collectNavElements(root)) {
+    const active = navActiveIndex(nav);
+    for (const [item, bodies] of bodiesOf(root, nav.id)) {
+      if (item === active) continue;
+      const copy = structuredClone(root);
+      const navCopy = flattenTree(copy).get(nav.id);
+      if (!navCopy) continue;
+      navCopy.props = { ...navCopy.props, [nav.type === 'Tabs' ? 'activeTab' : 'selectedIndex']: item };
+      const engine = new LayoutEngine();
+      engine.calculateLayout(copy, width, height, false);
+      const mark = (node: IRNode) => {
+        const layout = engine.getLayout(node.id);
+        if (node.hidden || !layout || node.box) return;
+        node.latent = true;
+        node.box = {
+          x: Math.round(layout.x),
+          y: Math.round(layout.y),
+          width: Math.max(0, Math.round(layout.width)),
+          height: Math.max(0, Math.round(layout.height)),
+        };
+        node.children.forEach(mark);
+      };
+      for (const body of bodies) {
+        const node = irById.get(body.id);
+        // Only bodies of a navigation element that is on screen at startup.
+        if (node?.parent && (node.parent.visible || node.parent.latent)) mark(node);
+      }
+    }
+  }
 }
 
 interface BuildCtx {

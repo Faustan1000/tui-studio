@@ -118,13 +118,12 @@ describe.each(ADAPTERS.map((a) => [a.id, a] as const))('adapter %s', (id, adapte
     const screens = multiScreen().map((root) => ({ id: root.id, root }));
     const out = text(run(screens[0].root, screens));
     expect(out).toContain('Ready');
-    if (adapter.multiScreen) {
-      expect(out).toContain('Settings screen');
-    } else {
-      // The first screen only; tab bodies that are not active are not part of the output.
-      expect(out).not.toContain('Settings screen');
-      expect(out).not.toContain('Agent content');
-    }
+    if (adapter.multiScreen) expect(out).toContain('Settings screen');
+    // The first screen only.
+    else expect(out).not.toContain('Settings screen');
+    // Tab bodies that are not active are only part of the output if they switch at run time.
+    if (adapter.navBodies) expect(out).toContain('Agent content');
+    else expect(out).not.toContain('Agent content');
   });
 
   it('declares how it is verified', () => {

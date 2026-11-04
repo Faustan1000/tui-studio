@@ -950,6 +950,36 @@ class StudioUi {
     return view;
   }
 
+  /**
+   * Bodies of a tab bar, menu or list: only the widgets of the selected item are shown.
+   * `groups` is `[[item, [widget, ...]], ...]`. A body the program hid with `hide()` stays hidden.
+   */
+  bodies(nav, groups, initial) {
+    const sync = (index) => {
+      for (const [item, widgets] of groups) {
+        for (const w of widgets) {
+          w._bodyOff = item !== index;
+          if (w._bodyOff) w.hide();
+          else if (!w._handle || w._handle.state !== 'hidden') w.show();
+        }
+      }
+    };
+    for (const [, widgets] of groups) {
+      for (const w of widgets) {
+        if (w._bodyGate) continue;
+        w._bodyGate = true;
+        const { show } = w;
+        // The program's show() / active() must not bring back a body of another item.
+        w.show = function () {
+          if (this._bodyOff) return;
+          return show.apply(this, arguments);
+        };
+      }
+    }
+    nav.on('select item', (item, index) => sync(index));
+    sync(initial || 0);
+  }
+
   /** A textbox that only starts reading input while its component is active. */
   textbox(options) {
     const proto = blessed.textbox.prototype;

@@ -4,12 +4,12 @@
 // and every generated project is type-checked with tsc.
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents } from './fixtures/designs';
+import { allComponents, multiScreen } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 import { findBun, hasRuntimeModules, typecheck, writeProject } from './helpers/opentuiProject';
 
@@ -129,4 +129,16 @@ describe.skipIf(!modules)('type-checks the generated OpenTUI project', () => {
     },
     180_000
   );
+});
+
+describe.skipIf(!modules)('opentui tab/menu bodies', () => {
+  it('type-checks a design with switching bodies and draws every body behind a gate', () => {
+    const dir = writeProject('nav-bodies', multiScreen()[0]);
+    expect(typecheck(dir)).toBeNull();
+    const app = readFileSync(join(dir, 'src', 'index.tsx'), 'utf8');
+    expect(app).toContain('Dashboard content');
+    expect(app).toContain('Agent content');
+    expect(app).toMatch(/\.active_tab === 1 && \(/);
+    expect(app).toMatch(/\.selected === 0 && \(/);
+  });
 });

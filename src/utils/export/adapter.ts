@@ -43,6 +43,8 @@ export interface ExportAdapter {
   percentSizes: PercentSizes;
   /** Whether every screen of a project is exported (otherwise only the first). */
   multiScreen: boolean;
+  /** Whether tab/menu bodies switch at run time (otherwise only the initially active one is exported). */
+  navBodies: boolean;
   generate(input: AdapterInput): ExportFile[];
 }
 

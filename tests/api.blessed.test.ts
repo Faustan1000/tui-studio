@@ -795,3 +795,64 @@ describe.skipIf(!HAS_BLESSED)(
     });
   }
 );
+
+/** A tab bar with two bodies of different heights, and something below them. */
+function navDesign(): ComponentNode {
+  resetIds();
+  return screen('Home', 'home', [
+    mk('Tabs', { id: 'tabs1', tag: 'pages' }),
+    mk('Box', { id: 'b0', props: { width: 30, height: 5 }, showWhen: { nav: 'tabs1', item: 0 } }, [
+      mk('Text', { tag: 'dash_text', props: { content: 'Dashboard content' } }),
+    ]),
+    mk('Box', { id: 'b1', props: { width: 30, height: 7 }, showWhen: { nav: 'tabs1', item: 1 } }, [
+      mk('Text', { tag: 'agent_text', props: { content: 'Agent content' } }),
+      mk('Button', { tag: 'agent_btn', props: { label: 'Run' } }),
+    ]),
+    mk('Text', { tag: 'footer', props: { content: 'Footer line' } }),
+  ]);
+}
+
+describe.skipIf(!HAS_BLESSED)('blessed tab/menu bodies in real blessed', () => {
+  it('shows the body of the selected tab, in the same place, and keeps the program in charge', async () => {
+    const { mod } = loadProject(navDesign(), 'nav-bodies');
+    const term = makeTerm(80, 40);
+    const ui = new mod.Ui(term.options);
+    await ui.start();
+    await tick(80);
+    try {
+      const seen = () => frame(ui.screen);
+      const at = (text: string) => {
+        const lines = seen().split('\n');
+        const y = lines.findIndex((l) => l.includes(text));
+        return { y, x: y < 0 ? -1 : lines[y].indexOf(text) };
+      };
+      const first = seen();
+      expect(first).toContain('Dashboard content');
+      expect(first).not.toContain('Agent content');
+      const dash = at('Dashboard content');
+
+      ui.pages.activeTab = 1;
+      await tick(60);
+      expect(seen()).toContain('Agent content');
+      expect(seen()).not.toContain('Dashboard content');
+      // Same slot as the body it replaces.
+      expect(at('Agent content').y).toBe(dash.y);
+
+      // The program hides a component of the visible body; selecting the item does not undo it.
+      ui.agentText.hide();
+      await tick(60);
+      expect(seen()).not.toContain('Agent content');
+      ui.pages.activeTab = 0;
+      await tick(60);
+      ui.agentText.show();
+      await tick(60);
+      expect(seen()).toContain('Dashboard content');
+      expect(seen()).not.toContain('Agent content');
+      ui.pages.activeTab = 1;
+      await tick(60);
+      expect(seen()).toContain('Agent content');
+    } finally {
+      ui.stop?.();
+    }
+  });
+});

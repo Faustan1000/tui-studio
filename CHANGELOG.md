@@ -2,6 +2,12 @@
 
 All notable changes to TUIStudio are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Tab/menu/list bodies switch at run time in Ink, OpenTUI and Blessed** — every body is exported and shown only while its item is selected (also when the selection is set through the program API). Adapters declare this with `navBodies`.
+
 ## [1.0.0] - 2026-10-26
 
 ### Added

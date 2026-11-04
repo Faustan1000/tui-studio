@@ -98,6 +98,10 @@ interface Ctx {
   usesRef: boolean;
   /** JSX of the popup lists; they are drawn by the runtime above everything else. */
   popups: string[];
+  /** State of tab/menu/list elements without a code name that have bodies. */
+  navState: Map<string, { value: string; set: string }>;
+  /** Slices already declared as hooks (a body can need its nav's slice before the nav is drawn). */
+  declared: Set<string>;
 }
 
 export const opentuiAdapter: ExportAdapter = {
@@ -107,6 +111,7 @@ export const opentuiAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'native',
   multiScreen: false,
+  navBodies: true,
   generate({ ir }) {
     const screen = ir.start;
     const root = screen.root;
@@ -136,7 +141,10 @@ export const opentuiAdapter: ExportAdapter = {
       picks: [],
       popups: [],
       usesRef: false,
+      navState: new Map(),
+      declared: new Set(),
     };
+    findSwitching(root);
 
     // The handles of the program API (code names of the first screen).
     const inScreen = new Set(
@@ -152,6 +160,10 @@ export const opentuiAdapter: ExportAdapter = {
     // Names of state variables first (radio groups need the setters of their siblings).
     for (const n of walkIR(root).filter((n) => renderable(n))) {
       const t = ctx.tagged.get(n.id);
+      if (!t && switching.has(n.id)) {
+        const value = unique(ctx, recase(n.ident, 'camel') + 'Index');
+        ctx.navState.set(n.id, { value, set: unique(ctx, 'set' + recase(value, 'pascal')) });
+      }
       if (t) t.sv = unique(ctx, recase(n.ident, 'camel') + 'S');
       else if (STATEFUL.has(n.type)) {
         const value = unique(ctx, recase(n.ident, 'camel'));
@@ -228,6 +240,34 @@ export const opentuiAdapter: ExportAdapter = {
   },
 };
 
+/** Tab/menu/list elements whose bodies switch at run time (set while one design is generated). */
+let switching: Set<string> = new Set();
+
+function findSwitching(root: IRNode): void {
+  switching = new Set();
+  const all = walkIR(root);
+  const navs = all.filter(
+    (n) =>
+      (n.type === 'Tabs' || n.type === 'Menu' || n.type === 'List') &&
+      all.some((b) => b.showWhen?.nav === n.id)
+  );
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const nav of navs) {
+      if (switching.has(nav.id) || !renderable(nav)) continue;
+      switching.add(nav.id);
+      changed = true;
+    }
+  }
+}
+
+/** Expression of the selected item of a navigation element that has bodies. */
+function navSelected(ctx: Ctx, nav: IRNode): string {
+  const t = ctx.tagged.get(nav.id);
+  if (t) return `${t.sv}.${nav.type === 'Tabs' ? 'active_tab' : 'selected'}`;
+  return ctx.navState.get(nav.id)!.value;
+}
+
 /**
  * Whether a node is part of the generated component tree. Hidden nodes with a code name stay in
  * (the program can `show()` them); everything else that is not initially visible does not.
@@ -236,7 +276,7 @@ function renderable(node: IRNode): boolean {
   if (node.visible) return true;
   const parent = node.parent;
   if (!parent || !renderable(parent)) return false;
-  if (node.showWhen) return false;
+  if (node.showWhen && !switching.has(node.showWhen.nav)) return false;
   return node.hidden ? !!node.tag : true;
 }
 
@@ -1007,7 +1047,8 @@ function focusable(ctx: Ctx, node: IRNode): void {
 /** Declare the store slice of a code-named node (once). */
 function declareSlice(ctx: Ctx, node: IRNode): void {
   const t = ctx.tagged.get(node.id);
-  if (!t) return;
+  if (!t || ctx.declared.has(node.id)) return;
+  ctx.declared.add(node.id);
   const fields = [`state: UiState`];
   for (const p of t.handle.properties) fields.push(`${p.name}: ${TS_TYPE[p.type]}`);
   if (t.handle.type === 'Modal') fields.push('open: boolean');
@@ -1016,7 +1057,26 @@ function declareSlice(ctx: Ctx, node: IRNode): void {
 
 // ── Emission ──────────────────────────────────────────────────────────────────
 
+/** Bodies of a tab/menu/list are only drawn while their item is selected. */
 function emit(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): void {
+  const nav = node.showWhen && switching.has(node.showWhen.nav) ? node.showWhen : null;
+  const navNode = nav && node.parent ? findNav(node, nav.nav) : null;
+  if (!nav || !navNode) return emitTagged(ctx, w, node, parent);
+  declareSlice(ctx, navNode);
+  w.line(`{${navSelected(ctx, navNode)} === ${nav.item} && (`);
+  w.indent();
+  emitTagged(ctx, w, node, parent);
+  w.dedent();
+  w.line(')}');
+}
+
+function findNav(from: IRNode, id: string): IRNode | null {
+  let root = from;
+  while (root.parent) root = root.parent;
+  return walkIR(root).find((n) => n.id === id) ?? null;
+}
+
+function emitTagged(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): void {
   const t = ctx.tagged.get(node.id);
   if (t && parent) {
     declareSlice(ctx, node);
@@ -1338,6 +1398,23 @@ function optionsConst(ctx: Ctx, node: IRNode, labels: string[]): string {
   return name;
 }
 
+/** Selection of a List/Menu without a code name: uncontrolled, or a state when it has bodies. */
+function untaggedSelection(
+  ctx: Ctx,
+  node: IRNode,
+  props: (string | null)[],
+  fns: string[]
+): void {
+  const st = ctx.navState.get(node.id);
+  if (st) {
+    const init = Math.max(0, Math.min(node.selected, Math.max(0, node.items.length - 1)));
+    ctx.hooks.push(`const [${st.value}, ${st.set}] = useState(${init});`);
+    props.push(`selectedIndex={${st.value}}`, `onChange={(index: number) => ${st.set}(index)}`);
+  } else if (node.selected > 0) props.push(`selectedIndex={${node.selected}}`);
+  if (fns.length)
+    props.push(`onSelect={(index: number) => { ${emitCall(node, ctx, 'select', 'index', fns)} }}`);
+}
+
 function selectList(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): void {
   const t = ctx.tagged.get(node.id);
   const tag = t ? jsStr(t.handle.tag) : '';
@@ -1405,11 +1482,7 @@ function selectList(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null
           node.items.map((i) => i.label)
         )}}`
       );
-      if (node.selected > 0) props.push(`selectedIndex={${node.selected}}`);
-      if (fns.length)
-        props.push(
-          `onSelect={(index: number) => { ${emitCall(node, ctx, 'select', 'index', fns)} }}`
-        );
+      untaggedSelection(ctx, node, props, fns);
     }
   } else {
     count = node.items.length;
@@ -1429,11 +1502,7 @@ function selectList(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null
         `onSelect={(index: number) => { ${userGuard} ui.store.patch(${tag}, { selected: index }); ${emitCall(node, ctx, 'select', 'index', fns)} }}`
       );
     } else {
-      if (node.selected > 0) props.push(`selectedIndex={${node.selected}}`);
-      if (fns.length)
-        props.push(
-          `onSelect={(index: number) => { ${emitCall(node, ctx, 'select', 'index', fns)} }}`
-        );
+      untaggedSelection(ctx, node, props, fns);
     }
   }
   if (focusableNode) props.push(`focused={focusId === ${id}}`);
@@ -1651,8 +1720,9 @@ function tabs(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): voi
     setIndex = (e) =>
       `if (${current} === ${e}) return; ui.store.patch(${tag}, { active_tab: ${e} }); ${emitCall(node, ctx, 'change', e, fns)}`;
   } else {
-    const idx = unique(ctx, recase(node.ident, 'camel') + 'Index');
-    const set = unique(ctx, 'set' + recase(idx, 'pascal'));
+    const pre = ctx.navState.get(node.id);
+    const idx = pre?.value ?? unique(ctx, recase(node.ident, 'camel') + 'Index');
+    const set = pre?.set ?? unique(ctx, 'set' + recase(idx, 'pascal'));
     ctx.hooks.push(
       `const [${idx}, ${set}] = useState(${Math.min(Math.max(node.selected, 0), Math.max(0, count - 1))});`
     );

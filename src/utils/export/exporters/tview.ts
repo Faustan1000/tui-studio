@@ -2856,5 +2856,6 @@ export const tviewAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'fixed',
   multiScreen: false,
+  navBodies: false,
   generate: ({ ir }) => generateTview(ir),
 };

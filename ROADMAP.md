@@ -9,9 +9,9 @@ real framework in this repository's tests (see `docs/EXPORT_ADAPTERS.md`).
 | Framework          | Verified | Layout            | Interactive | Program API | Screens | Tab/menu bodies switch |
 | ------------------ | -------- | ----------------- | ----------- | ----------- | ------- | ---------------------- |
 | Textual (Python)   | **run**  | native + snapshot | yes         | **yes**     | **yes** | **yes**                |
-| Ink (React)        | **run**  | native            | yes         | **yes**     | first   | no                     |
-| OpenTUI (React)    | **run**  | native            | yes         | **yes**     | first   | no                     |
-| Blessed (Node.js)  | **run**  | snapshot          | yes         | **yes**     | first   | no                     |
+| Ink (React)        | **run**  | native            | yes         | **yes**     | first   | **yes**                |
+| OpenTUI (React)    | **run**  | native            | yes         | **yes**     | first   | **yes** (type-checked) |
+| Blessed (Node.js)  | **run**  | snapshot          | yes         | **yes**     | first   | **yes**                |
 | Bubble Tea (Go)    | **run**  | native + snapshot | yes         | **yes**     | first   | no                     |
 | tview (Go)         | **run**  | native + snapshot | yes         | **yes**     | first   | no                     |
 | Ratatui (Rust)     | **run**  | native + snapshot | yes         | **yes**     | first   | no                     |
@@ -41,8 +41,10 @@ OpenTUI's `import.meta.main` entry.
 
 - **Screens and screen links** in all frameworks except Textual (`opensScreen`, menu/list item
   links are ignored or left as a comment; `ui.<screen>.show()` does not exist there).
-- **Tab and menu bodies that switch at run time**; today only the initially active body is exported
-  and components with a code name inside an inactive body get no handle.
+- **Tab and menu bodies that switch at run time** in Bubble Tea, tview and Ratatui; today
+  only the initially active body is exported and components with a code name inside an inactive body
+  get no handle. Textual, Ink and Blessed switch (checked against the real library); OpenTUI switches too but
+  is only type-checked here (no Bun).
 - **Real terminal runs** in CI (pty), not only headless drivers.
 - **CI** (GitHub Actions): `npm test` with Node, Bun, Go, Rust and Python + Textual installed so the
   whole matrix runs on every push. `npm run test:setup` installs the Node/Bun packages.
@@ -67,7 +69,8 @@ OpenTUI's `import.meta.main` entry.
 
 ## Per-framework gaps
 
-- Blessed: only `line` borders (double/rounded/bold become single), no italic/strikethrough, tree
+- Blessed: the siblings of a tab/menu body do not move when a body of another height is shown (snapshot
+  layout); only `line` borders (double/rounded/bold become single), no italic/strikethrough, tree
   cannot expand, `hide()` does not free space (snapshot layout), tables/lists sized at 3 rows show
   only their first entries.
 - tview: `tview.Borders` is global, so one border kind applies to the whole screen; hidden children

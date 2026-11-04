@@ -15,7 +15,7 @@
 // `line`), no italic/strikethrough, and hidden tab/menu bodies are not part of the output.
 
 import type { ExportAdapter, ExportFile } from '../adapter';
-import { inlineText, itemText, recase, treeLines, visibleChildren } from '../ir';
+import { inlineText, itemText, recase, treeLines, visibleChildren, walkIR } from '../ir';
 import type { IRBox, IRItem, IRNode, IRScreen, IRStyle } from '../ir';
 import { CodeWriter, jsStr } from '../lang';
 import { apiName, buildApiModel, safeIdent } from '../api/model';
@@ -95,6 +95,8 @@ interface Ctx {
   handlers: Set<string>;
   /** Facade member (`ui.<member>`) of the nodes that have a code name. */
   members: Map<IRNode, string>;
+  /** Variable of the scrollable inner box that sits next to the frame of a container. */
+  inners: Map<IRNode, string>;
 }
 
 // ── Public helpers (also used by tests) ───────────────────────────────────────
@@ -210,6 +212,11 @@ function intrinsicHeight(node: IRNode): number {
  */
 function computeAdjust(node: IRNode): number {
   const kids = visibleChildren(node).filter((k) => k.type !== 'Spacer' && k.rel);
+  // Bodies of the items that are not selected share the place of the selected one: they do not
+  // push their siblings around.
+  for (const k of node.children.filter((c) => c.latent && c.type !== 'Spacer' && c.rel)) {
+    ADJUST.set(k, { dy: 0, dh: computeAdjust(k) });
+  }
   const grows = new Map<IRNode, number>();
   for (const k of kids) grows.set(k, computeAdjust(k));
   const sorted = [...kids].sort((a, b) => a.rel!.y - b.rel!.y);
@@ -259,8 +266,12 @@ interface FlowBox extends IRBox {
 
 let FLOW = new WeakMap<IRNode, FlowBox>();
 
+/** Children in the flow: shown at startup, or inside a body of another item (the bodies themselves sit in a slot). */
 const flowKids = (n: IRNode) =>
-  visibleChildren(n).filter((k) => k.type !== 'Spacer' && k.type !== 'Modal');
+  n.children.filter(
+    (k) =>
+      (k.visible || (k.latent && !k.showWhen)) && k.type !== 'Spacer' && k.type !== 'Modal'
+  );
 
 /** Containers whose children are stacked top to bottom at their natural height. */
 function isFlowContainer(n: IRNode): boolean {
@@ -381,10 +392,18 @@ function computeFlow(n: IRNode, avail: number): void {
   const f = flowFrame(n);
   const inner = Math.max(1, avail - f.h);
   let y = 0;
+  const slots = new Map<string, number>();
   for (const k of flowKids(n)) {
     const m = measure(k, inner);
     FLOW.set(k, { x: 0, y, width: m.w, height: m.h, fill: m.fill });
+    if (k.showWhen) slots.set(k.showWhen.nav, slots.get(k.showWhen.nav) ?? y);
     y += m.h + n.layout.gap;
+    if (isFlowContainer(k)) computeFlow(k, m.fill ? inner : m.w);
+  }
+  // A body of an item that is not selected sits where the selected body of the same tab bar is.
+  for (const k of n.children.filter((c) => c.latent && c.showWhen && c.type !== 'Spacer')) {
+    const m = measure(k, inner);
+    FLOW.set(k, { x: 0, y: slots.get(k.showWhen!.nav) ?? y, width: m.w, height: m.h, fill: m.fill });
     if (isFlowContainer(k)) computeFlow(k, m.fill ? inner : m.w);
   }
 }
@@ -398,11 +417,12 @@ export const blessedAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'fixed',
   multiScreen: false,
+  navBodies: true,
   generate: ({ ir }): ExportFile[] => {
     const screen = ir.start;
     // Only the first screen is exported, so only its components get handles.
     const all = buildApiModel({ screens: [screen], start: screen });
-    const model = { ...all, handles: all.handles.filter((h) => h.node.visible) };
+    const model = { ...all, handles: all.handles.filter((h) => h.node.visible || h.node.latent) };
     const names = facadeNames(model);
     const api = model.handles.length
       ? renderFacade({ lang: 'js', handles: model.handles, member: (h) => names.get(h.tag)! })
@@ -447,6 +467,7 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
     vars: new Map(),
     handlers: new Set(),
     members: new Map(),
+    inners: new Map(),
   };
   const facade = facadeNames(model);
   for (const h of model.handles) ctx.members.set(h.node, facade.get(h.tag)!);
@@ -474,6 +495,7 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
     )
     .line();
   emitChildren(root, viewport.var, ctx, viewport.inset);
+  emitBodies(root, ctx);
   const body = ctx.w.toString().trimEnd();
 
   const out = new CodeWriter('  ', 0);
@@ -674,7 +696,7 @@ function handlerName(raw: string): string {
 }
 
 function collectHandlers(node: IRNode, ctx: Ctx): void {
-  if (!node.visible) return;
+  if (!node.visible && !node.latent) return;
   for (const raw of Object.values(node.events)) {
     const n = handlerName(raw);
     if (n) {
@@ -687,6 +709,27 @@ function collectHandlers(node: IRNode, ctx: Ctx): void {
 
 // ── Emission ──────────────────────────────────────────────────────────────────
 
+/** Tab bars, menus and lists with bodies: the runtime shows the body of the selected item only. */
+function emitBodies(root: IRNode, ctx: Ctx): void {
+  const all = walkIR(root);
+  for (const nav of all) {
+    if (nav.type !== 'Tabs' && nav.type !== 'Menu' && nav.type !== 'List') continue;
+    if (!nav.visible) continue;
+    const groups = new Map<number, string[]>();
+    for (const b of all) {
+      const v = ctx.vars.get(b);
+      if (b.showWhen?.nav !== nav.id || !(b.visible || b.latent) || !v) continue;
+      const inner = ctx.inners.get(b);
+      groups.set(b.showWhen.item, [...(groups.get(b.showWhen.item) ?? []), v, ...(inner ? [inner] : [])]);
+    }
+    const navVar = ctx.vars.get(nav);
+    if (!groups.size || !navVar) continue;
+    const list = [...groups].map(([item, vars]) => `[${item}, [${vars.join(', ')}]]`).join(', ');
+    ctx.w.line(`ui.bodies(${navVar}, [${list}], ${nav.selected});`);
+  }
+  ctx.w.line();
+}
+
 function emitChildren(node: IRNode, parentVar: string, ctx: Ctx, inset: number): void {
   // Positions of the IR are relative to the outer box of the parent; the children of a framed
   // container sit in its inner box, one cell in.
@@ -695,7 +738,7 @@ function emitChildren(node: IRNode, parentVar: string, ctx: Ctx, inset: number):
     if (FLOW.has(n)) return b;
     return { ...b, x: b.x - inset, y: b.y - inset };
   };
-  const kids = visibleChildren(node).filter((c) => c.type !== 'Spacer');
+  const kids = node.children.filter((c) => (c.visible || c.latent) && c.type !== 'Spacer');
   for (let i = 0; i < kids.length; i++) {
     const kid = kids[i];
     if (kid.type === 'Radio') {
@@ -711,6 +754,7 @@ function emitChildren(node: IRNode, parentVar: string, ctx: Ctx, inset: number):
       continue;
     }
     const inner = emitWidget(kid, parentVar, place(kid), ctx);
+    if (inner) ctx.inners.set(kid, inner.var);
     if (kid.children.length) {
       emitChildren(kid, inner?.var ?? nameFor(kid, ctx), ctx, inner?.inset ?? 0);
     }

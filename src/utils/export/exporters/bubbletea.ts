@@ -3033,6 +3033,7 @@ export const bubbleteaAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'fixed',
   multiScreen: false,
+  navBodies: false,
   generate: ({ ir }) => new Gen(ir.start, ir).generate(),
 };
 

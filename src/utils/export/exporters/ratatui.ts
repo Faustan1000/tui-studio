@@ -2553,6 +2553,7 @@ export const ratatuiAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'fixed',
   multiScreen: false,
+  navBodies: false,
   generate: ({ ir }) => {
     const screen = ir.start;
     const gen = new Gen(screen.ident, screen.root, screen.modals);

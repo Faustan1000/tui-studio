@@ -165,6 +165,10 @@ interface Ctx {
   modalStates: string[];
   /** Nodes with a code name (program API handles) by node id. */
   handles: Map<string, ApiHandleModel>;
+  /** Navigation elements (by node id) that have bodies: the expression of their selected item. */
+  navSel: Map<string, string>;
+  /** State of navigation elements without a handle, allocated before the bodies are emitted. */
+  navStates: Map<string, { state: string; setter: string }>;
   uses: {
     focus: boolean;
     field: boolean;
@@ -347,6 +351,11 @@ function guarded(cond: string | null, stmts: string[]): string[] {
 
 /** Whether a node is part of the initial design, counting tagged hidden nodes (they can be shown). */
 function shown(n: IRNode, ctx: Ctx): boolean {
+  if (n.showWhen && ctx.navSel.has(n.showWhen.nav)) {
+    // A body switches at run time: it is part of the UI whenever its parent is.
+    if (n.hidden && !ctx.handles.has(n.id)) return false;
+    return !n.parent || shown(n.parent, ctx);
+  }
   if (n.visible) return true;
   if (n.showWhen) return false;
   if (n.hidden && !ctx.handles.has(n.id)) return false;
@@ -357,8 +366,17 @@ function shownChildren(n: IRNode, ctx: Ctx): IRNode[] {
   return n.children.filter((c) => shown(c, ctx));
 }
 
+/** Bodies of a tab/menu/list are only rendered while their item is selected. */
 function emit(n: IRNode, w: CodeWriter, ctx: Ctx, root?: IRScreen): void {
   if (!shown(n, ctx)) return;
+  const sel = n.showWhen && ctx.navSel.get(n.showWhen.nav);
+  if (!sel || !n.showWhen) return emitNode(n, w, ctx, root);
+  w.line(`{${sel} === ${n.showWhen.item} && (`).indent();
+  emitNode(n, w, ctx, root);
+  w.dedent().line(')}');
+}
+
+function emitNode(n: IRNode, w: CodeWriter, ctx: Ctx, root?: IRScreen): void {
   const h = ctx.handles.get(n.id);
   const inner = () => {
     switch (n.type) {
@@ -716,9 +734,10 @@ function emitLeaf(n: IRNode, w: CodeWriter, ctx: Ctx): void {
             ? null
             : arrow('', guarded(`core.fire(${T}, "select", ${selected})`, calls(ctx, n)));
       } else {
-        const s = stateName(ctx, n, n.type === 'Tabs' ? 'Tab' : 'Selected');
+        const pre = ctx.navStates.get(n.id);
+        const s = pre ?? stateName(ctx, n, n.type === 'Tabs' ? 'Tab' : 'Selected');
         const init = Math.max(0, Math.min(n.selected, Math.max(0, staticLines.length - 1)));
-        ctx.states.push(`const [${s.state}, ${s.setter}] = useState(${init});`);
+        if (!pre) ctx.states.push(`const [${s.state}, ${s.setter}] = useState(${init});`);
         selected = s.state;
         select =
           n.type === 'Tabs' ? arrow('i: number', [`${s.setter}(i);`, ...calls(ctx, n)]) : s.setter;
@@ -1188,6 +1207,47 @@ function lit(v: unknown): string {
   return String(v);
 }
 
+/**
+ * Navigation elements whose bodies switch: the selection is read from the handle's store, or from
+ * a state that is allocated here so bodies emitted before the element can use it.
+ */
+function registerNavBodies(root: IRNode, ctx: Ctx, allHandles: ApiHandleModel[]): void {
+  const all: IRNode[] = [];
+  const walk = (n: IRNode) => {
+    all.push(n);
+    n.children.forEach(walk);
+  };
+  walk(root);
+  const navs = all.filter(
+    (n) =>
+      (n.type === 'Tabs' || n.type === 'Menu' || n.type === 'List') &&
+      all.some((b) => b.showWhen?.nav === n.id)
+  );
+  const handleOf = new Map(allHandles.map((h) => [h.node.id, h]));
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const nav of navs) {
+      if (ctx.navSel.has(nav.id) || !(nav.visible || ctx.navSel.has(nav.showWhen?.nav ?? ''))) {
+        continue;
+      }
+      const h = handleOf.get(nav.id);
+      if (h) {
+        const prop = nav.type === 'Tabs' ? 'active_tab' : 'selected';
+        ctx.navSel.set(nav.id, `core.num(${jsStr(h.tag)}, ${jsStr(prop)})`);
+      } else {
+        const suffix = nav.type === 'Tabs' ? 'Tab' : 'Selected';
+        const state = ctx.names.take(recase(nav.ident, 'camel') + suffix);
+        const setter = ctx.names.take(`set${cap(state)}`);
+        const init = Math.max(0, Math.min(nav.selected, Math.max(0, nav.items.length - 1)));
+        ctx.states.push(`const [${state}, ${setter}] = useState(${init});`);
+        ctx.navStates.set(nav.id, { state, setter });
+        ctx.navSel.set(nav.id, state);
+      }
+      changed = true;
+    }
+  }
+}
+
 function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
   const ctx: Ctx = {
     names: new Names(),
@@ -1196,6 +1256,8 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
     radioGroups: new Map(),
     modalStates: [],
     handles: new Map(allHandles.map((h) => [h.node.id, h])),
+    navSel: new Map(),
+    navStates: new Map(),
     uses: {
       focus: false,
       field: false,
@@ -1207,7 +1269,8 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
       table: false,
     },
   };
-  // Components that are not part of the initial UI (inactive tab/menu bodies) have no handle.
+  registerNavBodies(screen.root, ctx, allHandles);
+  // Components that are hidden at startup and cannot be shown (no code name) have no handle.
   const handles = allHandles.filter((h) => shown(h.node, ctx));
   ctx.handles = new Map(handles.map((h) => [h.node.id, h]));
   const jsx = new CodeWriter('  ', 2);
@@ -1447,6 +1510,7 @@ export const inkAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'native',
   multiScreen: false,
+  navBodies: true,
   generate: ({ ir }): ExportFile[] => {
     const handles = buildApiModel(ir).handles;
     const app = generateApp(ir.start, handles);

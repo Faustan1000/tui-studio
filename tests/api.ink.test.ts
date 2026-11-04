@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { exportToFiles } from '../src/utils/export/codeExporter';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents, layouts } from './fixtures/designs';
+import { allComponents, layouts, multiScreen } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 
 const RUNTIME = resolve(__dirname, 'runtime');
@@ -256,5 +256,42 @@ describe.skipIf(!installed)('ink program API against real Ink', () => {
       },
       120_000
     );
+  });
+});
+
+describe.skipIf(!installed)('ink tab/menu bodies in real Ink', () => {
+  it('shows the body of the selected tab and switches with the property', () => {
+    const dir = generate('nav-bodies', multiScreen()[0]);
+    writeFileSync(
+      join(dir, 'nav.mjs'),
+      [
+        "import { render } from 'ink-testing-library';",
+        "import { Ui } from './src/app';",
+        'let app;',
+        'const ui = new Ui({ render: (el) => (app = render(el)) });',
+        'await ui.start();',
+        'const frame = () => app.lastFrame();',
+        'const tick = () => new Promise((r) => setTimeout(r, 100));',
+        'const first = frame();',
+        'ui.pages.activeTab = 1;',
+        'await tick();',
+        'const second = frame();',
+        'ui.pages.activeTab = 0;',
+        'await tick();',
+        'const third = frame();',
+        "console.log('NAV ' + JSON.stringify({ first, second, third }));",
+        'process.exit(0);',
+      ].join('\n')
+    );
+    const r = node([TSX, 'nav.mjs'], dir);
+    const line = (r.stdout ?? '').split('\n').find((l) => l.startsWith('NAV '));
+    expect(line, `${r.stdout}\n${r.stderr}`).toBeTruthy();
+    const { first, second, third } = JSON.parse(line!.slice(4)) as Record<string, string>;
+    expect(first).toContain('Dashboard content');
+    expect(first).not.toContain('Agent content');
+    expect(second).toContain('Agent content');
+    expect(second).not.toContain('Dashboard content');
+    expect(third).toContain('Dashboard content');
+    expect(third).not.toContain('Agent content');
   });
 });
