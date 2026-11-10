@@ -38,12 +38,17 @@ afterAll(() => {
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
-function project(root: ComponentNode, withScenario = false, extra: string[] = []): string {
+function project(
+  root: ComponentNode,
+  withScenario = false,
+  extra: string[] = [],
+  screens?: { id: string; root: ComponentNode }[]
+): string {
   const dir = mkdtempSync(join(tmpdir(), 'tuistudio-ratatui-'));
   dirs.push(dir);
   const files = ratatuiAdapter.generate({
-    ir: buildIR(root),
-    source: [{ id: root.id, root }],
+    ir: buildIR(screens ?? root),
+    source: screens ?? [{ id: root.id, root }],
   });
   for (const f of files) {
     const path = join(dir, f.path);
@@ -117,6 +122,17 @@ describe.skipIf(!hasCargo)('generated Ratatui project against cargo', () => {
       'test',
       '--quiet',
       'nav_bodies',
+    ]);
+    expect(r.ok, r.output).toBe(true);
+    expect(r.output).toMatch(/test result: ok\. 1 passed/);
+  }, 540_000);
+
+  it('cargo test: several screens switch with show() and with a button', () => {
+    const screens = multiScreen().map((root) => ({ id: root.tag ?? 'about', root }));
+    const r = cargo(project(screens[0].root, false, ['screens_test'], screens), [
+      'test',
+      '--quiet',
+      'screens_switch',
     ]);
     expect(r.ok, r.output).toBe(true);
     expect(r.output).toMatch(/test result: ok\. 1 passed/);

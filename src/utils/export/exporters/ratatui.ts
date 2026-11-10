@@ -22,7 +22,7 @@ import {
   type ApiHandleModel,
 } from '../api/model';
 import runtimeSource from '../api/rust/ui_runtime.rs?raw';
-import type { IRBorder, IRNode, IRStyle } from '../ir';
+import type { IRBorder, IRNode, IRProject, IRScreen, IRStyle } from '../ir';
 import { cellWidth, inlineText, itemText, liveChildren, navOf, treeLines, walkIR } from '../ir';
 import { CodeWriter, rustStr } from '../lang';
 
@@ -222,7 +222,17 @@ interface Focusable {
 
 /** Key of a component in the runtime store: its code name, or an internal key. */
 function keyOf(node: IRNode): string {
-  return node.tag ?? `_${node.ident}`;
+  return node.tag ?? `_${uid(node)}`;
+}
+
+/** Prefix of the names of a screen's components when there are several screens (root -> prefix). */
+const namePrefix = new WeakMap<IRNode, string>();
+
+/** Identifier of a component that is unique across all screens of the project. */
+function uid(node: IRNode): string {
+  let root = node;
+  while (root.parent) root = root.parent;
+  return `${namePrefix.get(root) ?? ''}${node.ident}`;
 }
 
 const HANDLE_TYPE: Record<IRNode['type'], string> = {
@@ -333,49 +343,126 @@ interface HandleField {
   field: string;
 }
 
-class Gen {
-  private w = new CodeWriter('    ', 1);
-  private fields: { name: string; type: string; init: string }[] = [];
-  private consts: string[] = [];
-  private focus: Focusable[] = [];
-  private focusOf = new Map<string, Focusable>();
-  private arms: string[] = [];
-  private target = 'frame';
-  private scrollable = false;
-  private rootOuter = '';
-  private selects: IRNode[] = [];
-  private clicks: string[] = [];
-  private inModal = false;
-  private stubs = new Set<string>();
-  private regs: string[] = [];
-  private strategies: string[] = [];
-  private spinner = false;
-  private handles: HandleField[] = [];
+/** What all screens of the project share: handles, screen keys, the next free focus index. */
+interface Shared {
+  multi: boolean;
+  /** Screen id -> key used by `show_screen` (the code name, else the identifier). */
+  keys: Map<string, string>;
+  handles: HandleField[];
+  fieldOf: Map<IRNode, string>;
   /** Handles of the flat `Api` (empty: the design has no code names). */
-  private apiHandles: ApiHandleModel[] = [];
-  private fieldOf = new Map<string, string>();
+  apiHandles: ApiHandleModel[];
+  /** Screens with a code name: field of `Ui` and key. */
+  screenMembers: { member: string; key: string }[];
+  /** Focus indices are unique over all screens: the next one to give out. */
+  focusBase: number;
+}
 
-  constructor(
-    private readonly screenIdent: string,
-    private readonly root: IRNode,
-    private readonly modals: IRNode[]
-  ) {}
-
-  // ── Collect state, key arms and handlers ────────────────────────────────────
-
-  private collectHandles(): void {
-    if (this.handles.length) return;
-    const used = new Set<string>();
-    for (const node of walkIR(this.root)) {
-      if (!node.tag || node === this.root) continue;
+function buildShared(ir: IRProject, model: ApiHandleModel[]): Shared {
+  const multi = ir.screens.length > 1;
+  const shared: Shared = {
+    multi,
+    keys: new Map(ir.screens.map((sc) => [sc.id, sc.tag ?? sc.ident])),
+    handles: [],
+    fieldOf: new Map(),
+    apiHandles: [],
+    screenMembers: [],
+    focusBase: 0,
+  };
+  const used = new Set<string>();
+  for (const sc of ir.screens) {
+    for (const node of walkIR(sc.root)) {
+      if (!node.tag || node === sc.root) continue;
       let field = safeIdent(apiName(node.tag, 'snake'), 'rust');
       if (field === 'api') field = 'api_'; // `Ui.api` is the flat Api
       if (used.has(field)) continue;
       used.add(field);
-      this.handles.push({ node, field });
-      this.fieldOf.set(node.id, field);
+      shared.handles.push({ node, field });
+      shared.fieldOf.set(node, field);
     }
   }
+  shared.apiHandles = model.filter((h) => shared.handles.some((f) => f.node === h.node));
+  if (multi) {
+    // Screens with a code name: ui.<screen>.show(). A name that is taken gets an underscore.
+    if (shared.apiHandles.length) used.add('api');
+    for (const sc of ir.screens) {
+      if (!sc.tag) continue;
+      let member = safeIdent(apiName(sc.tag, 'snake'), 'rust');
+      while (used.has(member) || member === '_runtime') member += '_';
+      used.add(member);
+      shared.screenMembers.push({ member, key: shared.keys.get(sc.id)! });
+    }
+  }
+  return shared;
+}
+
+class Gen {
+  private w: CodeWriter;
+  fields: { name: string; type: string; init: string }[] = [];
+  consts: string[] = [];
+  focus: Focusable[] = [];
+  private focusOf = new Map<string, Focusable>();
+  arms: string[] = [];
+  private target = 'frame';
+  scrollable = false;
+  private rootOuter = '';
+  selects: IRNode[] = [];
+  clicks: string[] = [];
+  private inModal = false;
+  stubs = new Set<string>();
+  regs: string[] = [];
+  strategies: string[] = [];
+  spinner = false;
+  /** The generated body of this screen's part of `ui`. */
+  uiBody = '';
+  /** Modals that are open when the screen is shown. */
+  openModals: IRNode[] = [];
+  /** First focus index of this screen. */
+  focusBase = 0;
+  private readonly root: IRNode;
+  private readonly modals: IRNode[];
+
+  constructor(
+    readonly screen: IRScreen,
+    private readonly shared: Shared
+  ) {
+    this.root = screen.root;
+    this.modals = screen.modals;
+    // In a project with several screens the names of components carry the name of their screen.
+    if (shared.multi) namePrefix.set(this.root, `${screen.ident}_`);
+    this.w = new CodeWriter('    ', shared.multi ? 3 : 1);
+  }
+
+  private get fieldOf(): Map<IRNode, string> {
+    return this.shared.fieldOf;
+  }
+
+  /** `self.rt.show_screen(..)` for a screen id, or null when there is no such screen. */
+  private screenCall(id: string | undefined): string | null {
+    const key = id ? this.shared.keys.get(id) : undefined;
+    return key ? `self.rt.show_screen(${rustStr(key)});` : null;
+  }
+
+  /** Emit "select" for the chosen item; items that open a screen switch to it when accepted. */
+  private selectLines(node: IRNode, index: string, pad: string): string[] {
+    const K = rustStr(keyOf(node));
+    const value = index === 'row' ? 'row as i64' : index;
+    const links = node.items.flatMap((item, i) => {
+      const call = this.screenCall(item.screen);
+      return call ? [`${i} => ${call.replace(/;$/, '')},`] : [];
+    });
+    if (!links.length) return [`${pad}self.rt.user_emit(${K}, "select", Value::Int(${value}));`];
+    return [
+      `${pad}if self.rt.user_emit(${K}, "select", Value::Int(${value})) {`,
+      `${pad}    match ${index} {`,
+      ...links.map((l) => `${pad}        ${l}`),
+      `${pad}        _ => {}`,
+      `${pad}    }`,
+      `${pad}}`,
+    ];
+  }
+
+  // ── Collect state, key arms and handlers ────────────────────────────────────
 
   private collect(node: IRNode, modal?: IRNode): void {
     if (!live(node)) return;
@@ -385,14 +472,14 @@ class Gen {
   }
 
   private register(node: IRNode, modal?: IRNode): void {
-    const id = node.ident;
+    const id = uid(node);
     const up = id.toUpperCase();
     const K = rustStr(keyOf(node));
     const field = (name: string, type: string, init: string) =>
       this.fields.push({ name, type, init });
     let f: Focusable | undefined;
     if (FOCUSABLE.has(node.type) && !node.disabled) {
-      f = { node, name: `F_${up}`, index: this.focus.length, modal };
+      f = { node, name: `F_${up}`, index: this.focusBase + this.focus.length, modal };
       this.focus.push(f);
       this.focusOf.set(node.id, f);
     }
@@ -420,7 +507,7 @@ class Gen {
       if (!name) continue;
       const m = methodName(name);
       this.stubs.add(m);
-      const tagged = this.fieldOf.get(node.id);
+      const tagged = this.fieldOf.get(node);
       this.regs.push(
         tagged
           ? `ui.${tagged}.${apiEventMethod(ev.name, 'snake')}(${m});`
@@ -435,9 +522,15 @@ class Gen {
           `self.${id}_cursor = col.min(self.rt.get_text(${K}, "value").chars().count());`,
         ]);
         break;
-      case 'Button':
-        click([`self.rt.user_emit(${K}, "click", Value::None);`]);
+      case 'Button': {
+        const open = this.screenCall(node.opensScreen);
+        click(
+          open
+            ? [`if self.rt.user_emit(${K}, "click", Value::None) {`, `    ${open}`, '}']
+            : [`self.rt.user_emit(${K}, "click", Value::None);`]
+        );
         break;
+      }
       case 'Checkbox':
       case 'Toggle':
         click(toggle([]));
@@ -468,7 +561,7 @@ class Gen {
           `    let len = ${node.type === 'Menu' ? `${up}_ITEMS.len()` : `self.rt.get_list(${K}, "items").len()`};`,
           '    if row < len {',
           `        self.rt.user_set(${K}, "selected", Value::Int(row as i64), None);`,
-          `        self.rt.user_emit(${K}, "select", Value::Int(row as i64));`,
+          ...this.selectLines(node, 'row', '        '),
           '    }',
           '}',
         ]);
@@ -566,16 +659,24 @@ class Gen {
         ]);
         break;
       }
-      case 'Button':
+      case 'Button': {
+        const open = this.screenCall(node.opensScreen);
         arm([
           'match key.code {',
           "    KeyCode::Enter | KeyCode::Char(' ') => {",
-          `        self.rt.user_emit(${K}, "click", Value::None);`,
+          ...(open
+            ? [
+                `        if self.rt.user_emit(${K}, "click", Value::None) {`,
+                `            ${open}`,
+                '        }',
+              ]
+            : [`        self.rt.user_emit(${K}, "click", Value::None);`]),
           '    }',
           '    _ => {}',
           '}',
         ]);
         break;
+      }
       case 'Checkbox':
       case 'Toggle':
         arm([
@@ -639,7 +740,7 @@ class Gen {
           '    }',
           '    KeyCode::Enter => {',
           `        let cur = self.rt.get_int(${K}, "selected");`,
-          `        self.rt.user_emit(${K}, "select", Value::Int(cur));`,
+          ...this.selectLines(node, 'cur', '        '),
           '    }',
           '    _ => {}',
           '}',
@@ -851,7 +952,7 @@ class Gen {
   }
 
   private leaf(node: IRNode, a: string): void {
-    const id = node.ident;
+    const id = uid(node);
     const up = id.toUpperCase();
     const K = this.key(node);
     const w = this.w;
@@ -1119,7 +1220,7 @@ class Gen {
     const body = bodyCond(node);
     const conds = [...(hideable ? [`st.shown(${this.key(node)})`] : []), ...(body ? [body] : [])];
     if (conds.length) w.line(`if ${conds.join(' && ')} {`).indent();
-    const a = `${node.ident}_area`;
+    const a = `${uid(node)}_area`;
     w.line(`let ${a} = ${expr};`);
     const focusable = this.focusOf.get(node.id);
     if (focusable) {
@@ -1140,7 +1241,7 @@ class Gen {
 
   private container(node: IRNode, a: string): void {
     const w = this.w;
-    const id = node.ident;
+    const id = uid(node);
     const kids = contentKids(node);
     const kidsRender = kids.some(renders);
     const blk =
@@ -1233,7 +1334,7 @@ class Gen {
 
   private flex(node: IRNode, kids: IRNode[], inner: string): void {
     const l = node.layout;
-    const id = node.ident;
+    const id = uid(node);
     const vertical = l.direction === 'column';
     const flex = {
       start: 'Start',
@@ -1381,7 +1482,7 @@ class Gen {
 
   private grid(node: IRNode, kids: IRNode[], inner: string): void {
     const l = node.layout;
-    const id = node.ident;
+    const id = uid(node);
     const cols = Math.max(1, l.columns);
     const rows = Math.max(l.rows, Math.ceil(kids.length / cols), 1);
     this.strategies.push(`${id}: native grid ${cols}x${rows} (nested row/column Layouts)`);
@@ -1414,7 +1515,7 @@ class Gen {
 
   private modal(m: IRNode): void {
     const w = this.w;
-    const id = m.ident;
+    const id = uid(m);
     const wd =
       typeof m.width === 'number'
         ? String(u16(m.width))
@@ -1442,46 +1543,45 @@ class Gen {
 
   // ── Whole file ──────────────────────────────────────────────────────────────
 
-  /** `src/ui.rs`: the typed facade of the design. */
-  /** Hand the model handles over before `build`, so main.rs and ui.rs know about `Api`. */
-  useApi(model: ApiHandleModel[]): void {
-    this.collectHandles();
-    this.apiHandles = model.filter((h) => this.handles.some((f) => f.node === h.node));
-  }
-
   /** `src/api.rs`: the flat Api over the handles, or null without code names. */
-  buildApi(): string | null {
-    if (!this.apiHandles.length) return null;
-    const fieldOf = (h: ApiHandleModel) => this.handles.find((f) => f.node === h.node)!.field;
+  static buildApi(shared: Shared): string | null {
+    if (!shared.apiHandles.length) return null;
+    const fieldOf = (h: ApiHandleModel) => shared.handles.find((f) => f.node === h.node)!.field;
     return renderFacade({
       lang: 'rust',
-      handles: this.apiHandles,
+      handles: shared.apiHandles,
       member: fieldOf,
       rustType: (h) => HANDLE_TYPE[h.node.type],
     }).code;
   }
 
-  buildFacade(): string {
-    const nodes = walkIR(this.root).filter((n) => n !== this.root && needsSeed(n));
+  /** `src/ui.rs`: the typed facade of the design. */
+  static buildFacade(gens: Gen[], shared: Shared): string {
+    const nodes = gens.flatMap((g) => walkIR(g.root).filter((n) => n !== g.root && needsSeed(n)));
     const out = new CodeWriter('    ');
     out.line('/// One typed handle per component with a code name, plus the lifecycle of the UI.');
     out.line('#[derive(Clone)]');
     out.line('pub struct Ui {').indent();
     out.line('_runtime: Runtime,');
-    if (this.apiHandles.length)
+    if (shared.apiHandles.length)
       out.line('/// Flat methods over the components (see api.rs).').line('pub api: Api,');
-    for (const h of this.handles) out.line(`pub ${h.field}: ${HANDLE_TYPE[h.node.type]},`);
+    for (const h of shared.handles) out.line(`pub ${h.field}: ${HANDLE_TYPE[h.node.type]},`);
+    for (const sc of shared.screenMembers) out.line(`pub ${sc.member}: ScreenHandle,`);
     out.dedent().line('}').line();
     out.line('impl Ui {').indent();
     out.line('/// The state of the UI without a running UI; see `start` and `run`.');
     out.line('pub fn new() -> Ui {').indent();
     out.line('let rt = Runtime::new();');
     out.line('rt.seed(seeds());');
+    if (shared.multi) out.line(`rt.init_screen(${rustStr(shared.keys.get(gens[0].screen.id)!)});`);
     out.line('Ui {').indent();
-    for (const h of this.handles) {
+    for (const h of shared.handles) {
       out.line(`${h.field}: ${HANDLE_TYPE[h.node.type]}::new(&rt, ${rustStr(h.node.tag!)}),`);
     }
-    if (this.apiHandles.length) out.line('api: Api::new(&rt),');
+    for (const sc of shared.screenMembers) {
+      out.line(`${sc.member}: ScreenHandle::new(&rt, ${rustStr(sc.key)}),`);
+    }
+    if (shared.apiHandles.length) out.line('api: Api::new(&rt),');
     out.line('_runtime: rt,');
     out.dedent().line('}').dedent().line('}').line();
     out.block(`pub fn runtime(&self) -> &Runtime {
@@ -1624,6 +1724,7 @@ pub fn install_panic_hook(&self) {
       'ModalHandle',
       'ProgressHandle',
       'Runtime',
+      'ScreenHandle',
       'Seed',
       'SelectHandle',
       'SpinnerHandle',
@@ -1647,7 +1748,7 @@ pub fn install_panic_hook(&self) {
       '#![allow(dead_code)]',
       '',
       `use crate::ui_runtime::{${runtimeNames.join(', ')}};`,
-      ...(this.apiHandles.length ? ['use crate::api::Api;'] : []),
+      ...(shared.apiHandles.length ? ['use crate::api::Api;'] : []),
       'use crate::{read_event, run_loop, App};',
       'use ratatui::crossterm::event::{DisableMouseCapture, EnableMouseCapture};',
       'use ratatui::crossterm::execute;',
@@ -1662,32 +1763,17 @@ pub fn install_panic_hook(&self) {
     return head + body;
   }
 
-  build(): string {
-    this.collectHandles();
+  /** Collect the components of the screen and draw its part of `ui`. */
+  buildScreen(): void {
+    this.focusBase = this.shared.focusBase;
     this.scrollable = this.rootScrolls();
     this.collect(this.root);
     this.modals.filter((m) => m.visible).forEach((m) => this.collect(m, m));
-    const openModals = this.modals.filter((m) => m.visible);
+    this.shared.focusBase += this.focus.length;
+    this.openModals = this.modals.filter((m) => m.visible);
+    const openModals = this.openModals;
 
-    // ui body
     const w = this.w;
-    w.line('let st = app.rt.lock();');
-    if (this.focus.length) w.line('app.hits.clear();');
-    if (this.selects.length) w.line('app.popup = None;');
-    w.line('let full = frame.area();');
-    w.line('let area = if st.log_visible() {').indent();
-    w.line('let parts = Layout::default()').indent();
-    w.line('.direction(Direction::Vertical)');
-    w.line('.constraints([');
-    w.indent().line('Constraint::Fill(1),');
-    w.line('Constraint::Length((full.height / 3).max(3).min(full.height)),').dedent();
-    w.line('])');
-    w.line('.split(full);').dedent();
-    w.line('render_log(frame, &st, parts[1]);');
-    w.line('parts[0]').dedent();
-    w.line('} else {').indent();
-    w.line('full').dedent();
-    w.line('};');
     if (renders(this.root)) this.emit(this.root, 'area');
     openModals.forEach((m) => this.modal(m));
     if (!renders(this.root) && !openModals.length) w.line('let _ = area;');
@@ -1718,25 +1804,98 @@ pub fn install_panic_hook(&self) {
       w.line('None => app.dropdown = None,').dedent().line('}');
       w.dedent().line('}');
     }
-    w.line('render_errors(frame, &st, full);');
-    const ui = w.toString().replace(/\n$/, '');
+    this.uiBody = w.toString().replace(/\n$/, '');
+  }
+
+  /** `src/main.rs`: the App, the key and mouse handling and the draw function of every screen. */
+  static buildMain(gens: Gen[], shared: Shared): string {
+    const multi = shared.multi;
+    const focus = gens.flatMap((g) => g.focus);
+    const consts = gens.flatMap((g) => g.consts);
+    const fields = gens.flatMap((g) => g.fields);
+    const arms = gens.flatMap((g) => g.arms);
+    const clicks = gens.flatMap((g) => g.clicks);
+    const strategies = gens.flatMap((g) => g.strategies);
+    const selects = gens.flatMap((g) => g.selects);
+    const selectFocus = gens.flatMap((g) =>
+      g.selects.map((sel) => ({ name: g.focusOf.get(sel.id)!.name, key: keyOf(sel) }))
+    );
+    const scrollable = gens.some((g) => g.scrollable);
+    const spinner = gens.some((g) => g.spinner);
+    const stubSet = new Set(gens.flatMap((g) => [...g.stubs]));
+    const regs = gens.flatMap((g) => g.regs);
+    const hasApi = shared.apiHandles.length > 0;
+
+    // ui body
+    const w = new CodeWriter('    ', 1);
+    if (multi) w.line('let screen = app.sync();');
+    w.line('let st = app.rt.lock();');
+    if (focus.length) w.line('app.hits.clear();');
+    if (selects.length) w.line('app.popup = None;');
+    w.line('let full = frame.area();');
+    w.line('let area = if st.log_visible() {').indent();
+    w.line('let parts = Layout::default()').indent();
+    w.line('.direction(Direction::Vertical)');
+    w.line('.constraints([');
+    w.indent().line('Constraint::Fill(1),');
+    w.line('Constraint::Length((full.height / 3).max(3).min(full.height)),').dedent();
+    w.line('])');
+    w.line('.split(full);').dedent();
+    w.line('render_log(frame, &st, parts[1]);');
+    w.line('parts[0]').dedent();
+    w.line('} else {').indent();
+    w.line('full').dedent();
+    w.line('};');
+    const head = w.toString().replace(/\n$/, '');
+    const mid = multi
+      ? [
+          '    match screen {',
+          ...gens.flatMap((g, i) => [
+            `        ${i} => {`,
+            ...(g.uiBody ? [g.uiBody] : []),
+            '        }',
+          ]),
+          '        _ => {}',
+          '    }',
+        ].join('\n')
+      : gens[0].uiBody;
+    const ui = [head, mid, '    render_errors(frame, &st, full);'].filter(Boolean).join('\n');
 
     const out = new CodeWriter('    ');
-    const n = this.focus.length;
-    const textInputs = this.focus.filter((f) => f.node.type === 'TextInput');
+    const n = focus.length;
+    const textInputs = focus.filter((f) => f.node.type === 'TextInput');
+    const openModals = gens.flatMap((g) => g.openModals);
+    /** Expression that is true while a modal of the current screen is open. */
+    const modalCond = multi
+      ? openModals.length
+        ? 'self.modal_up()'
+        : ''
+      : openModals.map((m) => `self.rt.modal_open(${rustStr(keyOf(m))})`).join(' || ');
+    /** Guard for the scroll keys: the current screen scrolls. */
+    const scrollGuard = multi && scrollable ? 'self.scrolls()' : '';
 
-    if (this.apiHandles.length) out.line('mod api;');
+    if (hasApi) out.line('mod api;');
     out.line('mod ui;');
     out.line('mod ui_runtime;');
     out.line();
-    this.consts.forEach((c) => out.line(c));
-    if (this.spinner) {
+    consts.forEach((c) => out.line(c));
+    if (spinner) {
       out.line(
         'const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];'
       );
     }
-    this.focus.forEach((f) => out.line(`const ${f.name}: usize = ${f.index};`));
-    if (n) out.line(`const FOCUS_COUNT: usize = ${n};`);
+    focus.forEach((f) => out.line(`const ${f.name}: usize = ${f.index};`));
+    if (n && !multi) out.line(`const FOCUS_COUNT: usize = ${n};`);
+    if (multi) {
+      out.line(
+        `/// The screens by key; the focus indices (from, to) each of them owns.\nconst SCREENS: [&str; ${gens.length}] = [${gens.map((g) => rustStr(shared.keys.get(g.screen.id)!)).join(', ')}];`
+      );
+      if (n) {
+        out.line(
+          `const FOCUS_RANGES: [(usize, usize); ${gens.length}] = [${gens.map((g) => `(${g.focusBase}, ${g.focusBase + g.focus.length})`).join(', ')}];`
+        );
+      }
+    }
     out.line();
 
     if (n) {
@@ -1751,7 +1910,7 @@ struct Hit {
 }
 `);
     }
-    if (this.scrollable) {
+    if (scrollable) {
       out.block(`/// Off-screen surface for the scrolling content; \`blit\` copies the visible part to the screen.
 struct Canvas {
     buf: Buffer,
@@ -1813,14 +1972,16 @@ impl Canvas {
     out.line('struct App {').indent();
     out.line('rt: Runtime,');
     out.line('quit: bool,');
-    if (this.focus.length) out.line('hits: Vec<Hit>,');
-    if (this.scrollable) {
+    if (multi)
+      out.line('/// Index (in `SCREENS`) of the screen that is shown.').line('screen: usize,');
+    if (focus.length) out.line('hits: Vec<Hit>,');
+    if (scrollable) {
       out.line('/// Scroll offset of the content, its maximum, and where the content is shown.');
       out.line('scroll: u16,');
       out.line('scroll_max: u16,');
       out.line('view: Rect,');
     }
-    if (this.selects.length) {
+    if (selects.length) {
       out.line('/// The select whose list is open, the highlighted option and the list on screen.');
       out.line('dropdown: Option<usize>,');
       out.line('dd_cursor: usize,');
@@ -1829,7 +1990,7 @@ impl Canvas {
     }
     if (n) out.line('focus: Option<usize>,');
     out.line('tick: usize,');
-    this.fields.forEach((f) => out.line(`${f.name}: ${f.type},`));
+    fields.forEach((f) => out.line(`${f.name}: ${f.type},`));
     out.dedent().line('}').line();
 
     out.line('impl App {').indent();
@@ -1837,13 +1998,14 @@ impl Canvas {
     out.line('Self {').indent();
     out.line('rt,');
     out.line('quit: false,');
+    if (multi) out.line('screen: 0,');
     if (n) out.line('hits: Vec::new(),');
-    if (this.scrollable) {
+    if (scrollable) {
       out.line('scroll: 0,');
       out.line('scroll_max: 0,');
       out.line('view: Rect::default(),');
     }
-    if (this.selects.length) {
+    if (selects.length) {
       out.line('dropdown: None,');
       out.line('dd_cursor: 0,');
       out.line('dd_state: ListState::default(),');
@@ -1851,7 +2013,7 @@ impl Canvas {
     }
     if (n) out.line('focus: None,');
     out.line('tick: 0,');
-    this.fields.forEach((f) => out.line(`${f.name}: ${f.init},`));
+    fields.forEach((f) => out.line(`${f.name}: ${f.init},`));
     out.dedent().line('}').dedent().line('}').line();
 
     out.block(`/// The UI is over: the user quit or the program called \`stop()\`.
@@ -1863,7 +2025,55 @@ fn on_tick(&mut self) {
     self.tick = self.tick.wrapping_add(1);
 }
 `);
-    if (this.scrollable) {
+    if (multi) {
+      const reset = [
+        'self.screen = index;',
+        ...(n ? ['self.focus = None;', 'self.hits.clear();'] : []),
+        ...(selects.length ? ['self.dropdown = None;'] : []),
+        ...(scrollable ? ['self.scroll = 0;'] : []),
+      ];
+      const screensOf = (pick: (g: Gen) => boolean) =>
+        gens.flatMap((g, i) => (pick(g) ? [String(i)] : [])).join(' | ');
+      out.block(`/// The screen the store says is shown (the program can switch with \`show()\`). A new screen
+/// starts without focus, scrolled to the top.
+fn sync(&mut self) -> usize {
+    let key = self.rt.screen();
+    let index = SCREENS.iter().position(|k| *k == key).unwrap_or(0);
+    if index != self.screen {
+${reset.map((l) => `        ${l}`).join('\n')}
+    }
+    index
+}
+${
+  scrollable
+    ? `
+/// Whether the screen that is shown scrolls.
+fn scrolls(&self) -> bool {
+    matches!(self.screen, ${screensOf((g) => g.scrollable)})
+}
+`
+    : ''
+}${
+        openModals.length
+          ? `
+/// Whether a modal of the screen that is shown is open.
+fn modal_up(&self) -> bool {
+    match self.screen {
+${gens
+  .map((g, i) =>
+    g.openModals.length
+      ? `        ${i} => ${g.openModals.map((m) => `self.rt.modal_open(${rustStr(keyOf(m))})`).join(' || ')},
+`
+      : ''
+  )
+  .join('')}        _ => false,
+    }
+}
+`
+          : ''
+      }`);
+    }
+    if (scrollable) {
       out.block(`/// Scroll the content by \`delta\` rows.
 fn scroll_by(&mut self, delta: i32) {
     let next = (self.scroll as i32 + delta).clamp(0, self.scroll_max as i32);
@@ -1889,10 +2099,8 @@ fn reveal(&mut self, focus: usize) {
 }
 `);
     }
-    if (this.selects.length) {
-      const keys = this.selects.map(
-        (sel) => `${this.focusOf.get(sel.id)!.name} => Some(${rustStr(keyOf(sel))}),`
-      );
+    if (selects.length) {
+      const keys = selectFocus.map((s) => `${s.name} => Some(${rustStr(s.key)}),`);
       out.block(`/// Screen position of a focusable component (None when it is scrolled out of view).
 fn field_rect(&self, focus: usize) -> Option<Rect> {
     let hit = self.hits.iter().rev().find(|h| h.focus == focus)?;
@@ -1900,7 +2108,7 @@ fn field_rect(&self, focus: usize) -> Option<Rect> {
         return Some(hit.rect);
     }
     ${
-      this.scrollable
+      scrollable
         ? `let (top, bottom) = (self.scroll, self.scroll + self.view.height);
     if hit.rect.y < top || hit.rect.y >= bottom {
         return None;
@@ -1993,7 +2201,7 @@ fn click_dropdown(&mut self, m: MouseEvent) {
       out.line('fn focusable(&self, id: usize) -> bool {').indent();
       out.line('let st = self.rt.lock();');
       out.line('match id {').indent();
-      for (const f of this.focus) {
+      for (const f of focus) {
         const conds = [`st.focusable(${rustStr(keyOf(f.node))})`];
         const own = bodyCond(f.node);
         if (own) conds.push(own);
@@ -2007,14 +2215,48 @@ fn click_dropdown(&mut self, m: MouseEvent) {
       }
       out.line('_ => true,').dedent().line('}').dedent().line('}').line();
 
-      out.block(`fn focus_next(&mut self) {
+      const reveal = (v: string) => (scrollable ? `\n            self.reveal(${v});` : '');
+      if (multi) {
+        // The controls of the screen that is shown: from `lo` up to (not including) `hi`.
+        out.block(`/// Tab: the next control of the screen that is shown.
+fn focus_next(&mut self) {
+    let (lo, hi) = FOCUS_RANGES[self.screen];
+    let count = hi - lo;
+    for step in 1..=count {
+        let next = match self.focus {
+            Some(i) if i >= lo && i < hi => lo + (i - lo + step) % count,
+            _ => lo + step - 1,
+        };
+        if self.focusable(next) {
+            self.focus = Some(next);${reveal('next')}
+            return;
+        }
+    }
+}
+
+fn focus_prev(&mut self) {
+    let (lo, hi) = FOCUS_RANGES[self.screen];
+    let count = hi - lo;
+    for step in 1..=count {
+        let prev = match self.focus {
+            Some(i) if i >= lo && i < hi => lo + (i - lo + count - step) % count,
+            _ => lo + count - step,
+        };
+        if self.focusable(prev) {
+            self.focus = Some(prev);${reveal('prev')}
+            return;
+        }
+    }
+}`);
+      } else
+        out.block(`fn focus_next(&mut self) {
     for step in 1..=FOCUS_COUNT {
         let next = match self.focus {
             Some(i) => (i + step) % FOCUS_COUNT,
             None => step - 1,
         };
         if self.focusable(next) {
-            self.focus = Some(next);${this.scrollable ? '\n            self.reveal(next);' : ''}
+            self.focus = Some(next);${scrollable ? '\n            self.reveal(next);' : ''}
             return;
         }
     }
@@ -2027,7 +2269,7 @@ fn focus_prev(&mut self) {
             None => FOCUS_COUNT - step,
         };
         if self.focusable(prev) {
-            self.focus = Some(prev);${this.scrollable ? '\n            self.reveal(prev);' : ''}
+            self.focus = Some(prev);${scrollable ? '\n            self.reveal(prev);' : ''}
             return;
         }
     }
@@ -2046,7 +2288,7 @@ fn focus_prev(&mut self) {
     // events
     out.block(`/// Every event of the terminal goes through here, also in the tests. Only key presses
 /// count (Windows also reports releases), clicks are hit-tested, anything else just redraws.
-fn on_event(&mut self, event: event::Event) {
+fn on_event(&mut self, event: event::Event) {${multi ? '\n    self.sync();' : ''}
     match event {
         event::Event::Key(key) => match key.kind {
             KeyEventKind::Press => self.on_key(key),
@@ -2081,7 +2323,7 @@ fn on_event(&mut self, event: event::Event) {
     }
     return;
 }`);
-    if (this.selects.length) {
+    if (selects.length) {
       out.block(`if self.dropdown.is_some() {
     // The list of options gets the click: it chooses or closes.
     if matches!(m.kind, MouseEventKind::Down(MouseButton::Left)) {
@@ -2090,16 +2332,14 @@ fn on_event(&mut self, event: event::Event) {
     return;
 }`);
     }
-    const modalCond = openModals
-      .map((m) => `self.rt.modal_open(${rustStr(keyOf(m))})`)
-      .join(' || ');
-    if (this.scrollable) {
+    if (scrollable) {
+      const here = scrollGuard ? `${scrollGuard} && ` : '';
       out.block(`match m.kind {
-    MouseEventKind::ScrollDown if !(${modalCond || 'false'}) => {
+    MouseEventKind::ScrollDown if ${here}!(${modalCond || 'false'}) => {
         self.scroll_by(3);
         return;
     }
-    MouseEventKind::ScrollUp if !(${modalCond || 'false'}) => {
+    MouseEventKind::ScrollUp if ${here}!(${modalCond || 'false'}) => {
         self.scroll_by(-3);
         return;
     }
@@ -2111,7 +2351,7 @@ fn on_event(&mut self, event: event::Event) {
 }`);
     if (n) {
       out.block(`let modal = ${modalCond || 'false'};`);
-      if (this.scrollable) {
+      if (scrollable) {
         out.block(`// The content is scrolled: its rectangles are in content coordinates.
 let inside = m.column >= self.view.x
     && m.column < self.view.x + self.view.width
@@ -2149,7 +2389,7 @@ if !self.focusable(hit.focus) {
     return;
 }
 self.focus = Some(hit.focus);`);
-      if (this.scrollable) {
+      if (scrollable) {
         out.block(`self.reveal(hit.focus);
 let m = if hit.scrolls {
     MouseEvent { column: vc, row: vr, ..m }
@@ -2158,7 +2398,7 @@ let m = if hit.scrolls {
 };`);
       }
       out.line('match hit.focus {').indent();
-      this.clicks.forEach((c) => out.block(c));
+      clicks.forEach((c) => out.block(c));
       out.line('_ => {}').dedent().line('}');
     }
     out.dedent().line('}').line();
@@ -2186,7 +2426,7 @@ if self.rt.has_pending() {
     }
     return;
 }`);
-    if (this.selects.length) {
+    if (selects.length) {
       out.block(`if self.dropdown.is_some() {
     self.dropdown_key(key);
     return;
@@ -2194,20 +2434,24 @@ if self.rt.has_pending() {
     }
     if (textInputs.length) out.line('let typing = self.text_focused();');
     out.line('match key.code {').indent();
-    if (this.scrollable) {
-      out.block(`KeyCode::PageDown => {
+    if (scrollable) {
+      const guard = (extra: string) => {
+        const g = [scrollGuard, extra].filter(Boolean).join(' && ');
+        return g ? ` if ${g}` : '';
+      };
+      out.block(`KeyCode::PageDown${guard('')} => {
     self.scroll_by(self.view.height.max(1) as i32);
     return;
 }
-KeyCode::PageUp => {
+KeyCode::PageUp${guard('')} => {
     self.scroll_by(-(self.view.height.max(1) as i32));
     return;
 }
-KeyCode::Home${textInputs.length ? ' if !typing' : ''} => {
+KeyCode::Home${guard(textInputs.length ? '!typing' : '')} => {
     self.scroll = 0;
     return;
 }
-KeyCode::End${textInputs.length ? ' if !typing' : ''} => {
+KeyCode::End${guard(textInputs.length ? '!typing' : '')} => {
     self.scroll = self.scroll_max;
     return;
 }`);
@@ -2217,16 +2461,29 @@ KeyCode::End${textInputs.length ? ' if !typing' : ''} => {
       out.block('KeyCode::BackTab => {\n    self.focus_prev();\n    return;\n}');
     }
     out.line('KeyCode::Esc => {').indent();
-    const esc: string[] = [];
-    if (textInputs.length) esc.push('if typing {\n    self.focus = None;\n}');
-    [...openModals].reverse().forEach((m) => {
-      esc.push(
-        `if self.rt.modal_open(${rustStr(keyOf(m))}) {\n    self.rt.set(${rustStr(keyOf(m))}, "open", Value::Bool(false));${n ? '\n    self.focus = None;' : ''}\n}`
-      );
-    });
-    if (esc.length) {
-      out.block(esc.join(' else ') + ' else {\n    self.quit = true;\n}');
-    } else out.line('self.quit = true;');
+    // Esc leaves a text input, then closes the open modals, then quits.
+    const escOf = (g: Gen): string => {
+      const esc: string[] = [];
+      if (g.focus.some((f) => f.node.type === 'TextInput'))
+        esc.push('if typing {\n    self.focus = None;\n}');
+      [...g.openModals].reverse().forEach((m) => {
+        esc.push(
+          `if self.rt.modal_open(${rustStr(keyOf(m))}) {\n    self.rt.set(${rustStr(keyOf(m))}, "open", Value::Bool(false));${n ? '\n    self.focus = None;' : ''}\n}`
+        );
+      });
+      return esc.length
+        ? esc.join(' else ') + ' else {\n    self.quit = true;\n}'
+        : 'self.quit = true;';
+    };
+    if (multi) {
+      out.line('match self.screen {').indent();
+      gens.forEach((g, i) => {
+        out.line(`${i} => {`).indent();
+        out.block(escOf(g));
+        out.dedent().line('}');
+      });
+      out.line('_ => self.quit = true,').dedent().line('}');
+    } else out.block(escOf(gens[0]));
     out.line('return;').dedent().line('}');
     out.block(
       `KeyCode::Char('q')${textInputs.length ? ' if !typing' : ''} => {\n    self.quit = true;\n    return;\n}`
@@ -2234,7 +2491,7 @@ KeyCode::End${textInputs.length ? ' if !typing' : ''} => {
     out.line('_ => {}').dedent().line('}');
     if (n) {
       out.line('match self.focus {').indent();
-      this.arms.forEach((a) => out.block(a));
+      arms.forEach((a) => out.block(a));
       out.line('_ => {}').dedent().line('}');
     }
     out.dedent().line('}');
@@ -2249,13 +2506,13 @@ fn byte_index(s: &str, chars: usize) -> usize {
     }
 
     // handlers named in the editor
-    const stubs = [...this.stubs];
+    const stubs = [...stubSet];
     if (stubs.length) {
       out.line('// Handlers named in the editor. Fill them in; they run on their own thread.');
       stubs.forEach((m) => out.line(`fn ${m}(_event: &Event) { /* TODO */ }`));
       out.line();
       out.line('fn register_handlers(ui: &Ui) {').indent();
-      this.regs.forEach((r) => out.line(r));
+      regs.forEach((r) => out.line(r));
       out.dedent().line('}').line();
     }
 
@@ -2411,7 +2668,7 @@ fn table_width(cols: &[String], rows: &[Vec<String>], border: u16) -> u16 {
 }`
       );
     }
-    if (this.selects.length) {
+    if (selects.length) {
       helpers.push(`/// The list of a select: under the field, or above it when there is no room below.
 fn dropdown_area(field: Rect, count: usize, widest: usize, bounds: Rect) -> Rect {
     let width = (widest as u16 + 4).max(field.width).min(bounds.width);
@@ -2456,12 +2713,12 @@ fn clamp_rect(parent: Rect, x: u16, y: u16, w: u16, h: u16) -> Rect {
     }
     body += '\n' + helpers.join('\n\n') + '\n';
 
-    return this.header() + this.imports(stripLiterals(body), stubs.length > 0) + '\n' + body;
+    return Gen.header(gens, strategies) + Gen.imports(stripLiterals(body)) + '\n' + body;
   }
 
-  private header(): string {
+  private static header(gens: Gen[], strategies: string[]): string {
     const lines = [
-      `// ${this.screenIdent}: generated by TUI Studio (Ratatui, Rust).`,
+      `// ${gens.map((g) => g.screen.ident).join(', ')}: generated by TUI Studio (Ratatui, Rust).`,
       '//',
       '// Run:   cargo run        (Rust 1.74+; src/main.rs, src/ui.rs and src/ui_runtime.rs)',
       '// Keys:  Tab / Shift+Tab move the focus, arrows move inside lists, tabs and selects,',
@@ -2474,14 +2731,14 @@ fn clamp_rect(parent: Rect, x: u16, y: u16, w: u16, h: u16) -> Rect {
       '//   native    flex rows/columns and grids use ratatui `Layout` constraints',
       "//   snapshot  wrapping and absolute containers place children at the editor's positions",
       '//   overlay   modals are drawn last with `Clear`',
-      ...this.strategies.map((s) => `//   ${s}`),
+      ...strategies.map((s) => `//   ${s}`),
       '',
       '',
     ];
     return lines.join('\n');
   }
 
-  private imports(code: string, handlers: boolean): string {
+  private static imports(code: string): string {
     const uses = (names: string[]) =>
       names.filter((n) => new RegExp(`(?<!::)\\b${n}\\b`).test(code));
     const groups: [string, string[], boolean][] = [
@@ -2550,7 +2807,6 @@ fn clamp_rect(parent: Rect, x: u16, y: u16, w: u16, h: u16) -> Rect {
       );
     }
     lines.push('use std::io;', 'use std::time::Duration;');
-    void handlers;
     return lines.join('\n') + '\n';
   }
 }
@@ -2585,15 +2841,16 @@ export const ratatuiAdapter: ExportAdapter = {
   language: 'rs',
   verification: 'run',
   percentSizes: 'fixed',
-  multiScreen: false,
+  multiScreen: true,
   navBodies: true,
   generate: ({ ir }) => {
     const screen = ir.start;
-    const gen = new Gen(screen.ident, screen.root, screen.modals);
-    gen.useApi(buildApiModel(ir).handles);
-    const main = gen.build();
-    const ui = gen.buildFacade();
-    const api = gen.buildApi();
+    const shared = buildShared(ir, buildApiModel(ir).handles);
+    const gens = ir.screens.map((sc) => new Gen(sc, shared));
+    gens.forEach((g) => g.buildScreen());
+    const main = Gen.buildMain(gens, shared);
+    const ui = Gen.buildFacade(gens, shared);
+    const api = Gen.buildApi(shared);
     const cargo = `[package]
 name = "${crateName(screen.ident)}"
 version = "0.1.0"
