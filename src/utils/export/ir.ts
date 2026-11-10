@@ -208,6 +208,33 @@ export function walkIR(node: IRNode): IRNode[] {
   return out;
 }
 
+function irRoot(n: IRNode): IRNode {
+  let r = n;
+  while (r.parent) r = r.parent;
+  return r;
+}
+
+function findNode(n: IRNode, id: string): IRNode | undefined {
+  if (n.id === id) return n;
+  for (const c of n.children) {
+    const f = findNode(c, id);
+    if (f) return f;
+  }
+  return undefined;
+}
+
+/** The tab/menu/list a body belongs to, when that element is part of the exported UI. */
+export function navOf(n: IRNode): IRNode | undefined {
+  if (!n.showWhen) return undefined;
+  const nav = findNode(irRoot(n), n.showWhen.nav);
+  return nav && (nav.visible || nav.latent) ? nav : undefined;
+}
+
+/** Children that are part of the UI: shown now, or bodies that appear when their item is selected. */
+export function liveChildren(node: IRNode): IRNode[] {
+  return node.children.filter((c) => c.visible || (c.latent && (!c.showWhen || !!navOf(c))));
+}
+
 /** Children that are initially shown. */
 export function visibleChildren(node: IRNode): IRNode[] {
   return node.children.filter((c) => c.visible);

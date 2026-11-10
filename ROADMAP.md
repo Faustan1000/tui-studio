@@ -13,7 +13,7 @@ real framework in this repository's tests (see `docs/EXPORT_ADAPTERS.md`).
 | OpenTUI (React)    | **run**  | native            | yes         | **yes**     | first   | **yes** (type-checked) |
 | Blessed (Node.js)  | **run**  | snapshot          | yes         | **yes**     | first   | **yes**                |
 | Bubble Tea (Go)    | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
-| tview (Go)         | **run**  | native + snapshot | yes         | **yes**     | first   | no                     |
+| tview (Go)         | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
 | Ratatui (Rust)     | **run**  | native + snapshot | yes         | **yes**     | first   | no                     |
 | HTML / ANSI / text | -        | editor renderer   | -           | -           | active  | -                      |
 
@@ -41,9 +41,9 @@ OpenTUI's `import.meta.main` entry.
 
 - **Screens and screen links** in all frameworks except Textual (`opensScreen`, menu/list item
   links are ignored or left as a comment; `ui.<screen>.show()` does not exist there).
-- **Tab and menu bodies that switch at run time** in tview and Ratatui; today
+- **Tab and menu bodies that switch at run time** in Ratatui; today
   only the initially active body is exported and components with a code name inside an inactive body
-  get no handle. Textual, Ink, Blessed and Bubble Tea switch (checked against the real library); OpenTUI switches too but
+  get no handle. Textual, Ink, Blessed, Bubble Tea and tview switch (checked against the real library); OpenTUI switches too but
   is only type-checked here (no Bun).
 - **Real terminal runs** in CI (pty), not only headless drivers.
 - **CI** (GitHub Actions): `npm test` with Node, Bun, Go, Rust and Python + Textual installed so the

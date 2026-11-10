@@ -91,10 +91,7 @@ suite('bubbletea program API (real Go)', () => {
 suite('bubbletea tab/menu bodies (real Go)', () => {
   it('draws the body of the selected tab and switches with the property', () => {
     const nav = readFileSync(join(__dirname, 'apitests', 'bubbletea', 'nav_test.go'), 'utf8');
-    const dir = prepare([
-      ...gen(multiScreen()[0]),
-      { path: 'nav_test.go', content: nav },
-    ]);
+    const dir = prepare([...gen(multiScreen()[0]), { path: 'nav_test.go', content: nav }]);
     const test = runGo(['test', '-count=1', '-run', 'TestNavBodies', '-v', './...'], dir);
     expect(test.ok, test.output).toBe(true);
     expect(test.output).toMatch(/--- PASS: TestNavBodies/);

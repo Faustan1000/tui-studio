@@ -24,7 +24,7 @@
 //
 // Limitations: tview.Borders is global, so the most common border kind is used everywhere;
 // per-side borders and text styles outside TextView-based widgets are not representable; the
-// editor's tab bodies are not part of the tabs widget (they are siblings), so the tab bar only
+// editor's tab bodies are not part of the tabs widget (they are siblings, shown or removed from their Flex by the selected tab), so the tab bar only
 // highlights the selected tab and calls the user's handler.
 
 import type { ExportAdapter, ExportFile } from '../adapter';
@@ -38,6 +38,8 @@ import {
   progressText,
   recase,
   treeLines,
+  liveChildren,
+  navOf,
   visibleChildren,
   walkIR,
 } from '../ir';
@@ -309,6 +311,8 @@ interface FocusEntry {
   v: string;
   tag: string;
   anc: string[];
+  /** Go condition, true while a body this control is in is not shown. */
+  off?: string;
 }
 
 interface ModalInfo {
@@ -330,7 +334,7 @@ const EVENT_OF_KEY: Record<string, string> = {
 };
 
 const focusLiteral = (f: FocusEntry) =>
-  `{p: ${f.v}, tag: ${goStr(f.tag)}, anc: []string{${f.anc.map((a) => goStr(a)).join(', ')}}}`;
+  `{p: ${f.v}, tag: ${goStr(f.tag)}, anc: []string{${f.anc.map((a) => goStr(a)).join(', ')}}${f.off ? `, off: func() bool { return ${f.off} }` : ''}}`;
 
 class TviewGen {
   /** Body of `newTviewUi`. */
@@ -387,6 +391,45 @@ class TviewGen {
   /** Has a code name and so a handle in the program API. */
   private isApi(node: IRNode): boolean {
     return !!node.tag && node !== this.screen.root;
+  }
+
+  private navVars = new Map<IRNode, string>();
+
+  /** Whether any component is a body of this tab/menu/list. */
+  private hasBodies(nav: IRNode): boolean {
+    const walk = (n: IRNode): boolean => n.showWhen?.nav === nav.id || n.children.some(walk);
+    return walk(this.screen.root);
+  }
+
+  /** Go expression for the selected item of a tab/menu/list that has bodies. */
+  private navSel(nav: IRNode): string {
+    const prop = nav.type === 'Tabs' ? 'active_tab' : 'selected';
+    if (this.isApi(nav)) return `core.Comp(${goStr(nav.tag)}).Int(${goStr(prop)})`;
+    let name = this.navVars.get(nav);
+    if (!name) {
+      name = this.claim(`${this.varFor(nav)}Sel`);
+      this.navVars.set(nav, name);
+      const start = Math.max(0, Math.min(nav.selected, Math.max(0, nav.items.length - 1)));
+      this.w.line(`${name} := ${start}`);
+    }
+    return name;
+  }
+
+  /** Go condition that is true while a body is NOT shown (its item is not selected), or null. */
+  private bodyOff(k: IRNode): string | null {
+    const nav = navOf(k);
+    if (!nav || !k.showWhen) return null;
+    return `${this.navSel(nav)} != ${k.showWhen.item}`;
+  }
+
+  /** The same for a node and the bodies it is inside of. */
+  private anyOff(node: IRNode): string | null {
+    const conds: string[] = [];
+    for (let n: IRNode | null = node; n; n = n.parent) {
+      const c = this.bodyOff(n);
+      if (c) conds.push(c);
+    }
+    return conds.length ? conds.join(' || ') : null;
   }
 
   /** `vC := core.Comp("tag")`, declared on first use. */
@@ -717,12 +760,17 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
       const placed = this.place(kid);
       const raw = this.decorate(kid, placed);
       let expr = raw;
-      if (wrapHideable && this.isApi(kid)) {
+      const body = this.bodyOff(kid);
+      if (wrapHideable && (this.isApi(kid) || body)) {
         const host = this.claim(`${raw}Host`);
         const hidden = this.cache(host, 'Hidden', 'false');
         this.w.line(`${host} := tview.NewPages().AddPage("c", ${raw}, true, true)`);
+        const off = [
+          ...(this.isApi(kid) ? [`core.Hidden(${goStr(kid.tag)})`] : []),
+          ...(body ? [body] : []),
+        ];
         this.sync([
-          `if h := core.Hidden(${goStr(kid.tag)}); h != ${hidden} {`,
+          `if h := ${off.join(' || ')}; h != ${hidden} {`,
           `\t${hidden} = h`,
           '\tif h {',
           `\t\t${host}.HidePage("c")`,
@@ -762,7 +810,9 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
       this.w.line(`screen.SetContent(x+width-1, y, '▼', nil, ${this.styleOf(node)})`);
       this.w.dedent().line('}');
       // The open list is a bordered box under the field, like in the other exports.
-      this.w.line(`dropdownPopup(screen, ${v}, ${this.styleOf(node)}, ${this.styleOf(node, '.Reverse(true)')})`);
+      this.w.line(
+        `dropdownPopup(screen, ${v}, ${this.styleOf(node)}, ${this.styleOf(node, '.Reverse(true)')})`
+      );
       this.w.dedent().line('}');
       this.w.line(`shiftPopupMouse(${v})`);
     }
@@ -811,7 +861,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
   }
 
   private container(node: IRNode): string {
-    const kids = visibleChildren(node).filter((k) => {
+    const kids = liveChildren(node).filter((k) => {
       if (k.type === 'Modal') {
         this.modalQueue.push(k);
         return false;
@@ -866,7 +916,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
     this.boxStyle(node, v);
     const exprs = this.placeKids(kids);
     const items = kids.map((k, i) => this.item(k, exprs[i], dir, node.layout.align));
-    if (!kids.some((k) => this.isApi(k))) {
+    if (!kids.some((k) => this.isApi(k) || this.bodyOff(k))) {
       this.addItems(v, this.justify(items, node));
       return v;
     }
@@ -876,8 +926,9 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
     this.w.line(`${slots} := []slot{`).indent();
     kids.forEach((k, i) => {
       const it = items[i];
+      const off = this.bodyOff(k);
       this.w.line(
-        `{p: ${it.expr}, tag: ${goStr(this.isApi(k) ? k.tag : '')}, fixed: ${it.fixed}, prop: ${it.prop}},`
+        `{p: ${it.expr}, tag: ${goStr(this.isApi(k) ? k.tag : '')}, fixed: ${it.fixed}, prop: ${it.prop}${off ? `, off: func() bool { return ${off} }` : ''}},`
       );
     });
     this.w.dedent().line('}');
@@ -886,8 +937,13 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
     );
     this.w.line(`${fill}()`);
     const tags = kids.filter((k) => this.isApi(k)).map((k) => goStr(k.tag));
+    const sels = kids.flatMap((k) => {
+      const nav = navOf(k);
+      return nav ? [this.navSel(nav)] : [];
+    });
+    const key = `hiddenKey(core, []string{${tags.join(', ')}})${sels.map((e) => ` + fmt.Sprint(${e})`).join('')}`;
     this.w.line(
-      `t.dyn = append(t.dyn, dynLayout{tags: []string{${tags.join(', ')}}, fill: ${fill}})`
+      `t.dyn = append(t.dyn, dynLayout{key: func() string { return ${key} }, fill: ${fill}})`
     );
     return v;
   }
@@ -991,7 +1047,11 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
     const h =
       typeof node.height === 'number'
         ? node.height
-        : Math.max(guess.h + (this.isBox(node) ? 0 : own), ownHeight ? 0 : (node.rel?.height ?? 0), 1);
+        : Math.max(
+            guess.h + (this.isBox(node) ? 0 : own),
+            ownHeight ? 0 : (node.rel?.height ?? 0),
+            1
+          );
     const out = { w, h };
     this.sizes.set(node, out);
     return out;
@@ -1004,7 +1064,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
   }
 
   private liveKids(node: IRNode): IRNode[] {
-    return visibleChildren(node).filter((k) => k.type !== 'Modal');
+    return liveChildren(node).filter((k) => k.type !== 'Modal');
   }
 
   private boxSize(node: IRNode): { w: number; h: number } {
@@ -1642,6 +1702,15 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
         }
         if (node.selected > 0 && node.selected < node.items.length)
           w.line(`${v}.SetCurrentItem(${node.selected})`);
+        if (!api && this.hasBodies(node)) {
+          this.callback(
+            v,
+            'SetChangedFunc',
+            'index int, mainText string, secondaryText string, shortcut rune',
+            [`${this.navSel(node)} = index`, 't.Refresh()'],
+            false
+          );
+        }
         gate();
         if (api) {
           this.callback(
@@ -1650,6 +1719,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
             'index int, mainText string, secondaryText string, shortcut rune',
             [
               `${c}.UserSet("selected", index)`,
+              ...(this.hasBodies(node) ? ['t.Refresh()'] : []),
               ...(node.type === 'List'
                 ? [
                     'label := mainText',
@@ -1666,7 +1736,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
             v,
             'SetChangedFunc',
             'index int, mainText string, secondaryText string, shortcut rune',
-            [`${c}.UserSet("selected", index)`],
+            [`${c}.UserSet("selected", index)`, ...(this.hasBodies(node) ? ['t.Refresh()'] : [])],
             true
           );
           const sel = this.cache(v, 'Selected', String(node.selected));
@@ -1714,6 +1784,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
         v,
         tag: api ? node.tag! : '',
         anc: [...this.ancTags].filter((a) => a),
+        off: this.anyOff(node) ?? undefined,
       });
     }
     return v;
@@ -1782,8 +1853,11 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
     const start = Math.max(0, Math.min(node.selected, Math.max(0, items.length - 1)));
     const fg = node.style.fg ? color(node.style.fg) : 'tcell.ColorDefault';
     w.line(`${v} := newTabBar([]string{${items.join(', ')}}, ${start}, ${fg})`);
+    const bodies = this.hasBodies(node);
+    const follow = bodies ? [...(c ? [] : [`${this.navSel(node)} = index`]), 't.Refresh()'] : [];
     const change = [
       ...(c ? [`${c}.UserSet("active_tab", index)`] : []),
+      ...follow,
       ...this.fire(node, 'change', 'index'),
     ];
     if (c) w.line(`gate(${c}, ${v})`);
@@ -1824,6 +1898,9 @@ const CONTROL_GO = `currentFocus := func() []focusItem {
 	return mainFocus
 }
 usable := func(f focusItem) bool {
+	if f.off != nil && f.off() {
+		return false
+	}
 	if f.tag == "" {
 		return core.Shown(f.anc...)
 	}
@@ -1925,11 +2002,12 @@ type slot struct {
 	tag   string
 	fixed int
 	prop  int
+	off   func() bool // a body whose item is not selected
 }
 
 // dynLayout is a Flex that is refilled when one of its code-named children is hidden or shown.
 type dynLayout struct {
-	tags []string
+	key  func() string
 	last string
 	fill func()
 }
@@ -1940,6 +2018,7 @@ type focusItem struct {
 	p   tview.Primitive
 	tag string
 	anc []string
+	off func() bool // inside a body whose item is not selected
 }
 
 func hiddenKey(core *Core, tags []string) string {
@@ -1960,7 +2039,7 @@ func fillFlex(core *Core, f *tview.Flex, slots []slot, gap int, justify string) 
 	f.Clear()
 	var shown []slot
 	for _, s := range slots {
-		if s.tag == "" || !core.Hidden(s.tag) {
+		if (s.tag == "" || !core.Hidden(s.tag)) && (s.off == nil || !s.off()) {
 			shown = append(shown, s)
 		}
 	}
@@ -2533,7 +2612,7 @@ func (t *tviewUi) Stop() {
 func (t *tviewUi) relayout() {
 	for i := range t.dyn {
 		d := &t.dyn[i]
-		if key := hiddenKey(t.core, d.tags); key != d.last {
+		if key := d.key(); key != d.last {
 			d.last = key
 			d.fill()
 		}
@@ -2722,7 +2801,9 @@ function generateTview(ir: IRProject): ExportFile[] {
   const screen = ir.start;
   const own = new Set(walkIR(screen.root));
   // Components that are not shown at startup (hidden, inactive tab bodies) are not exported, so they have no handle.
-  const handles = buildApiModel(ir).handles.filter((h) => own.has(h.node) && h.node.visible);
+  const handles = buildApiModel(ir).handles.filter(
+    (h) => own.has(h.node) && (h.node.visible || h.node.latent)
+  );
   const gen = new TviewGen(screen);
   const body = gen.generate();
 
@@ -2856,6 +2937,6 @@ export const tviewAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'fixed',
   multiScreen: false,
-  navBodies: false,
+  navBodies: true,
   generate: ({ ir }) => generateTview(ir),
 };

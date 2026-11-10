@@ -27,6 +27,8 @@ import { CodeWriter, goStr } from '../lang';
 import {
   itemText,
   inlineText,
+  liveChildren,
+  navOf,
   recase,
   treeLines,
   type IRItem,
@@ -287,33 +289,6 @@ interface NavGroup {
   start: number;
   ends: Map<number, number>;
   active?: number;
-}
-
-function irRoot(n: IRNode): IRNode {
-  let r = n;
-  while (r.parent) r = r.parent;
-  return r;
-}
-
-function findNode(n: IRNode, id: string): IRNode | undefined {
-  if (n.id === id) return n;
-  for (const c of n.children) {
-    const f = findNode(c, id);
-    if (f) return f;
-  }
-  return undefined;
-}
-
-/** The tab/menu/list a body belongs to, when that element is part of the generated UI. */
-function navOf(n: IRNode): IRNode | undefined {
-  if (!n.showWhen) return undefined;
-  const nav = findNode(irRoot(n), n.showWhen.nav);
-  return nav && (nav.visible || nav.latent) ? nav : undefined;
-}
-
-/** Children that are part of the UI: shown now, or bodies that appear when their item is selected. */
-function liveChildren(n: IRNode): IRNode[] {
-  return n.children.filter((c) => c.visible || (c.latent && (!c.showWhen || !!navOf(c))));
 }
 
 /** Go condition for a body to be shown (its item is selected); none for other nodes. */

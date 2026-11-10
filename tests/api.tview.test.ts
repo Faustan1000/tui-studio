@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { exportToFiles } from '../src/utils/export/codeExporter';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents, layouts } from './fixtures/designs';
+import { allComponents, layouts, multiScreen } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 
 const GO = process.env.TUISTUDIO_GO || 'go';
@@ -122,4 +122,42 @@ describe.skipIf(!hasGo)('tview program API against real tview', () => {
       }, 300_000);
     }
   });
+});
+
+describe.skipIf(!hasGo)('tview tab/menu bodies against real tview', () => {
+  const GO_TESTS = resolve(__dirname, 'apitests', 'tview');
+
+  it('shows the body of the selected tab (tabs with a code name)', () => {
+    const dir = generate('nav_bodies', multiScreen()[0]);
+    for (const n of ['helpers_test.go', 'nav_test.go'])
+      copyFileSync(join(GO_TESTS, n), join(dir, n));
+    const r = run(
+      ['test', '-count=1', '-timeout', '120s', '-run', 'TestNavBodies', '-v', './...'],
+      dir
+    );
+    const out = `${r.stdout}\n${r.stderr}`;
+    expect(r.status, out).toBe(0);
+    expect(out).toMatch(/--- PASS: TestNavBodies/);
+  }, 300_000);
+
+  it('switches bodies of tabs without a code name', () => {
+    const root = multiScreen()[0];
+    const strip = (n: ComponentNode) => {
+      if (n.id === 'tabs1' || n.id === 'menu1') delete n.tag;
+      n.children.forEach(strip);
+    };
+    strip(root);
+    const dir = generate('nav_untagged', root);
+    for (const n of ['helpers_test.go', 'nav_untagged_test.go']) {
+      copyFileSync(join(GO_TESTS, n), join(dir, n));
+    }
+    const r = run(
+      ['test', '-count=1', '-timeout', '120s', '-run', 'TestNavBodiesUntagged', '-v', './...'],
+      dir
+    );
+    const out = `${r.stdout}
+${r.stderr}`;
+    expect(r.status, out).toBe(0);
+    expect(out).toMatch(/--- PASS: TestNavBodiesUntagged/);
+  }, 300_000);
 });
