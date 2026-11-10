@@ -32,10 +32,14 @@ if (!hasGo) console.warn('api.tview.test: Go is not installed, skipping (set TUI
 const ROOT = mkdtempSync(join(tmpdir(), 'tuistudio-tview-'));
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
-function generate(name: string, root: ComponentNode): string {
+function generate(
+  name: string,
+  root: ComponentNode,
+  screens?: { id: string; root: ComponentNode }[]
+): string {
   const dir = join(ROOT, name);
   rmSync(dir, { recursive: true, force: true });
-  for (const f of exportToFiles(root, 'tview')) {
+  for (const f of exportToFiles(root, 'tview', screens)) {
     const target = join(dir, f.path);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, f.content, 'utf8');
@@ -159,5 +163,25 @@ describe.skipIf(!hasGo)('tview tab/menu bodies against real tview', () => {
 ${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).toMatch(/--- PASS: TestNavBodiesUntagged/);
+  }, 300_000);
+});
+
+describe.skipIf(!hasGo)('tview screens against real tview', () => {
+  const GO_TESTS = resolve(__dirname, 'apitests', 'tview');
+
+  it('shows one screen at a time, switches with Show() and through a button link', () => {
+    const screens = multiScreen().map((root) => ({ id: root.tag ?? 'about', root }));
+    const dir = generate('screens', screens[0].root, screens);
+    for (const n of ['helpers_test.go', 'screens_test.go'])
+      copyFileSync(join(GO_TESTS, n), join(dir, n));
+    const vet = run(['vet', './...'], dir);
+    expect(vet.status, `go vet\n${vet.stdout}\n${vet.stderr}`).toBe(0);
+    const r = run(
+      ['test', '-count=1', '-timeout', '120s', '-run', 'TestScreens', '-v', './...'],
+      dir
+    );
+    const out = `${r.stdout}\n${r.stderr}`;
+    expect(r.status, out).toBe(0);
+    expect(out).toMatch(/--- PASS: TestScreens/);
   }, 300_000);
 });
