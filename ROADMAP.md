@@ -9,7 +9,7 @@ real framework in this repository's tests (see `docs/EXPORT_ADAPTERS.md`).
 | Framework          | Verified | Layout            | Interactive | Program API | Screens | Tab/menu bodies switch |
 | ------------------ | -------- | ----------------- | ----------- | ----------- | ------- | ---------------------- |
 | Textual (Python)   | **run**  | native + snapshot | yes         | **yes**     | **yes** | **yes**                |
-| Ink (React)        | **run**  | native            | yes         | **yes**     | first   | **yes**                |
+| Ink (React)        | **run**  | native            | yes         | **yes**     | **yes** | **yes**                |
 | OpenTUI (React)    | **run**  | native            | yes         | **yes**     | first   | **yes** (type-checked) |
 | Blessed (Node.js)  | **run**  | snapshot          | yes         | **yes**     | first   | **yes**                |
 | Bubble Tea (Go)    | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |

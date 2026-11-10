@@ -39,6 +39,7 @@ import {
   recase,
   treeLines,
   type IRNode,
+  type IRProject,
   type IRScreen,
 } from '../ir';
 import { CodeWriter, jsStr } from '../lang';
@@ -169,6 +170,8 @@ interface Ctx {
   navSel: Map<string, string>;
   /** State of navigation elements without a handle, allocated before the bodies are emitted. */
   navStates: Map<string, { state: string; setter: string }>;
+  /** Screen id -> key used by `core.showScreen`. */
+  screenKeys: Map<string, string>;
   uses: {
     focus: boolean;
     field: boolean;
@@ -325,6 +328,24 @@ function handlerName(ctx: Ctx, raw: string): string | null {
   name = ctx.names.take(base);
   ctx.handlers.set(raw, name);
   return name;
+}
+
+/** Statement that opens the screen a button links to (none when it links nowhere). */
+function openScreen(ctx: Ctx, id: string | undefined): string[] {
+  const key = id ? ctx.screenKeys.get(id) : undefined;
+  return key ? [`core.showScreen(${jsStr(key)});`] : [];
+}
+
+/** Statements that open the screen of the chosen menu/list item. */
+function itemLinks(ctx: Ctx, n: IRNode, index: string): string[] {
+  const targets = n.items.flatMap((item, i) => {
+    const key = item.screen ? ctx.screenKeys.get(item.screen) : undefined;
+    return key ? [`${i}: ${jsStr(key)}`] : [];
+  });
+  if (!targets.length) return [];
+  return [
+    `const target = ({ ${targets.join(', ')} } as Record<number, string>)[${index}]; if (target) core.showScreen(target);`,
+  ];
 }
 
 /** Calls of the node's event handlers (keys selected by `only`). */
@@ -548,7 +569,13 @@ function emitLeaf(n: IRNode, w: CodeWriter, ctx: Ctx): void {
     }
     case 'Button': {
       ctx.uses.focus = true;
-      const press = arrow('', guarded(h ? `core.fire(${T}, "click")` : null, calls(ctx, n)));
+      const press = arrow(
+        '',
+        guarded(h ? `core.fire(${T}, "click")` : null, [
+          ...calls(ctx, n),
+          ...openScreen(ctx, n.opensScreen),
+        ])
+      );
       const label = h
         ? `${jsStr(` ${n.iconLeft ? n.iconLeft + ' ' : ''}`)} + ${rd('str', 'label')} + ${jsStr(`${n.iconRight ? ' ' + n.iconRight : ''} `)}`
         : jsStr(` ${inlineText(n)} `);
@@ -732,7 +759,13 @@ function emitLeaf(n: IRNode, w: CodeWriter, ctx: Ctx): void {
         activate =
           n.type === 'Tabs'
             ? null
-            : arrow('', guarded(`core.fire(${T}, "select", ${selected})`, calls(ctx, n)));
+            : arrow(
+                '',
+                guarded(`core.fire(${T}, "select", ${selected})`, [
+                  ...calls(ctx, n),
+                  ...itemLinks(ctx, n, selected),
+                ])
+              );
       } else {
         const pre = ctx.navStates.get(n.id);
         const s = pre ?? stateName(ctx, n, n.type === 'Tabs' ? 'Tab' : 'Selected');
@@ -741,7 +774,7 @@ function emitLeaf(n: IRNode, w: CodeWriter, ctx: Ctx): void {
         selected = s.state;
         select =
           n.type === 'Tabs' ? arrow('i: number', [`${s.setter}(i);`, ...calls(ctx, n)]) : s.setter;
-        const c = calls(ctx, n);
+        const c = [...calls(ctx, n), ...itemLinks(ctx, n, h ? 'i' : selected)];
         activate =
           n.type === 'Tabs'
             ? null
@@ -1224,7 +1257,7 @@ function registerNavBodies(root: IRNode, ctx: Ctx, allHandles: ApiHandleModel[])
       all.some((b) => b.showWhen?.nav === n.id)
   );
   const handleOf = new Map(allHandles.map((h) => [h.node.id, h]));
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const nav of navs) {
       if (ctx.navSel.has(nav.id) || !(nav.visible || ctx.navSel.has(nav.showWhen?.nav ?? ''))) {
@@ -1248,16 +1281,30 @@ function registerNavBodies(root: IRNode, ctx: Ctx, allHandles: ApiHandleModel[])
   }
 }
 
-function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
+interface Shared {
+  names: Names;
+  handlers: Map<string, string>;
+  screenKeys: Map<string, string>;
+}
+
+interface ScreenPart {
+  screen: IRScreen;
+  ctx: Ctx;
+  handles: ApiHandleModel[];
+  jsx: CodeWriter;
+}
+
+function buildPart(screen: IRScreen, allHandles: ApiHandleModel[], shared: Shared): ScreenPart {
   const ctx: Ctx = {
-    names: new Names(),
+    names: shared.names,
     states: [],
-    handlers: new Map(),
+    handlers: shared.handlers,
     radioGroups: new Map(),
     modalStates: [],
     handles: new Map(allHandles.map((h) => [h.node.id, h])),
     navSel: new Map(),
     navStates: new Map(),
+    screenKeys: shared.screenKeys,
     uses: {
       focus: false,
       field: false,
@@ -1271,111 +1318,22 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
   };
   registerNavBodies(screen.root, ctx, allHandles);
   // Components that are hidden at startup and cannot be shown (no code name) have no handle.
-  const handles = allHandles.filter((h) => shown(h.node, ctx));
+  const handles = allHandles.filter((h) => inScreen(h.node, screen.root) && shown(h.node, ctx));
   ctx.handles = new Map(handles.map((h) => [h.node.id, h]));
   const jsx = new CodeWriter('  ', 2);
   emit(screen.root, jsx, ctx, screen);
+  return { screen, ctx, handles, jsx };
+}
+
+function inScreen(node: IRNode, root: IRNode): boolean {
+  for (let n: IRNode | null = node; n; n = n.parent) if (n === root) return true;
+  return false;
+}
+
+function emitComponent(out: CodeWriter, part: ScreenPart, name: string): void {
+  const { screen, ctx, jsx } = part;
   const u = ctx.uses;
-
-  const out = new CodeWriter();
-  out.line('// Generated by TUI Studio (Ink).');
-  out.line('//');
-  out.line(
-    '// Run:   npm install && npm start   (Node 18+; Tab moves the focus, q or Ctrl+C quits)'
-  );
-  out.line(
-    '// Layout: native flexbox (Yoga); absolute containers use position="absolute" + margins.'
-  );
-  out.line(
-    '// Edit the handler functions below; they are called when the matching widget is used.'
-  );
-  out.line('//');
-  out.line('// Program API: use this UI from your own code (see ui-runtime.ts):');
-  out.line('//   import { Ui } from "./app";');
-  out.line('//   const ui = new Ui();');
-  out.line('//   await ui.start();                 // the UI runs next to your program');
-  out.line(
-    '//   ui.log.info("hello");             // Ctrl+L shows the log, ui.report(err) opens a dialog'
-  );
-  out.line('//   await ui.wait();');
-  out.line();
-  out.line(
-    'import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";'
-  );
-  out.line('import type { ReactElement, ReactNode } from "react";');
-  out.line(
-    'import { Box, Text, measureElement, useInput, useFocus, useStdin, useStdout } from "ink";'
-  );
-  out.line('import type { BoxProps, DOMElement, TextProps } from "ink";');
-  if (u.dropdown) out.line('import SelectInput from "ink-select-input";');
-  if (u.spinner) out.line('import Spinner from "ink-spinner";');
-  out.line('import { pathToFileURL } from "node:url";');
-  const classes = [
-    ...new Set(handles.map((h) => HANDLE_CLASS[h.type] ?? `${h.type}Handle`)),
-  ].sort();
-  out.line(
-    `import { UiBase, rectOf, ${classes.join(', ')}${classes.length ? ', ' : ''}type ErrorEntry, type HandleSpec, type UiCore, type LogEntry, type UiOptions } from "./ui-runtime";`
-  );
-  out.line('export * from "./ui-runtime";');
-  if (handles.length) out.line('import { Api } from "./api";');
-  out.line();
-  if (ctx.handlers.size) {
-    for (const fn of ctx.handlers.values()) out.line(`function ${fn}() { /* TODO */ }`);
-    out.line();
-  }
-  out.block(CONTEXT).line();
-  if (u.focus) out.block(FOCUSABLE).line();
-  if (u.field) out.block(FIELD).line();
-  if (u.dropdown) out.block(DROPDOWN).line();
-  if (u.choices) out.block(CHOICES).line();
-  if (u.bar) out.block(BAR).line();
-  if (u.table) out.block(TABLE).line();
-  out.block(CHROME).line();
-
-  // The facade: one typed handle per code name.
-  const memberNames = inkMembers(handles);
-  const named = handles.map((h) => [memberNames.get(h)!, h] as const);
-  out.line('const SPECS: HandleSpec[] = [').indent();
-  for (const h of handles) {
-    const props = h.properties
-      .map((p) => {
-        // A select shows its first option until the user picks one.
-        const initial =
-          h.type === 'Select' && p.name === 'value' && !p.initial
-            ? (h.node.options[0] ?? '')
-            : p.initial;
-        return `${p.name}: { type: ${jsStr(p.type)}, value: ${lit(initial)} }`;
-      })
-      .join(', ');
-    out.line(
-      `{ tag: ${jsStr(h.tag)}, type: ${jsStr(h.type)}, states: [${h.states.map(jsStr).join(', ')}], state: ${jsStr(h.initialState)}, props: { ${props} }${h.type === 'Modal' ? `, open: false` : ''} },`
-    );
-  }
-  out.dedent().line('];');
-  out.line();
-  out.line('/** The program API of this design: one handle per code name. */');
-  out.line('export class Ui extends UiBase {').indent();
-  for (const [name, h] of named) {
-    out.line(`readonly ${name}: ${HANDLE_CLASS[h.type] ?? `${h.type}Handle`};`);
-  }
-  if (handles.length)
-    out.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
-  out.line('constructor(options?: UiOptions) {').indent();
-  out.line('super(SPECS, options);');
-  for (const [name, h] of named) {
-    out.line(
-      `this.${name} = new ${HANDLE_CLASS[h.type] ?? `${h.type}Handle`}(this.core, ${jsStr(h.tag)});`
-    );
-  }
-  if (handles.length) out.line('this.api = new Api(this);');
-  out.dedent().line('}');
-  out.line('protected element(): ReactElement {').indent();
-  out.line('return <App ui={this} />;');
-  out.dedent().line('}');
-  out.dedent().line('}');
-  out.line();
-
-  out.line('export function App({ ui }: { ui: Ui }) {').indent();
+  out.line(`export function ${name}({ ui }: { ui: Ui }) {`).indent();
   out.line('const core = ui.core;');
   out.line('useSyncExternalStore(core.subscribe, core.snapshot);');
   out.line('useEffect(() => ui.markReady(), [ui]);');
@@ -1432,6 +1390,168 @@ function generateApp(screen: IRScreen, allHandles: ApiHandleModel[]): string {
   out.line(');');
   out.dedent().line('}');
   out.line();
+}
+
+function generateApp(project: IRProject, allHandles: ApiHandleModel[]): string {
+  const shared: Shared = {
+    names: new Names(),
+    handlers: new Map(),
+    screenKeys: new Map(project.screens.map((sc) => [sc.id, sc.tag ?? sc.ident])),
+  };
+  const parts = project.screens.map((sc) => buildPart(sc, allHandles, shared));
+  const multi = parts.length > 1;
+  const handles = parts.flatMap((p) => p.handles);
+  const ctx = { handlers: shared.handlers };
+  const u = {
+    focus: false,
+    field: false,
+    dropdown: false,
+    choices: false,
+    spinner: false,
+    textProps: false,
+    bar: false,
+    table: false,
+  };
+  for (const p of parts) {
+    for (const k of Object.keys(u) as (keyof typeof u)[]) u[k] ||= p.ctx.uses[k];
+  }
+  const out = new CodeWriter();
+  out.line('// Generated by TUI Studio (Ink).');
+  out.line('//');
+  out.line(
+    '// Run:   npm install && npm start   (Node 18+; Tab moves the focus, q or Ctrl+C quits)'
+  );
+  out.line(
+    '// Layout: native flexbox (Yoga); absolute containers use position="absolute" + margins.'
+  );
+  out.line(
+    '// Edit the handler functions below; they are called when the matching widget is used.'
+  );
+  out.line('//');
+  out.line('// Program API: use this UI from your own code (see ui-runtime.ts):');
+  out.line('//   import { Ui } from "./app";');
+  out.line('//   const ui = new Ui();');
+  out.line('//   await ui.start();                 // the UI runs next to your program');
+  out.line(
+    '//   ui.log.info("hello");             // Ctrl+L shows the log, ui.report(err) opens a dialog'
+  );
+  out.line('//   await ui.wait();');
+  out.line();
+  out.line(
+    'import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";'
+  );
+  out.line('import type { ReactElement, ReactNode } from "react";');
+  out.line(
+    'import { Box, Text, measureElement, useInput, useFocus, useStdin, useStdout } from "ink";'
+  );
+  out.line('import type { BoxProps, DOMElement, TextProps } from "ink";');
+  if (u.dropdown) out.line('import SelectInput from "ink-select-input";');
+  if (u.spinner) out.line('import Spinner from "ink-spinner";');
+  out.line('import { pathToFileURL } from "node:url";');
+  const classes = [
+    ...new Set(handles.map((h) => HANDLE_CLASS[h.type] ?? `${h.type}Handle`)),
+  ].sort();
+  out.line(
+    `import { UiBase, rectOf, ${multi ? 'ScreenHandle, ' : ''}${classes.join(', ')}${classes.length ? ', ' : ''}type ErrorEntry, type HandleSpec, type UiCore, type LogEntry, type UiOptions } from "./ui-runtime";`
+  );
+  out.line('export * from "./ui-runtime";');
+  if (handles.length) out.line('import { Api } from "./api";');
+  out.line();
+  if (ctx.handlers.size) {
+    for (const fn of ctx.handlers.values()) out.line(`function ${fn}() { /* TODO */ }`);
+    out.line();
+  }
+  out.block(CONTEXT).line();
+  if (u.focus) out.block(FOCUSABLE).line();
+  if (u.field) out.block(FIELD).line();
+  if (u.dropdown) out.block(DROPDOWN).line();
+  if (u.choices) out.block(CHOICES).line();
+  if (u.bar) out.block(BAR).line();
+  if (u.table) out.block(TABLE).line();
+  out.block(CHROME).line();
+
+  // The facade: one typed handle per code name.
+  const memberNames = inkMembers(handles);
+  const named = handles.map((h) => [memberNames.get(h)!, h] as const);
+  out.line('const SPECS: HandleSpec[] = [').indent();
+  for (const h of handles) {
+    const props = h.properties
+      .map((p) => {
+        // A select shows its first option until the user picks one.
+        const initial =
+          h.type === 'Select' && p.name === 'value' && !p.initial
+            ? (h.node.options[0] ?? '')
+            : p.initial;
+        return `${p.name}: { type: ${jsStr(p.type)}, value: ${lit(initial)} }`;
+      })
+      .join(', ');
+    out.line(
+      `{ tag: ${jsStr(h.tag)}, type: ${jsStr(h.type)}, states: [${h.states.map(jsStr).join(', ')}], state: ${jsStr(h.initialState)}, props: { ${props} }${h.type === 'Modal' ? `, open: false` : ''} },`
+    );
+  }
+  out.dedent().line('];');
+  out.line();
+  out.line('/** The program API of this design: one handle per code name. */');
+  out.line('export class Ui extends UiBase {').indent();
+  for (const [name, h] of named) {
+    out.line(`readonly ${name}: ${HANDLE_CLASS[h.type] ?? `${h.type}Handle`};`);
+  }
+  // Screens with a code name: ui.<screen>.show() switches to them.
+  const screenMembers: [string, string][] = [];
+  if (multi) {
+    const taken = new Set(memberNames.values());
+    for (const p of parts) {
+      if (!p.screen.tag) continue;
+      let member = safeIdent(apiName(p.screen.tag, 'camel'), 'ts');
+      while (UI_BASE_MEMBERS.has(member) || taken.has(member)) member += '_';
+      taken.add(member);
+      screenMembers.push([member, shared.screenKeys.get(p.screen.id)!]);
+      out.line(`readonly ${member}: ScreenHandle;`);
+    }
+  }
+  if (handles.length)
+    out.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
+  out.line('constructor(options?: UiOptions) {').indent();
+  out.line('super(SPECS, options);');
+  if (multi) out.line(`this.core.screen = ${jsStr(shared.screenKeys.get(parts[0].screen.id)!)};`);
+  for (const [member, key] of screenMembers) {
+    out.line(`this.${member} = new ScreenHandle(this.core, ${jsStr(key)});`);
+  }
+  for (const [name, h] of named) {
+    out.line(
+      `this.${name} = new ${HANDLE_CLASS[h.type] ?? `${h.type}Handle`}(this.core, ${jsStr(h.tag)});`
+    );
+  }
+  if (handles.length) out.line('this.api = new Api(this);');
+  out.dedent().line('}');
+  out.line('protected element(): ReactElement {').indent();
+  out.line('return <App ui={this} />;');
+  out.dedent().line('}');
+  out.dedent().line('}');
+  out.line();
+
+  const names = new Map<IRScreen, string>();
+  for (const p of parts) {
+    const base = cap(recase(p.screen.ident, 'camel')) + 'Screen';
+    names.set(p.screen, multi ? shared.names.take(base) : 'App');
+  }
+  for (const p of parts) emitComponent(out, p, names.get(p.screen)!);
+  if (multi) {
+    out.line('/** Shows the screen that is current (`ui.<screen>.show()` switches). */');
+    out.line('export function App({ ui }: { ui: Ui }) {').indent();
+    out.line('const core = ui.core;');
+    out.line('useSyncExternalStore(core.subscribe, core.snapshot);');
+    out.line('switch (core.screen) {').indent();
+    for (const p of parts.slice(1)) {
+      out.line(`case ${jsStr(shared.screenKeys.get(p.screen.id)!)}:`).indent();
+      out.line(`return <${names.get(p.screen)} ui={ui} />;`).dedent();
+    }
+    out.line('default:').indent();
+    out.line(`return <${names.get(parts[0].screen)} ui={ui} />;`).dedent();
+    out.dedent().line('}');
+    out.dedent().line('}');
+    out.line();
+  }
   out.line('// Started directly (npm start): show the UI until it is closed.');
   out
     .line('if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {')
@@ -1509,11 +1629,11 @@ export const inkAdapter: ExportAdapter = {
   language: 'tsx',
   verification: 'run',
   percentSizes: 'native',
-  multiScreen: false,
+  multiScreen: true,
   navBodies: true,
   generate: ({ ir }): ExportFile[] => {
     const handles = buildApiModel(ir).handles;
-    const app = generateApp(ir.start, handles);
+    const app = generateApp(ir, handles);
     const names = inkMembers(handles);
     return [
       { path: 'src/app.tsx', content: app },

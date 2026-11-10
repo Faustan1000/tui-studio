@@ -83,6 +83,8 @@ export interface IRItem {
   expanded: boolean;
   /** Tabs: status dot. */
   status: boolean;
+  /** Menu/List: id of the screen this item opens. */
+  screen?: string;
   children: IRItem[];
 }
 
@@ -594,6 +596,7 @@ function toItem(raw: unknown): IRItem {
     hotkey: str(o.hotkey),
     expanded: o.expanded !== false,
     status: !!o.status,
+    screen: typeof o.screen === 'string' && o.screen ? o.screen : undefined,
     children: Array.isArray(o.children) ? o.children.map(toItem) : [],
   };
 }

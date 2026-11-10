@@ -107,6 +107,9 @@ export class UiCore {
   logOpen = false;
   ready = false;
   running = false;
+  /** Key of the screen that is shown (empty for a design with one screen). */
+  screen = "";
+  private screenCallbacks = new Map<string, (() => unknown)[]>();
 
   constructor(specs: HandleSpec[]) {
     for (const spec of specs) {
@@ -126,6 +129,30 @@ export class UiCore {
   };
 
   snapshot = (): number => this.version;
+
+  /** Switch to another screen (closes open dialogs, scrolls to the top). */
+  showScreen(key: string): void {
+    if (this.screen === key) return;
+    this.screen = key;
+    this.scroll = 0;
+    for (const entry of this.entries.values()) if (entry.open) entry.open = false;
+    this.changed();
+    for (const fn of this.screenCallbacks.get(key) ?? []) {
+      setImmediate(() => {
+        try {
+          Promise.resolve(fn()).catch((err) => this.report(err));
+        } catch (err) {
+          this.report(err);
+        }
+      });
+    }
+  }
+
+  onScreenShown(key: string, fn: () => unknown): void {
+    const list = this.screenCallbacks.get(key) ?? [];
+    list.push(fn);
+    this.screenCallbacks.set(key, list);
+  }
 
   private changed(): void {
     this.version++;
@@ -541,6 +568,15 @@ export class TabsHandle extends Handle {
   set activeTab(v: unknown) { this.set("active_tab", v); }
   onChange(fn: Handler): this { return this.on("change", fn); }
 }
+/** One screen of the UI: `ui.settings.show()` switches to it. */
+export class ScreenHandle {
+  constructor(private readonly core: UiCore, readonly key: string) {}
+  get isActive(): boolean { return this.core.screen === this.key; }
+  show(): void { this.core.showScreen(this.key); }
+  /** Called (not inside a render) every time this screen has been shown. */
+  onShow(fn: () => unknown): void { this.core.onScreenShown(this.key, fn); }
+}
+
 export class ModalHandle extends Handle {
   get title(): string { return this.core.str(this.tag, "title"); }
   set title(v: unknown) { this.set("title", v); }

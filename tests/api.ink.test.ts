@@ -26,10 +26,14 @@ if (!installed) {
   );
 }
 
-function generate(name: string, root: ComponentNode): string {
+function generate(
+  name: string,
+  root: ComponentNode,
+  screens?: { id: string; root: ComponentNode }[]
+): string {
   const dir = join(GENERATED, name);
   rmSync(dir, { recursive: true, force: true });
-  for (const f of exportToFiles(root, 'ink')) {
+  for (const f of exportToFiles(root, 'ink', screens)) {
     const target = join(dir, f.path);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, f.content, 'utf8');
@@ -294,4 +298,48 @@ describe.skipIf(!installed)('ink tab/menu bodies in real Ink', () => {
     expect(third).toContain('Dashboard content');
     expect(third).not.toContain('Agent content');
   });
+});
+
+describe.skipIf(!installed)('ink screens in real Ink', () => {
+  it('shows one screen at a time, switches with show() and through a button link', () => {
+    const screens = multiScreen().map((root) => ({ id: root.tag ?? 'about', root }));
+    const dir = generate('screens', screens[0].root, screens);
+    writeFileSync(
+      join(dir, 'screens.mjs'),
+      [
+        "import { render } from 'ink-testing-library';",
+        "import { Ui } from './src/app';",
+        'let app;',
+        'const ui = new Ui({ render: (el) => (app = render(el)) });',
+        'await ui.start();',
+        'const frame = () => app.lastFrame();',
+        'const tick = (ms = 150) => new Promise((r) => setTimeout(r, ms));',
+        'const first = frame();',
+        'ui.settings.show();',
+        'await tick();',
+        'const second = frame();',
+        'const active = ui.settings.isActive;',
+        // the Back button is the second control on the screen: Tab to it and press Enter
+        "app.stdin.write('\\t');",
+        'await tick();',
+        "app.stdin.write('\\t');",
+        'await tick();',
+        "app.stdin.write('\\r');",
+        'await tick();',
+        'const third = frame();',
+        "console.log('SCREENS ' + JSON.stringify({ first, second, third, active }));",
+        'process.exit(0);',
+      ].join('\n')
+    );
+    const r = node([TSX, 'screens.mjs'], dir);
+    const line = (r.stdout ?? '').split('\n').find((l) => l.startsWith('SCREENS '));
+    expect(line, `${r.stdout}\n${r.stderr}`).toBeTruthy();
+    const { first, second, third, active } = JSON.parse(line!.slice(8)) as Record<string, any>;
+    expect(first).toContain('Ready');
+    expect(first).not.toContain('Settings screen');
+    expect(second).toContain('Settings screen');
+    expect(second).not.toContain('Ready');
+    expect(active).toBe(true);
+    expect(third, `back button: ${third}`).toContain('Ready');
+  }, 120_000);
 });
