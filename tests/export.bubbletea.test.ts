@@ -781,7 +781,7 @@ describe('bubbletea adapter', () => {
     const out = files.map((f) => f.content).join('\n');
     expect(out).toContain('"Ready"');
     expect(out).not.toContain('Settings screen');
-    expect(out).not.toContain('Agent content');
+    expect(out).toContain('Agent content'); // tab bodies switch at run time
     expect(out).toContain('// This button opens another screen');
   });
 });

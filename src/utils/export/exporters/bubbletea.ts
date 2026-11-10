@@ -29,7 +29,6 @@ import {
   inlineText,
   recase,
   treeLines,
-  visibleChildren,
   type IRItem,
   type IRNode,
   type IRProject,
@@ -283,6 +282,55 @@ const VBOX = new WeakMap<IRNode, VBoxInfo>();
 
 const FILL_TYPES = new Set<string>(['Select', 'List', 'Menu', 'Tree', 'Tabs']);
 
+interface NavGroup {
+  nav: string;
+  start: number;
+  ends: Map<number, number>;
+  active?: number;
+}
+
+function irRoot(n: IRNode): IRNode {
+  let r = n;
+  while (r.parent) r = r.parent;
+  return r;
+}
+
+function findNode(n: IRNode, id: string): IRNode | undefined {
+  if (n.id === id) return n;
+  for (const c of n.children) {
+    const f = findNode(c, id);
+    if (f) return f;
+  }
+  return undefined;
+}
+
+/** The tab/menu/list a body belongs to, when that element is part of the generated UI. */
+function navOf(n: IRNode): IRNode | undefined {
+  if (!n.showWhen) return undefined;
+  const nav = findNode(irRoot(n), n.showWhen.nav);
+  return nav && (nav.visible || nav.latent) ? nav : undefined;
+}
+
+/** Children that are part of the UI: shown now, or bodies that appear when their item is selected. */
+function liveChildren(n: IRNode): IRNode[] {
+  return n.children.filter((c) => c.visible || (c.latent && (!c.showWhen || !!navOf(c))));
+}
+
+/** Go condition for a body to be shown (its item is selected); none for other nodes. */
+function ownNavConds(n: IRNode): string[] {
+  const nav = n.showWhen && navOf(n);
+  if (!nav || !n.showWhen) return [];
+  const prop = nav.type === 'Tabs' ? 'active_tab' : 'selected';
+  return [`m.c(${goStr(nav.tag ?? `~${nav.ident}`)}).Int(${goStr(prop)}) == ${n.showWhen.item}`];
+}
+
+/** Go conditions (all must hold) for a node to be shown: its own and its ancestors' bodies. */
+function navConds(n: IRNode): string[] {
+  const out: string[] = [];
+  for (let c: IRNode | null = n; c; c = c.parent) out.push(...ownNavConds(c));
+  return out;
+}
+
 /** Containers whose children are flowed (stacked) instead of placed at the editor's positions. */
 function isFlow(n: IRNode): boolean {
   const l = n.layout;
@@ -301,10 +349,26 @@ function flowLayout(n: IRNode, availW: number | null, dynamic: boolean): { w: nu
   const gap = Math.max(0, n.layout.gap);
   const x0 = b.left + pad.left;
   const y0 = b.top + pad.top;
-  const kids = visibleChildren(n).filter((k) => k.type !== 'Modal');
+  const kids = liveChildren(n).filter((k) => k.type !== 'Modal');
   let main = 0;
   let cross = 0;
-  kids.forEach((k, i) => {
+  // Bodies of one tab/menu/list share the place after the previous sibling: each item continues
+  // from there on its own, and only the selected item's bodies move what follows.
+  let group = null as NavGroup | null;
+  const closeGroup = () => {
+    if (group)
+      main =
+        group.active === undefined ? group.start : (group.ends.get(group.active) ?? group.start);
+    group = null;
+  };
+  let counted = 0;
+  kids.forEach((k) => {
+    if (k.showWhen && navOf(k)) {
+      if (group?.nav !== k.showWhen.nav) {
+        closeGroup();
+        group = { nav: k.showWhen.nav, start: main, ends: new Map() };
+      }
+    } else closeGroup();
     const fillW =
       !row &&
       (dynamic || availW !== null) &&
@@ -329,12 +393,22 @@ function flowLayout(n: IRNode, availW: number | null, dynamic: boolean): { w: nu
     }
     w = clampSize(w);
     h = clampSize(h);
-    const x = row ? x0 + main : x0;
-    const y = row ? y0 : y0 + main;
+    const at = group && k.showWhen ? (group.ends.get(k.showWhen.item) ?? group.start) : main;
+    const x = row ? x0 + at : x0;
+    const y = row ? y0 : y0 + at;
     VBOX.set(k, { x, y, w, h, fillW });
-    main += (row ? w : h) + (i < kids.length - 1 ? gap : 0);
-    cross = Math.max(cross, row ? h : w);
+    const end = at + (row ? w : h) + gap;
+    if (group && k.showWhen) {
+      group.ends.set(k.showWhen.item, end);
+      if (!k.latent) group.active = k.showWhen.item;
+    } else main = end;
+    if (!(k.showWhen && k.latent)) {
+      counted++;
+      cross = Math.max(cross, row ? h : w);
+    }
   });
+  closeGroup();
+  if (counted) main = Math.max(0, main - gap);
   return row ? { w: main, h: cross } : { w: cross, h: main };
 }
 
@@ -594,7 +668,7 @@ class Gen {
   }
 
   private register(n: IRNode, ancestors: string[]): void {
-    if (!n.visible) return;
+    if (!n.visible && !(n.latent && (!n.showWhen || navOf(n)))) return;
     const camel = recase(n.ident, 'camel');
     const pascal = recase(n.ident, 'pascal');
     const info: Info = {
@@ -626,7 +700,7 @@ class Gen {
     }
     if (CONTAINERS.has(n.type)) {
       const below = n === this.screen.root ? ancestors : [...ancestors, info.tag];
-      visibleChildren(n).forEach((c) => this.register(c, below));
+      liveChildren(n).forEach((c) => this.register(c, below));
     }
   }
 
@@ -771,7 +845,8 @@ class Gen {
     w.indent();
     w.line('*Core');
     w.line('opts []tea.ProgramOption');
-    if (handles.length) w.line('// Api: flat methods over the components (api.go).').line('Api *Api');
+    if (handles.length)
+      w.line('// Api: flat methods over the components (api.go).').line('Api *Api');
     for (const h of handles)
       w.line(`${h.field} *${HANDLE_TYPE[h.info.node.type]}Handle // ${h.info.node.type}`);
     w.dedent();
@@ -1493,8 +1568,12 @@ func (r *teaRenderer) pump() {
       for (const info of this.focusables) {
         const anc = info.ancestors.map(goStr);
         w.line(`case ${info.focusConst}:`);
+        const conds = [
+          `m.ui.Usable(${[goStr(info.tag), ...anc].join(', ')})`,
+          ...navConds(info.node),
+        ];
         w.indent()
-          .line(`return m.ui.Usable(${[goStr(info.tag), ...anc].join(', ')})`)
+          .line(`return ${conds.join(' && ')}`)
           .dedent();
       }
       w.line('}');
@@ -2007,7 +2086,7 @@ func (m *model) dropdownOverlay(out string) string {
     w.line('}');
     w.line(`out := m.${root.method}(0, 0, w, h)`);
     // Modals are not scrolled: they are centred over the visible window.
-    for (const mo of visibleChildren(root.node).filter(
+    for (const mo of liveChildren(root.node).filter(
       (c) => c.type === 'Modal' && this.infos.has(c)
     )) {
       const ms = sizeOf(mo);
@@ -2071,13 +2150,21 @@ func (m *model) dropdownOverlay(out string) string {
     const d = dims(n);
     const isRoot = n === this.screen.root;
     const b = borderCells(n);
-    const kids = visibleChildren(n).filter((c) => c.type !== 'Modal' && this.infos.has(c));
+    const kids = liveChildren(n).filter((c) => c.type !== 'Modal' && this.infos.has(c));
     // The modals of the root are overlaid by View (they do not scroll with the content).
     const modals = isRoot
       ? []
-      : visibleChildren(n).filter((c) => c.type === 'Modal' && this.infos.has(c));
+      : liveChildren(n).filter((c) => c.type === 'Modal' && this.infos.has(c));
     const native = n.layout.mode === 'flex' && !n.layout.wrap;
     const hidden = (k: IRNode) => `m.ui.Hidden(${goStr(this.info(k).tag)})`;
+    // Not drawn: hidden through the program API, or a body whose item is not selected.
+    const offExpr = (k: IRNode) => {
+      const parts = [
+        ...(this.info(k).pub ? [hidden(k)] : []),
+        ...ownNavConds(k).map((c) => `!(${c})`),
+      ];
+      return parts.length ? parts.join(' || ') : 'false';
+    };
     const showTitle = n.type === 'Modal' && d.w >= 6;
     // The root fills the terminal: its size is a parameter, everything inside keeps its offsets.
     const W = isRoot ? 'w' : String(d.w);
@@ -2099,9 +2186,23 @@ func (m *model) dropdownOverlay(out string) string {
     } else if (native) {
       const row = n.layout.direction === 'row';
       let cursor = 0;
+      // Bodies of one nav element each continue from the same place (see flowLayout).
+      let grp = null as NavGroup | null;
+      const closeGrp = () => {
+        if (grp)
+          cursor = grp.active === undefined ? grp.start : (grp.ends.get(grp.active) ?? grp.start);
+        grp = null;
+      };
       w.line(`content := flexJoin(${row}, ${origin}, []flexItem{`);
       w.indent();
       for (const k of kids) {
+        if (k.showWhen && navOf(k)) {
+          if (grp?.nav !== k.showWhen.nav) {
+            closeGrp();
+            grp = { nav: k.showWhen.nav, start: cursor, ends: new Map() };
+          }
+        } else closeGrp();
+        const from = grp && k.showWhen ? (grp.ends.get(k.showWhen.item) ?? grp.start) : cursor;
         const v = VBOX.get(k);
         const r = v ?? k.rel ?? { x: 0, y: 0, width: 0, height: 0 };
         const s = sizeOf(k);
@@ -2109,16 +2210,21 @@ func (m *model) dropdownOverlay(out string) string {
         const y = Math.max(0, r.y - d.bt);
         let dx: number;
         let dy: number;
+        let end: number;
         if (row) {
-          dx = Math.max(0, x - cursor);
+          dx = Math.max(0, x - from);
           dy = y;
-          cursor += dx + s.w;
+          end = from + dx + s.w;
         } else {
           dx = x;
-          dy = Math.max(0, y - cursor);
-          cursor += dy + s.h;
+          dy = Math.max(0, y - from);
+          end = from + dy + s.h;
         }
-        const off = this.info(k).pub ? hidden(k) : 'false';
+        if (grp && k.showWhen) {
+          grp.ends.set(k.showWhen.item, end);
+          if (!k.latent) grp.active = k.showWhen.item;
+        } else cursor = end;
+        const off = offExpr(k);
         if (v?.fillW) {
           // Fills the content width of the parent (the terminal for the root).
           const avail = isRoot
@@ -2129,6 +2235,7 @@ func (m *model) dropdownOverlay(out string) string {
           );
         } else w.line(`{m.${this.info(k).method}, ${dx}, ${dy}, ${off}},`);
       }
+      closeGrp();
       w.dedent();
       w.line('})');
     } else {
@@ -2140,8 +2247,9 @@ func (m *model) dropdownOverlay(out string) string {
         const x = r.x - d.bl;
         const y = r.y - d.bt;
         const put = `cv.put(${x}, ${y}, m.${this.info(k).method}(ox+${b.left}+${x}, oy+${b.top}+${y}))`;
-        if (this.info(k).pub) {
-          w.line(`if !${hidden(k)} {`);
+        const off = offExpr(k);
+        if (off !== 'false') {
+          w.line(`if !(${off}) {`);
           w.indent().line(put).dedent();
           w.line('}');
         } else w.line(put);
@@ -2352,9 +2460,7 @@ func (m *model) dropdownOverlay(out string) string {
         focusStyle('border-only');
         selectionStyles();
         // Lists show the labels only (as the reference does); menus keep icons and hotkeys.
-        const shown = n.items.map((i) =>
-          goStr(oneLine(n.type === 'List' ? i.label : itemText(i)))
-        );
+        const shown = n.items.map((i) => goStr(oneLine(n.type === 'List' ? i.label : itemText(i))));
         if (n.type === 'List') {
           const labels = n.items.map((i) => goStr(oneLine(i.label)));
           w.line(
@@ -3033,7 +3139,7 @@ export const bubbleteaAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'fixed',
   multiScreen: false,
-  navBodies: false,
+  navBodies: true,
   generate: ({ ir }) => new Gen(ir.start, ir).generate(),
 };
 
