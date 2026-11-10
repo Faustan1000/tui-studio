@@ -14,13 +14,14 @@ export const SKIP_REASON = 'tests/runtime/node_modules is missing: run `npm run 
 /** Write the generated project to tests/runtime/.generated/blessed/<name>/ and load it. */
 export function loadProject(
   root: ComponentNode,
-  name: string
+  name: string,
+  screens?: { id: string; root: ComponentNode }[]
 ): { dir: string; mod: any; files: Record<string, string> } {
   const dir = join(RUNTIME_DIR, '.generated', 'blessed', name);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const files: Record<string, string> = {};
-  for (const f of exportToFiles(root, 'blessed')) {
+  for (const f of exportToFiles(root, 'blessed', screens)) {
     mkdirSync(dirname(join(dir, f.path)), { recursive: true });
     writeFileSync(join(dir, f.path), f.content, 'utf8');
     files[f.path] = f.content;

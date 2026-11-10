@@ -16,7 +16,7 @@
 
 import type { ExportAdapter, ExportFile } from '../adapter';
 import { inlineText, itemText, recase, treeLines, visibleChildren, walkIR } from '../ir';
-import type { IRBox, IRItem, IRNode, IRScreen, IRStyle } from '../ir';
+import type { IRBox, IRItem, IRNode, IRProject, IRScreen, IRStyle } from '../ir';
 import { CodeWriter, jsStr } from '../lang';
 import { apiName, buildApiModel, safeIdent } from '../api/model';
 import { renderFacade } from '../api/facade';
@@ -76,6 +76,7 @@ const BASE_MEMBERS = [
   'nextEvent',
   'installExcepthooks',
   'focusNext',
+  'showScreen',
   'textbox',
   'wire',
   'constructor',
@@ -97,6 +98,10 @@ interface Ctx {
   members: Map<IRNode, string>;
   /** Variable of the scrollable inner box that sits next to the frame of a container. */
   inners: Map<IRNode, string>;
+  /** Screen id -> key used by `ui.showScreen`. */
+  screenKeys: Map<string, string>;
+  /** The root being emitted belongs to a screen that is not shown at startup. */
+  hideRoot: boolean;
 }
 
 // ── Public helpers (also used by tests) ───────────────────────────────────────
@@ -419,20 +424,19 @@ export const blessedAdapter: ExportAdapter = {
   language: 'js',
   verification: 'run',
   percentSizes: 'fixed',
-  multiScreen: false,
+  multiScreen: true,
   navBodies: true,
   generate: ({ ir }): ExportFile[] => {
     const screen = ir.start;
-    // Only the first screen is exported, so only its components get handles.
-    const all = buildApiModel({ screens: [screen], start: screen });
+    const all = buildApiModel(ir);
     const model = { ...all, handles: all.handles.filter((h) => h.node.visible || h.node.latent) };
     const names = facadeNames(model);
     const api = model.handles.length
       ? renderFacade({ lang: 'js', handles: model.handles, member: (h) => names.get(h.tag)! })
       : null;
     return [
-      { path: 'index.js', content: generateIndex(screen, model) },
-      { path: 'index.d.ts', content: generateTypes(model) },
+      { path: 'index.js', content: generateIndex(ir, model) },
+      { path: 'index.d.ts', content: generateTypes(ir, model) },
       { path: BLESSED_RUNTIME_FILENAME, content: BLESSED_RUNTIME_SOURCE },
       { path: 'ui-runtime.d.ts', content: BLESSED_RUNTIME_TYPES },
       { path: 'package.json', content: generatePackageJson(screen) },
@@ -462,8 +466,30 @@ function generatePackageJson(screen: IRScreen): string {
 
 // ── index.js ──────────────────────────────────────────────────────────────────
 
-function generateIndex(screen: IRScreen, model: ApiModel): string {
-  const root = screen.root;
+/** Key of a screen for `ui.showScreen` (its code name, else its identifier). */
+function screenKey(sc: IRScreen): string {
+  return sc.tag ?? sc.ident;
+}
+
+/** Members `ui.<screen>` of the screens with a code name (clashes get a `_`). */
+function screenMembers(ir: IRProject, model: ApiModel): [string, string][] {
+  if (ir.screens.length < 2) return [];
+  const used = new Set<string>([...BASE_MEMBERS, ...facadeNames(model).values()]);
+  const out: [string, string][] = [];
+  for (const sc of ir.screens) {
+    if (!sc.tag) continue;
+    let name = safeIdent(apiName(sc.tag, 'camel'), 'ts');
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) name = 'n' + name.replace(/[^A-Za-z0-9_$]/g, '_');
+    while (used.has(name) || name.startsWith('_')) name += '_';
+    used.add(name);
+    out.push([name, screenKey(sc)]);
+  }
+  return out;
+}
+
+function generateIndex(ir: IRProject, model: ApiModel): string {
+  const screen = ir.start;
+  const multi = ir.screens.length > 1;
   const ctx: Ctx = {
     w: new CodeWriter('  ', 2),
     used: new Set<string>([...JS_RESERVED, ...FIXED_NAMES]),
@@ -471,34 +497,44 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
     handlers: new Set(),
     members: new Map(),
     inners: new Map(),
+    screenKeys: new Map(ir.screens.map((sc) => [sc.id, screenKey(sc)])),
+    hideRoot: false,
   };
   const facade = facadeNames(model);
   for (const h of model.handles) ctx.members.set(h.node, facade.get(h.tag)!);
-  collectHandlers(root, ctx);
+  for (const sc of ir.screens) collectHandlers(sc.root, ctx);
 
-  const rootVar = nameFor(root, ctx);
   ADJUST = new WeakMap();
   FLOW = new WeakMap();
-  computeAdjust(root);
-  if (isFlowContainer(root)) computeFlow(root, screen.width);
-  // The root fills the terminal; the design size is only where the content sits.
-  const rootInner = emitWidget(
-    root,
-    'screen',
-    { x: 0, y: 0, width: screen.width, height: screen.height },
-    ctx,
-    rootVar
-  );
-  const viewport = rootInner ?? { var: rootVar, inset: 0 };
-  // The inner box of the root is a scrollable box: the program scrolls it by moving its
-  // childBase (see ui-runtime.js).
-  ctx.w
-    .line(
-      `ui.viewport(${rootInner ? rootVar : 'null'}, ${viewport.var}, ${contentBottom(root, viewport.inset)});`
-    )
-    .line();
-  emitChildren(root, viewport.var, ctx, viewport.inset);
-  emitBodies(root, ctx);
+  ir.screens.forEach((sc, i) => {
+    const root = sc.root;
+    if (multi) {
+      ctx.w.line(`// ── Screen ${i + 1}: ${oneLine(sc.name || sc.ident)} ──`);
+      ctx.w.line(`ui.beginScreen(${jsStr(screenKey(sc))});`).line();
+    }
+    ctx.hideRoot = i > 0;
+    const rootVar = nameFor(root, ctx);
+    computeAdjust(root);
+    if (isFlowContainer(root)) computeFlow(root, sc.width);
+    // The root fills the terminal; the design size is only where the content sits.
+    const rootInner = emitWidget(
+      root,
+      'screen',
+      { x: 0, y: 0, width: sc.width, height: sc.height },
+      ctx,
+      rootVar
+    );
+    const viewport = rootInner ?? { var: rootVar, inset: 0 };
+    // The inner box of the root is a scrollable box: the program scrolls it by moving its
+    // childBase (see ui-runtime.js).
+    ctx.w
+      .line(
+        `ui.viewport(${rootInner ? rootVar : 'null'}, ${viewport.var}, ${contentBottom(root, viewport.inset)});`
+      )
+      .line();
+    emitChildren(root, viewport.var, ctx, viewport.inset);
+    emitBodies(root, ctx);
+  });
   const body = ctx.w.toString().trimEnd();
 
   const out = new CodeWriter('  ', 0);
@@ -541,7 +577,7 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
     .line("'use strict';")
     .line()
     .line("const blessed = require('blessed');")
-    .line("const { Handle, StudioUi } = require('./ui-runtime');")
+    .line(`const { Handle, StudioUi${multi ? ', ScreenHandle' : ''} } = require('./ui-runtime');`)
     .line(model.handles.length ? "const { Api } = require('./api');" : '')
     .line();
 
@@ -568,6 +604,10 @@ function generateIndex(screen: IRScreen, model: ApiModel): string {
   out.line('constructor(options) {').indent();
   out.line('super(options);');
   out.line(`this._title = ${jsStr(screen.name || screen.ident)};`);
+  if (multi) out.line(`this._screenKey = ${jsStr(screenKey(screen))};`);
+  for (const [member, key] of screenMembers(ir, model)) {
+    out.line(`this${memberAccess(member)} = new ScreenHandle(this, ${jsStr(key)});`);
+  }
   for (const h of model.handles) {
     const member = facade.get(h.tag)!;
     const props: Record<string, { type: string; value: unknown }> = {};
@@ -630,10 +670,13 @@ const TS_TYPES: Record<string, string> = {
 };
 
 /** `index.d.ts`: the typed facade. */
-function generateTypes(model: ApiModel): string {
+function generateTypes(ir: IRProject, model: ApiModel): string {
+  const members = screenMembers(ir, model);
   const facade = facadeNames(model);
   const out = new CodeWriter('  ', 0);
-  out.line("import { Handle, StudioUi, UiEvent } from './ui-runtime';");
+  out.line(
+    `import { Handle, StudioUi, UiEvent${members.length ? ', ScreenHandle' : ''} } from './ui-runtime';`
+  );
   out.line("export * from './ui-runtime';");
   if (model.handles.length) out.line("import { Api } from './api';").line('export { Api };');
   out.line();
@@ -651,6 +694,7 @@ function generateTypes(model: ApiModel): string {
     out.line(`/** ${h.type}: ${oneLine(h.node.name || h.type).replace(/\*\//g, '* /')} */`);
     out.line(`readonly ${facade.get(h.tag)}: Handle${extra};`);
   }
+  for (const [member] of members) out.line(`readonly ${member}: ScreenHandle;`);
   if (model.handles.length)
     out.line('/** Flat methods over the components (see api.js). */').line('readonly api: Api;');
   out.dedent().line('}');
@@ -853,6 +897,7 @@ function emitWidget(
   const base = (focus: boolean, extraStyle: string[] = []): string[] => {
     const o = [
       `parent: ${parentRef}`,
+      ...(fill && ctx.hideRoot ? ['hidden: true'] : []),
       `left: ${box.x}`,
       `top: ${box.y}`,
       `width: ${wide ? "'100%'" : box.width}`,
@@ -900,6 +945,7 @@ function emitWidget(
     ].filter(Boolean);
     obj(w, 'scrollablebox', k, [
       `parent: ${floating ? v : parentRef}`,
+      ...(fill && ctx.hideRoot ? ['hidden: true'] : []),
       `left: ${floating ? 1 : fill ? pl : box.x + pl}`,
       `top: ${floating ? 1 : fill ? pt : box.y + pt}`,
       `width: ${wide ? `'100%-${ph}'` : Math.max(1, box.width - ph)}`,
@@ -911,6 +957,8 @@ function emitWidget(
   };
   /** Options of `ui.wire`; null = the widget needs no runtime view unless it has a code name. */
   let wire: string[] | null = null;
+  /** Statement emitted after the widget is wired. */
+  let afterWire = '';
 
   switch (node.type) {
     case 'Screen':
@@ -957,7 +1005,7 @@ function emitWidget(
       break;
     }
 
-    case 'Button':
+    case 'Button': {
       obj(w, 'button', v, [
         ...base(true),
         `content: ${jsStr(inlineText(node))}`,
@@ -970,12 +1018,16 @@ function emitWidget(
         `suffix: ${jsStr(node.iconRight ? ` ${node.iconRight}` : '')}`,
         focusable,
       ];
-      if (node.opensScreen) {
+      const target = node.opensScreen ? ctx.screenKeys.get(node.opensScreen) : undefined;
+      if (target) {
+        w.line(`${v}.on('press', () => ui.showScreen(${jsStr(target)}));`);
+      } else if (node.opensScreen) {
         w.line(
           `// Opens the screen "${oneLine(node.opensScreen)}" in the editor (single-screen export: wire it in the handler).`
         );
       }
       break;
+    }
 
     case 'TextInput': {
       const o = [...base(true), 'inputOnFocus: true', 'mouse: true', 'keys: true'];
@@ -1060,6 +1112,13 @@ function emitWidget(
       }
       wire = [`items: ${strArray(labels)}`, focusable];
       if (node.type === 'Tree') wire.push('byLabel: true');
+      else {
+        const links = node.items.flatMap((item, i) => {
+          const key = item.screen ? ctx.screenKeys.get(item.screen) : undefined;
+          return key ? [`${i}: ${jsStr(key)}`] : [];
+        });
+        if (links.length) afterWire = `ui.links(${v}, { ${links.join(', ')} });`;
+      }
       break;
     }
 
@@ -1135,6 +1194,7 @@ function emitWidget(
       `ui.wire(${v}, ${jsStr(node.type)}, { ${(wire ?? []).join(', ')} }, ${member ? `ui.${member}` : 'null'});`
     );
   }
+  if (afterWire) w.line(afterWire);
   w.line();
   return inner;
 }

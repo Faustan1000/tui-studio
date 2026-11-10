@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { mk, resetIds, screen } from './fixtures/build';
-import { allComponents } from './fixtures/designs';
+import { allComponents, multiScreen } from './fixtures/designs';
 import { apiDesign } from './fixtures/apiDesign';
 import {
   HAS_BLESSED,
@@ -856,3 +856,60 @@ describe.skipIf(!HAS_BLESSED)('blessed tab/menu bodies in real blessed', () => {
     }
   });
 });
+
+describe.skipIf(!HAS_BLESSED)('blessed screens in real blessed', () => {
+  it('shows one screen at a time, switches with show() and through a button link', async () => {
+    const { mod } = loadProject(multiScreen()[0], 'screens', screens());
+    const term = makeTerm(80, 40);
+    const ui = new mod.Ui(term.options);
+    await ui.start();
+    await tick(80);
+    try {
+      const seen = () => frame(ui.screen);
+      expect(seen()).toContain('Ready');
+      expect(seen()).not.toContain('Settings screen');
+      expect(ui.home.isActive).toBe(true);
+      expect(ui.settings.isActive).toBe(false);
+      // The program can reach the components of every screen, also the hidden ones.
+      expect(ui.nameInput.value).toBe('');
+
+      let shown = 0;
+      ui.settings.onShow(() => shown++);
+      ui.settings.show();
+      await tick(80);
+      expect(seen()).toContain('Settings screen');
+      expect(seen()).not.toContain('Ready');
+      expect(ui.settings.isActive).toBe(true);
+      expect(ui.home.isActive).toBe(false);
+      expect(shown).toBe(1);
+
+      // Keyboard: the focus starts on the first control of the visible screen (the text field is
+      // skipped at startup), Enter on Back goes home.
+      const back = ui.backBtn._views[0].widget;
+      back.focus();
+      await term.type(ENTER);
+      await tick(60);
+      expect(seen()).toContain('Ready');
+      expect(seen()).not.toContain('Settings screen');
+      expect(ui.home.isActive).toBe(true);
+
+      // Mouse: a click on the (hidden) Back button of the other screen does nothing, a click on
+      // the Settings button of this one switches.
+      const lines = seen().split(String.fromCharCode(10));
+      const y = lines.findIndex((l) => l.includes('Settings'));
+      await click(term, lines[y].indexOf('Settings') + 1, y);
+      expect(seen()).toContain('Settings screen');
+      const lines2 = seen().split(String.fromCharCode(10));
+      const y2 = lines2.findIndex((l) => l.includes('Back'));
+      await click(term, lines2[y2].indexOf('Back') + 1, y2);
+      expect(seen()).toContain('Ready');
+      expect(seen()).not.toContain('Settings screen');
+    } finally {
+      ui.stop?.();
+    }
+  });
+});
+
+function screens() {
+  return multiScreen().map((root) => ({ id: root.tag ?? 'about', root }));
+}

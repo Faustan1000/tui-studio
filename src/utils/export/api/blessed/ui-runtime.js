@@ -88,10 +88,12 @@ class Handle {
     this.tag = tag;
     this.type = o.type || '';
     this._state = o.state || 'active';
-    for (const name of Object.keys(o.props || {})) this._defineProp(name, o.props[name].type, o.props[name].value);
+    for (const name of Object.keys(o.props || {}))
+      this._defineProp(name, o.props[name].type, o.props[name].value);
     for (const name of o.events || []) {
       this['on' + cap(name)] = (fn) => {
-        if (typeof fn !== 'function') throw new UiError('The handler of ' + tag + '.on' + cap(name) + ' must be a function');
+        if (typeof fn !== 'function')
+          throw new UiError('The handler of ' + tag + '.on' + cap(name) + ' must be a function');
         ui._addCallback(tag, name, fn);
         return fn;
       };
@@ -157,11 +159,19 @@ class Handle {
 
   _setState(value) {
     if (!STATES.includes(value)) {
-      throw new UiError('Unknown state ' + JSON.stringify(value) + '; use one of ' + STATES.join(', '));
+      throw new UiError(
+        'Unknown state ' + JSON.stringify(value) + '; use one of ' + STATES.join(', ')
+      );
     }
     if (!this._states.includes(value)) {
       throw new UiError(
-        this.tag + ' (' + this.type + ') does not support ' + JSON.stringify(value) + '; supported: ' + this._states.join(', ')
+        this.tag +
+          ' (' +
+          this.type +
+          ') does not support ' +
+          JSON.stringify(value) +
+          '; supported: ' +
+          this._states.join(', ')
       );
     }
     this._state = value;
@@ -208,7 +218,12 @@ function dim(widget, on) {
   if (!st) return;
   if (on) {
     if (!widget._dimmed) {
-      widget._dimmed = { fg: st.fg, bold: st.bold, border: st.border ? st.border.fg : null, itemFg: st.item ? st.item.fg : null };
+      widget._dimmed = {
+        fg: st.fg,
+        bold: st.bold,
+        border: st.border ? st.border.fg : null,
+        itemFg: st.item ? st.item.fg : null,
+      };
     }
     st.fg = DIM;
     st.bold = false;
@@ -338,7 +353,8 @@ class ButtonView extends View {
   }
 
   apply(name, value) {
-    if (name === 'label') this.widget.setContent((this.opts.prefix || '') + value + (this.opts.suffix || ''));
+    if (name === 'label')
+      this.widget.setContent((this.opts.prefix || '') + value + (this.opts.suffix || ''));
   }
 }
 
@@ -515,7 +531,12 @@ class SelectView extends View {
       border: { type: 'line' },
       width: box.width,
       height: Math.min(Math.max(this.options.length, 1), 8) + 2,
-      style: { fg: box.style.fg, bg: box.style.bg, border: box.style.border, selected: { bold: true, inverse: true } },
+      style: {
+        fg: box.style.fg,
+        bg: box.style.bg,
+        border: box.style.border,
+        selected: { bold: true, inverse: true },
+      },
     });
     popup.on('select', (item, index) => {
       const value = this.options[index];
@@ -819,6 +840,10 @@ class StudioUi {
     this._timers = new Set();
     this._focusables = [];
     this._modals = [];
+    this._screens = new Map();
+    this._screenCallbacks = new Map();
+    this._building = null;
+    this._screenKey = '';
     this._overlays = 0;
     this._quiet = 0;
     this._renderPending = false;
@@ -911,7 +936,13 @@ class StudioUi {
     try {
       if (this.screen) this.screen.destroy();
     } catch (err) {
-      this.errors.push({ time: Date.now(), level: 'critical', message: String(err), details: '', source: 'ui' });
+      this.errors.push({
+        time: Date.now(),
+        level: 'critical',
+        message: String(err),
+        details: '',
+        source: 'ui',
+      });
     }
     this._waiters.splice(0).forEach((w) => w.resolve(null));
     this._closeWaiters.splice(0).forEach((r) => r());
@@ -920,7 +951,8 @@ class StudioUi {
   // -- components ------------------------------------------------------------
 
   _register(handle) {
-    if (this._handles.has(handle.tag)) throw new UiError('Duplicate code name ' + JSON.stringify(handle.tag));
+    if (this._handles.has(handle.tag))
+      throw new UiError('Duplicate code name ' + JSON.stringify(handle.tag));
     this._handles.set(handle.tag, handle);
   }
 
@@ -1161,7 +1193,66 @@ class StudioUi {
       ch: String.fromCharCode(0x2588),
       style: { fg: FOCUS },
     });
-    this._vp = { frame, inner, bottom, offset: 0, bar };
+    const vp = { frame, inner, bottom, offset: 0, bar };
+    if (this._building) this._building.vp = vp;
+    // The first screen is the one shown at startup.
+    if (!this._vp) this._vp = vp;
+  }
+
+  // -- screens -----------------------------------------------------------------
+
+  /** Called by the generated code before it builds a screen (several screens only). */
+  beginScreen(key) {
+    this._building = { key, vp: null };
+    this._screens.set(key, this._building);
+  }
+
+  /** Switch to another screen (scrolled to the top, open modals closed). */
+  showScreen(key) {
+    const next = this._screens.get(key);
+    if (!next) throw new UiError('No screen ' + JSON.stringify(key));
+    if (this._closed) return;
+    if (!this.screen) throw new UiError('Start the UI before switching screens');
+    if (this._screenKey === key) return;
+    const f = this.screen.focused;
+    if (f && f.type === 'textbox' && f._reading && f.cancel) f.cancel();
+    for (const m of this._modals) if (m.handle && m.open) m.handle.close();
+    const old = this._screens.get(this._screenKey);
+    const toggle = (rec, on) => {
+      if (!rec || !rec.vp) return;
+      const { frame, inner } = rec.vp;
+      for (const part of frame ? [frame, inner] : [inner]) {
+        if (on) part.show();
+        else part.hide();
+      }
+    };
+    toggle(old, false);
+    toggle(next, true);
+    this._screenKey = key;
+    this._vp = next.vp;
+    if (next.vp) next.vp.offset = 0;
+    this._layoutScroll();
+    this._ensureFocus();
+    this._touch();
+    for (const fn of (this._screenCallbacks.get(key) || []).slice()) {
+      setImmediate(() => {
+        const fail = (err) => this.report(err, { source: key + '.onShow' });
+        try {
+          const r = fn();
+          if (r && typeof r.then === 'function') r.then(null, fail);
+        } catch (err) {
+          fail(err);
+        }
+      });
+    }
+  }
+
+  /** Menu or list: choosing an item opens a screen. `map` is `{ itemIndex: screenKey }`. */
+  links(widget, map) {
+    widget.on('select', (item, index) => {
+      const key = map[index];
+      if (key && (!widget._view || widget._view.canEdit())) this.showScreen(key);
+    });
   }
 
   /** How far the design is scrolled (rows). */
@@ -1331,14 +1422,22 @@ class StudioUi {
       this._touch();
     } catch (err) {
       // Never report a failure of the error display through the error display.
-      this.errors.push({ time: Date.now() / 1000, level: 'critical', message: 'Error display failed: ' + err, details: '', source: 'ui' });
+      this.errors.push({
+        time: Date.now() / 1000,
+        level: 'critical',
+        message: 'Error display failed: ' + err,
+        details: '',
+        source: 'ui',
+      });
     }
   }
 
   /** Report uncaught exceptions and rejected promises of your own program. */
   installExcepthooks() {
     process.on('uncaughtException', (err) => this.report(err, { source: 'uncaughtException' }));
-    process.on('unhandledRejection', (err) => this.report(err instanceof Error ? err : String(err), { source: 'unhandledRejection' }));
+    process.on('unhandledRejection', (err) =>
+      this.report(err instanceof Error ? err : String(err), { source: 'unhandledRejection' })
+    );
   }
 
   _flushHistory() {
@@ -1346,7 +1445,9 @@ class StudioUi {
   }
 
   _logLines() {
-    return this._history.slice(-200).map((e) => '[' + e.level + '] ' + (e.source ? e.source + ': ' : '') + e.message);
+    return this._history
+      .slice(-200)
+      .map((e) => '[' + e.level + '] ' + (e.source ? e.source + ': ' : '') + e.message);
   }
 
   _ensureLogPanel() {
@@ -1444,9 +1545,35 @@ class StudioUi {
   }
 }
 
+/** One screen of the UI: `ui.settings.show()` switches to it. */
+class ScreenHandle {
+  constructor(ui, key) {
+    Object.defineProperties(this, { _ui: { value: ui }, key: { value: key, enumerable: true } });
+  }
+
+  get isActive() {
+    return this._ui._screenKey === this.key;
+  }
+
+  show() {
+    this._ui.showScreen(this.key);
+  }
+
+  /** Called (not inside a render) every time this screen has been shown. */
+  onShow(fn) {
+    if (typeof fn !== 'function')
+      throw new UiError('The handler of ' + this.key + '.onShow must be a function');
+    const list = this._ui._screenCallbacks.get(this.key) || [];
+    list.push(fn);
+    this._ui._screenCallbacks.set(this.key, list);
+    return fn;
+  }
+}
+
 module.exports = {
   UiError,
   Handle,
+  ScreenHandle,
   StudioUi,
   STATES,
 };

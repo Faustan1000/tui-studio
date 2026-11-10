@@ -33,6 +33,15 @@ export declare class Handle {
   show(): void;
 }
 
+/** One screen of the UI (several screens only): `ui.settings.show()` switches to it. */
+export declare class ScreenHandle {
+  readonly key: string;
+  readonly isActive: boolean;
+  show(): void;
+  /** Called every time this screen has been shown. */
+  onShow(fn: () => unknown): () => unknown;
+}
+
 export declare class StudioUi {
   constructor(options?: Record<string, unknown>);
   /** The blessed screen (null before `start()`). */
@@ -56,6 +65,8 @@ export declare class StudioUi {
   on(tag: string, name: string, fn: (event: UiEvent) => unknown): (event: UiEvent) => unknown;
   installExcepthooks(): void;
   focusNext(step: number): void;
+  /** Switch to another screen by its key (code name, else identifier). */
+  showScreen(key: string): void;
   rounded(widget: unknown): void;
 }
 

@@ -102,7 +102,7 @@ describe('blessed adapter: files', () => {
       id: 'blessed',
       language: 'js',
       verification: 'run',
-      multiScreen: false,
+      multiScreen: true,
     });
   });
 
