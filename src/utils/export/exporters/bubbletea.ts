@@ -114,6 +114,9 @@ export const BUBBLETEA_RESERVED_UI = [
   'Open',
   'Shown',
   'Usable',
+  'Screen',
+  'SetScreen',
+  'ShowScreen',
   'Send',
   'Frame',
 ];
@@ -159,6 +162,8 @@ interface Info {
   /** Extra struct fields. */
   extra: Record<string, string>;
   focusConst?: string;
+  /** Key of the screen this component belongs to. */
+  screen: string;
   /** Tag of the nearest modal above this node ('' if none): clicks are scoped to the open modal. */
   modal: string;
   /** Tags of the containers/modals above this node (without the screen). */
@@ -254,12 +259,17 @@ interface NavGroup {
   active?: number;
 }
 
+/** Store key of every registered component without a code name (unique across screens). */
+const STORE_TAGS = new WeakMap<IRNode, string>();
+
 /** Go condition for a body to be shown (its item is selected); none for other nodes. */
 function ownNavConds(n: IRNode): string[] {
   const nav = n.showWhen && navOf(n);
   if (!nav || !n.showWhen) return [];
   const prop = nav.type === 'Tabs' ? 'active_tab' : 'selected';
-  return [`m.c(${goStr(nav.tag ?? `~${nav.ident}`)}).Int(${goStr(prop)}) == ${n.showWhen.item}`];
+  return [
+    `m.c(${goStr(STORE_TAGS.get(nav) ?? nav.tag ?? `~${nav.ident}`)}).Int(${goStr(prop)}) == ${n.showWhen.item}`,
+  ];
 }
 
 /** Go conditions (all must hold) for a node to be shown: its own and its ancestors' bodies. */
@@ -509,6 +519,9 @@ class Gen {
     'wheel',
     'updateMouse',
     'activeModal',
+    'screen',
+    'update',
+    'syncScreen',
     'focusOn',
     'hits',
     'dlg',
@@ -594,25 +607,50 @@ class Gen {
   readonly modalTags = new Set<string>();
   uses = { textinput: false, spinner: false, progress: false, table: false };
   private readonly apiByNode = new Map<IRNode, ApiHandleModel>();
+  readonly screens: IRScreen[];
+  /** The root nodes of all screens. */
+  readonly roots = new Set<IRNode>();
+  /** Screen id -> key (code name or ident) used by `Core.ShowScreen`. */
+  readonly screenKeys = new Map<string, string>();
+  private readonly usedTags = new Set<string>();
 
-  constructor(
-    readonly screen: IRScreen,
-    readonly project: IRProject
-  ) {
-    this.register(screen.root, []);
-    if (isFlow(screen.root)) flowLayout(screen.root, null, true);
+  constructor(readonly project: IRProject) {
+    this.screens = project.screens.length ? project.screens : [project.start];
+    for (const sc of this.screens) {
+      this.roots.add(sc.root);
+      this.screenKeys.set(sc.id, keyOf(sc));
+    }
+    for (const sc of this.screens) {
+      this.register(sc.root, [], keyOf(sc));
+      if (isFlow(sc.root)) flowLayout(sc.root, null, true);
+    }
     this.buildApi();
     this.collectHandlers();
   }
 
-  private register(n: IRNode, ancestors: string[]): void {
+  /** More than one screen: the model switches between them at run time. */
+  get multi(): boolean {
+    return this.screens.length > 1;
+  }
+
+  /** Store key of a component without a code name: unique across all screens. */
+  private freeTag(n: IRNode): string {
+    let tag = `~${n.ident}`;
+    for (let i = 2; this.usedTags.has(tag); i++) tag = `~${n.ident}_${i}`;
+    this.usedTags.add(tag);
+    STORE_TAGS.set(n, tag);
+    return tag;
+  }
+
+  private register(n: IRNode, ancestors: string[], screen: string): void {
     if (!n.visible && !(n.latent && (!n.showWhen || navOf(n)))) return;
     const camel = recase(n.ident, 'camel');
     const pascal = recase(n.ident, 'pascal');
     const info: Info = {
       node: n,
-      tag: n.tag ?? `~${n.ident}`,
-      pub: n.tag !== undefined && n !== this.screen.root,
+      screen,
+      tag: n.tag ?? this.freeTag(n),
+      pub: n.tag !== undefined && !this.roots.has(n),
       field: this.members.take(camel),
       method: this.members.take(`render${pascal}`),
       extra: {},
@@ -637,20 +675,25 @@ class Gen {
       this.focusables.push(info);
     }
     if (CONTAINERS.has(n.type)) {
-      const below = n === this.screen.root ? ancestors : [...ancestors, info.tag];
-      liveChildren(n).forEach((c) => this.register(c, below));
+      const below = this.roots.has(n) ? ancestors : [...ancestors, info.tag];
+      liveChildren(n).forEach((c) => this.register(c, below, screen));
     }
   }
 
   /** The program API of every node: the shared API model run over clones that all have a tag. */
   private buildApi(): void {
-    const nodes = this.order.filter((i) => i.node !== this.screen.root).map((i) => i.node);
-    const clones = nodes.map(
-      (n) => ({ ...n, tag: n.tag ?? `~${n.ident}`, children: [] }) as IRNode
-    );
-    const root = { ...this.screen.root, children: clones } as IRNode;
-    const screen = { ...this.screen, root, tag: undefined } as IRScreen;
-    const model = buildApiModel({ screens: [screen], start: screen } as IRProject);
+    const nodes: IRNode[] = [];
+    const screens = this.screens.map((sc) => {
+      const own = this.order.filter((i) => i.screen === keyOf(sc) && !this.roots.has(i.node));
+      const clones = own.map((i) => ({ ...i.node, tag: i.tag, children: [] }) as IRNode);
+      nodes.push(...own.map((i) => i.node));
+      return {
+        ...sc,
+        root: { ...sc.root, children: clones } as IRNode,
+        tag: undefined,
+      } as IRScreen;
+    });
+    const model = buildApiModel({ screens, start: screens[0] } as IRProject);
     nodes.forEach((n, i) => {
       this.apiByNode.set(n, model.handles[i]);
       this.infos.get(n)!.api = model.handles[i];
@@ -714,7 +757,7 @@ class Gen {
   }
 
   private moduleName(): string {
-    const name = this.screen.ident.replace(/^_+|_+$/g, '').replace(/_/g, '-');
+    const name = this.project.start.ident.replace(/^_+|_+$/g, '').replace(/_/g, '-');
     return `tuistudio/${name || 'app'}`;
   }
 
@@ -738,17 +781,29 @@ class Gen {
 
   /** Handles by code name, with the field of `Ui` that holds each. */
   private pubFields(): { info: Info; field: string }[] {
+    return this.fieldNames().handles;
+  }
+
+  /** Fields of `Ui`: one per code-named component and (several screens) one per code-named screen. */
+  private fieldNames(): {
+    handles: { info: Info; field: string }[];
+    screens: { screen: IRScreen; field: string }[];
+  } {
     const used = new Set<string>([...BUBBLETEA_RESERVED_UI, 'Api']);
-    const handles: { info: Info; field: string }[] = [];
-    for (const info of this.order) {
-      if (!info.pub) continue;
-      let field = apiName(info.tag, 'pascal');
+    const name = (tag: string): string => {
+      let field = apiName(tag, 'pascal');
       if (!/^[A-Z]/.test(field)) field = `X${field}`;
       while (used.has(field)) field += '_';
       used.add(field);
-      handles.push({ info, field });
-    }
-    return handles;
+      return field;
+    };
+    const handles = this.order
+      .filter((i) => i.pub)
+      .map((info) => ({ info, field: name(info.tag) }));
+    const screens = this.multi
+      ? this.screens.filter((sc) => sc.tag).map((screen) => ({ screen, field: name(screen.tag!) }))
+      : [];
+    return { handles, screens };
   }
 
   private uiGo(): string {
@@ -776,7 +831,7 @@ class Gen {
     );
     w.line();
 
-    const handles = this.pubFields();
+    const { handles, screens } = this.fieldNames();
 
     w.line('// Ui is the facade of the UI: one typed handle per code name.');
     w.line('type Ui struct {');
@@ -787,6 +842,8 @@ class Gen {
       w.line('// Api: flat methods over the components (api.go).').line('Api *Api');
     for (const h of handles)
       w.line(`${h.field} *${HANDLE_TYPE[h.info.node.type]}Handle // ${h.info.node.type}`);
+    for (const sc of screens)
+      w.line(`${sc.field} *ScreenHandle // screen: ${sc.field}.Show() switches to it`);
     w.dedent();
     w.line('}');
     w.line();
@@ -803,8 +860,11 @@ class Gen {
     w.line('}');
     w.line('core := NewCore()');
     w.line('ui := &Ui{Core: core, opts: opts}');
+    if (this.multi) w.line(`core.SetScreen(${goStr(keyOf(this.project.start))})`);
+    for (const sc of screens)
+      w.line(`ui.${sc.field} = NewScreenHandle(core, ${goStr(keyOf(sc.screen))})`);
     for (const info of this.order) {
-      if (info.node === this.screen.root) continue;
+      if (this.roots.has(info.node)) continue;
       const handle = handles.find((h) => h.info === info);
       const def = this.defineCall(info);
       if (handle) w.line(`ui.${handle.field} = New${HANDLE_TYPE[info.node.type]}Handle(${def})`);
@@ -1055,6 +1115,7 @@ func (r *teaRenderer) pump() {
     w.line('contentY   int   // screen row where the scrolled area starts');
     w.line('ddTag      string // select whose dropdown is open ("" if none)');
     w.line('ddCur      int   // highlighted option of that dropdown');
+    if (this.multi) w.line('screen     string // key of the screen that is shown');
     for (const info of this.order) {
       const f = info.field;
       switch (info.node.type) {
@@ -1090,7 +1151,7 @@ func (r *teaRenderer) pump() {
   private newModel(w: CodeWriter): void {
     w.line('func newModel(ui *Ui) *model {');
     w.indent();
-    w.line('m := &model{ui: ui}');
+    w.line(this.multi ? 'm := &model{ui: ui, screen: ui.Screen()}' : 'm := &model{ui: ui}');
     for (const info of this.order) {
       const n = info.node;
       const f = info.field;
@@ -1182,7 +1243,24 @@ func (r *teaRenderer) pump() {
     w.line('}');
     w.line();
 
-    w.line('func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {');
+    if (this.multi) {
+      w.line(
+        '// Update follows screen changes (made by the program or by a click) around each message.'
+      );
+      w.line('func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {');
+      w.indent();
+      w.line('m.pull()');
+      w.line('before := m.syncScreen()');
+      w.line('next, cmd := m.update(msg)');
+      w.line('return next, tea.Batch(before, cmd, m.syncScreen())');
+      w.dedent();
+      w.line('}');
+      w.line();
+      this.syncScreenCode(w);
+    }
+    w.line(
+      `func (m *model) ${this.multi ? 'update' : 'Update'}(msg tea.Msg) (tea.Model, tea.Cmd) {`
+    );
     w.indent();
     w.line('m.pull()');
     w.line('switch msg := msg.(type) {');
@@ -1274,7 +1352,11 @@ func (r *teaRenderer) pump() {
     if (modals.length) {
       w.line('case "esc":');
       w.indent();
-      modals.forEach((mo) => w.line(`m.${'c'}(${goStr(mo.tag)}).UserSet("open", false)`));
+      modals.forEach((mo) => {
+        const set = `m.c(${goStr(mo.tag)}).UserSet("open", false)`;
+        w.line(this.multi ? `if m.screen == ${goStr(mo.screen)} {` : set);
+        if (this.multi) w.indent().line(set).dedent().line('}');
+      });
       w.line('return m, nil');
       w.dedent();
     }
@@ -1338,6 +1420,45 @@ func (r *teaRenderer) pump() {
     w.line();
   }
 
+  /** A new screen starts at the top, without a dropdown, with the focus on its first component. */
+  private syncScreenCode(w: CodeWriter): void {
+    w.line(
+      '// syncScreen follows a change of the current screen (ui.<Screen>.Show(), a link): the new'
+    );
+    w.line('// screen starts at the top and the focus moves to its first component.');
+    w.line('func (m *model) syncScreen() tea.Cmd {');
+    w.indent();
+    w.line('key := m.ui.Screen()');
+    w.line('if key == m.screen {');
+    w.indent().line('return nil').dedent();
+    w.line('}');
+    w.line('m.screen = key');
+    w.line('m.scroll, m.ddTag = 0, ""');
+    for (const i of this.focusables)
+      if (i.node.type === 'TextInput' || i.node.type === 'Table') w.line(`m.${i.field}.Blur()`);
+    w.line('m.focus = -1');
+    w.line('return m.initialFocus()');
+    w.dedent();
+    w.line('}');
+    w.line();
+  }
+
+  /** Statements that open the screen a button links to (none for an unknown screen). */
+  private openScreen(id: string | undefined): string[] {
+    const key = id ? this.screenKeys.get(id) : undefined;
+    return key && this.multi ? [`m.ui.ShowScreen(${goStr(key)})`] : [];
+  }
+
+  /** Statements that open the screen of the chosen menu/list item. */
+  private itemLinks(n: IRNode, index: string): string[] {
+    if (!this.multi) return [];
+    const cases = n.items.flatMap((item, i) => {
+      const key = item.screen ? this.screenKeys.get(item.screen) : undefined;
+      return key ? [`case ${i}:`, `	m.ui.ShowScreen(${goStr(key)})`] : [];
+    });
+    return cases.length ? [`switch ${index} {`, ...cases, '}'] : [];
+  }
+
   private focusedKeys(w: CodeWriter, info: Info): void {
     const n = info.node;
     const f = info.field;
@@ -1367,10 +1488,12 @@ func (r *teaRenderer) pump() {
       case 'Button': {
         w.line('if key == "enter" || key == " " {');
         w.indent();
-        if (n.opensScreen)
-          w.line('// This button opens another screen; only the start screen is exported.');
+        const opens = this.openScreen(n.opensScreen);
+        if (n.opensScreen && !opens.length)
+          w.line('// This button opens a screen that is not part of the export.');
         w.line('c.Emit("click", nil)');
         emit(this.calls(n, 'click', 'select'));
+        emit(opens);
         w.dedent();
         w.line('}');
         break;
@@ -1423,6 +1546,7 @@ func (r *teaRenderer) pump() {
         w.line('case "enter", " ":');
         w.indent().line('c.Emit("select", c.Int("selected"))');
         emit(this.calls(n, 'select', 'click'));
+        emit(this.itemLinks(n, 'c.Int("selected")'));
         w.dedent();
         w.line('}');
         break;
@@ -1507,6 +1631,7 @@ func (r *teaRenderer) pump() {
         const anc = info.ancestors.map(goStr);
         w.line(`case ${info.focusConst}:`);
         const conds = [
+          ...(this.multi ? [`m.screen == ${goStr(info.screen)}`] : []),
           `m.ui.Usable(${[goStr(info.tag), ...anc].join(', ')})`,
           ...navConds(info.node),
         ];
@@ -1601,7 +1726,8 @@ func (r *teaRenderer) pump() {
     if (modals.length) {
       w.line('top := ""');
       for (const mo of modals) {
-        w.line(`if m.ui.Open(${goStr(mo.tag)}) {`);
+        const here = this.multi ? `m.screen == ${goStr(mo.screen)} && ` : '';
+        w.line(`if ${here}m.ui.Open(${goStr(mo.tag)}) {`);
         w.indent()
           .line(`top = ${goStr(mo.tag)}`)
           .dedent();
@@ -2004,8 +2130,13 @@ func (m *model) dropdownOverlay(out string) string {
   // ── View ────────────────────────────────────────────────────────────────────
 
   private view(w: CodeWriter): void {
-    const root = this.info(this.screen.root);
-    const rd = dims(root.node);
+    const startKey = keyOf(this.project.start);
+    const parts = this.screens
+      .map((sc) => ({ sc, key: keyOf(sc), root: this.info(sc.root) }))
+      // The start screen is the default branch of the switches.
+      .sort((x, y) => Number(y.key === startKey) - Number(x.key === startKey));
+    const first = parts[0];
+    const rd = dims(first.root.node);
     w.line('func (m *model) View() string {');
     w.indent();
     w.line('m.pull()');
@@ -2015,6 +2146,15 @@ func (m *model) dropdownOverlay(out string) string {
       '// The root fills the terminal (top-left); before the first size message it has the design size.'
     );
     w.line(`w, h := ${rd.w}, ${rd.h}`);
+    if (this.multi) {
+      w.line('switch m.screen {');
+      for (const p of parts.slice(1)) {
+        const d = dims(p.root.node);
+        w.line(`case ${goStr(p.key)}:`);
+        w.indent().line(`w, h = ${d.w}, ${d.h}`).dedent();
+      }
+      w.line('}');
+    }
     w.line('if m.winW > 0 && m.winH > 0 {');
     w.indent().line('w, h = m.winW, m.winH').dedent();
     w.line('}');
@@ -2022,19 +2162,38 @@ func (m *model) dropdownOverlay(out string) string {
     w.line('if logOn {');
     w.indent().line('h = max(h-logPanelHeight, 3)').dedent();
     w.line('}');
-    w.line(`out := m.${root.method}(0, 0, w, h)`);
-    // Modals are not scrolled: they are centred over the visible window.
-    for (const mo of liveChildren(root.node).filter(
-      (c) => c.type === 'Modal' && this.infos.has(c)
-    )) {
-      const ms = sizeOf(mo);
-      const mi = this.info(mo);
-      w.line(`if m.ui.Open(${goStr(mi.tag)}) {`);
+    const body = (root: Info, decl: boolean) => {
+      w.line(`out ${decl ? ':=' : '='} m.${root.method}(0, 0, w, h)`);
+      // Modals are not scrolled: they are centred over the visible window.
+      for (const mo of liveChildren(root.node).filter(
+        (c) => c.type === 'Modal' && this.infos.has(c)
+      )) {
+        const ms = sizeOf(mo);
+        const mi = this.info(mo);
+        w.line(`if m.ui.Open(${goStr(mi.tag)}) {`);
+        w.indent();
+        w.line(`mx, my := max((w-${ms.w})/2, 0), max((h-${ms.h})/2, 0)`);
+        w.line(`out = overlay(out, mx, my, m.${mi.method}(mx, my))`);
+        w.dedent();
+        w.line('}');
+      }
+    };
+    if (this.multi) {
+      w.line('var out string');
+      w.line('switch m.screen {');
+      for (const p of parts.slice(1)) {
+        w.line(`case ${goStr(p.key)}:`);
+        w.indent();
+        body(p.root, false);
+        w.dedent();
+      }
+      w.line('default:');
       w.indent();
-      w.line(`mx, my := max((w-${ms.w})/2, 0), max((h-${ms.h})/2, 0)`);
-      w.line(`out = overlay(out, mx, my, m.${mi.method}(mx, my))`);
+      body(first.root, false);
       w.dedent();
       w.line('}');
+    } else {
+      body(first.root, true);
     }
     if (this.hasSelect()) w.line('out = m.dropdownOverlay(out)');
     w.line('if logOn {');
@@ -2086,7 +2245,7 @@ func (m *model) dropdownOverlay(out string) string {
   private container(w: CodeWriter, info: Info): void {
     const n = info.node;
     const d = dims(n);
-    const isRoot = n === this.screen.root;
+    const isRoot = this.roots.has(n);
     const b = borderCells(n);
     const kids = liveChildren(n).filter((c) => c.type !== 'Modal' && this.infos.has(c));
     // The modals of the root are overlaid by View (they do not scroll with the content).
@@ -3070,15 +3229,17 @@ func treeKey(nodes []treeNode, open []bool, cur int, key string) int {
 }
 `;
 
+const keyOf = (sc: IRScreen): string => sc.tag ?? sc.ident;
+
 export const bubbleteaAdapter: ExportAdapter = {
   id: 'bubbletea',
   label: 'Bubble Tea (Go)',
   language: 'go',
   verification: 'run',
   percentSizes: 'fixed',
-  multiScreen: false,
+  multiScreen: true,
   navBodies: true,
-  generate: ({ ir }) => new Gen(ir.start, ir).generate(),
+  generate: ({ ir }) => new Gen(ir).generate(),
 };
 
 // Re-exported for the tests: how an API event is spelled in Go.
