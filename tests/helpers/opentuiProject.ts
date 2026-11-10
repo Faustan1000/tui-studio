@@ -29,10 +29,14 @@ export function hasRuntimeModules(): boolean {
 }
 
 /** Generate `root` as the OpenTUI project `name` and return its directory. */
-export function writeProject(name: string, root: ComponentNode): string {
+export function writeProject(
+  name: string,
+  root: ComponentNode,
+  screens?: { id: string; root: ComponentNode }[]
+): string {
   const dir = join(GENERATED_DIR, name);
   rmSync(dir, { recursive: true, force: true });
-  for (const f of exportToFiles(root, 'opentui')) {
+  for (const f of exportToFiles(root, 'opentui', screens)) {
     const target = join(dir, f.path);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, f.content, 'utf8');

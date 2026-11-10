@@ -212,12 +212,16 @@ export abstract class UiCore {
   private pending: Array<(event: UiEvent | null) => void> = [];
   private callbacks = new Map<string, UiHandler[]>();
   private modals: Array<{ tag: string }> = [];
+  /** Key of the screen that is shown (empty for a design with one screen). */
+  screen = "";
+  private screenCallbacks = new Map<string, Array<() => unknown>>();
 
   /** The React element of the UI (generated). */
   protected abstract view(): ReactNode;
 
   constructor() {
     this.store.init("$overlay", { node: null });
+    this.store.init("$screen", { key: "" });
     this.store.init("$ui", { dialog: [], logOpen: false, lines: [], scroll: 0 } satisfies UiSlice);
   }
 
@@ -226,6 +230,24 @@ export abstract class UiCore {
     this.store.init(handle.tag, initial);
     if (handle.type === "Modal") this.modals.push({ tag: handle.tag });
     return handle;
+  }
+
+  // ── screens ─────────────────────────────────────────────────────────────────
+
+  /** Switch to another screen (closes open dialogs, scrolls to the top). */
+  showScreen(key: string): void {
+    if (this.screen === key) return;
+    this.screen = key;
+    for (const m of this.modals) if (this.store.get(m.tag).open) this.store.patch(m.tag, { open: false });
+    this.scrollRef.current?.scrollTo(0);
+    this.store.patch("$screen", { key });
+    for (const fn of this.screenCallbacks.get(key) ?? []) this.defer(fn, `screen ${key}`);
+  }
+
+  onScreenShown(key: string, fn: () => unknown): void {
+    const list = this.screenCallbacks.get(key) ?? [];
+    list.push(fn);
+    this.screenCallbacks.set(key, list);
   }
 
   // ── lifecycle ───────────────────────────────────────────────────────────────
@@ -445,6 +467,21 @@ export abstract class UiCore {
       }
     }
     return false;
+  }
+}
+
+/** One screen of the UI: `ui.settings.show()` switches to it. */
+export class ScreenHandle {
+  constructor(private readonly ui: UiCore, readonly key: string) {}
+  get isActive(): boolean {
+    return this.ui.screen === this.key;
+  }
+  show(): void {
+    this.ui.showScreen(this.key);
+  }
+  /** Called (not inside a render) every time this screen has been shown. */
+  onShow(fn: () => unknown): void {
+    this.ui.onScreenShown(this.key, fn);
   }
 }
 

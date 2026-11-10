@@ -31,6 +31,7 @@ import {
   treeLines,
   walkIR,
   type IRNode,
+  type IRScreen,
 } from '../ir';
 import { CodeWriter, jsStr } from '../lang';
 
@@ -56,7 +57,7 @@ const CORE_MEMBERS = new Set(
   (
     'store errors log ready running renderer root closed closeWaiters queue pending callbacks modals view add ' +
     'start stop wait run markClosed on nextEvent isActive emit defer report addLog installExcepthooks blocked ' +
-    'handleKey constructor api'
+    'handleKey constructor api screen showScreen onScreenShown screenCallbacks'
   ).split(' ')
 );
 
@@ -102,6 +103,21 @@ interface Ctx {
   navState: Map<string, { value: string; set: string }>;
   /** Slices already declared as hooks (a body can need its nav's slice before the nav is drawn). */
   declared: Set<string>;
+  /** Screen id -> key used by `ui.showScreen` (empty for a design with one screen). */
+  screenKeys: Map<string, string>;
+  /** Names of the sets of select/text-field/tab-bar ids of this screen's component. */
+  selectsName: string;
+  textFieldsName: string;
+  tabsName: string;
+}
+
+/** One generated component: a screen. */
+interface Part {
+  screen: IRScreen;
+  ctx: Ctx;
+  jsx: string;
+  name: string;
+  handles: ApiHandleModel[];
 }
 
 export const opentuiAdapter: ExportAdapter = {
@@ -110,73 +126,46 @@ export const opentuiAdapter: ExportAdapter = {
   language: 'tsx',
   verification: 'run',
   percentSizes: 'native',
-  multiScreen: false,
+  multiScreen: true,
   navBodies: true,
   generate({ ir }) {
     const screen = ir.start;
-    const root = screen.root;
-    const ctx: Ctx = {
+    const multi = ir.screens.length > 1;
+    const all = buildApiModel(ir).handles;
+    const shared = {
       used: new Set(RESERVED),
-      state: new Map(),
-      tagged: new Map(),
-      stubs: new Map(),
-      consts: [],
-      focusOrder: [],
-      textFields: [],
-      cases: [],
-      hooks: [],
-      screenW: screen.width,
-      screenH: screen.height,
-      usesAttrs: false,
-      usesSpinner: false,
-      usesTable: false,
-      usesProgress: false,
-      usesOptions: false,
-      usesHit: false,
-      usesTabs: false,
-      tabIds: [],
-      tabMoves: [],
-      dropdown: walkIR(root).some((n) => n.type === 'Select' && renderable(n)),
-      opens: [],
-      picks: [],
-      popups: [],
-      usesRef: false,
-      navState: new Map(),
-      declared: new Set(),
+      stubs: new Map<string, string>(),
+      consts: [] as string[],
+      screenKeys: new Map<string, string>(
+        multi ? ir.screens.map((sc) => [sc.id, sc.tag ?? sc.ident]) : []
+      ),
     };
-    findSwitching(root);
-
-    // The handles of the program API (code names of the first screen).
-    const inScreen = new Set(
-      walkIR(root)
-        .filter(renderable)
-        .map((n) => n.id)
-    );
-    const handles = buildApiModel(ir).handles.filter((h) => inScreen.has(h.node.id));
-    for (const h of handles) {
-      ctx.tagged.set(h.node.id, { handle: h, sv: '' });
+    const parts: Part[] = ir.screens.map((sc) => buildPart(sc, all, shared));
+    // Component names: `App` for one screen, one component per screen and an `App` otherwise.
+    for (const p of parts) {
+      p.name = multi ? unique(p.ctx, recase(p.screen.ident, 'pascal') + 'Screen') : 'App';
     }
-
-    // Names of state variables first (radio groups need the setters of their siblings).
-    for (const n of walkIR(root).filter((n) => renderable(n))) {
-      const t = ctx.tagged.get(n.id);
-      if (!t && switching.has(n.id)) {
-        const value = unique(ctx, recase(n.ident, 'camel') + 'Index');
-        ctx.navState.set(n.id, { value, set: unique(ctx, 'set' + recase(value, 'pascal')) });
-      }
-      if (t) t.sv = unique(ctx, recase(n.ident, 'camel') + 'S');
-      else if (STATEFUL.has(n.type)) {
-        const value = unique(ctx, recase(n.ident, 'camel'));
-        const set = unique(ctx, 'set' + recase(value, 'pascal'));
-        ctx.state.set(n.id, { value, set });
+    const handles = parts.flatMap((p) => p.handles);
+    // Header and helpers of the file need to know what any screen uses.
+    const g: Ctx = { ...parts[0].ctx };
+    for (const p of parts.slice(1)) {
+      for (const k of [
+        'usesAttrs',
+        'usesSpinner',
+        'usesTable',
+        'usesProgress',
+        'usesOptions',
+        'usesHit',
+        'usesTabs',
+        'usesRef',
+        'dropdown',
+      ] as const) {
+        g[k] ||= p.ctx[k];
       }
     }
-
-    const jsx = new CodeWriter('  ', 4);
-    emit(ctx, jsx, root, null);
 
     const out = new CodeWriter();
-    writeFile(out, ctx, jsx.toString().replace(/\n$/, ''), screen.ident, handles);
+    writeFile(out, g, parts, multi, handles, shared.screenKeys);
 
     const pkgName =
       toIdent(screen.ident, 'snake', 'tui_app').replace(/_/g, '-').replace(/-+$/, '') || 'tui-app';
@@ -240,6 +229,87 @@ export const opentuiAdapter: ExportAdapter = {
   },
 };
 
+interface Shared {
+  used: Set<string>;
+  stubs: Map<string, string>;
+  consts: string[];
+  screenKeys: Map<string, string>;
+}
+
+/** The component tree of one screen. Names, handler stubs and constants are shared by all screens. */
+function buildPart(screen: IRScreen, allHandles: ApiHandleModel[], shared: Shared): Part {
+  const root = screen.root;
+  const ctx: Ctx = {
+    used: shared.used,
+    state: new Map(),
+    tagged: new Map(),
+    stubs: shared.stubs,
+    consts: shared.consts,
+    focusOrder: [],
+    textFields: [],
+    cases: [],
+    hooks: [],
+    screenW: screen.width,
+    screenH: screen.height,
+    usesAttrs: false,
+    usesSpinner: false,
+    usesTable: false,
+    usesProgress: false,
+    usesOptions: false,
+    usesHit: false,
+    usesTabs: false,
+    tabIds: [],
+    tabMoves: [],
+    dropdown: false,
+    opens: [],
+    picks: [],
+    popups: [],
+    usesRef: false,
+    navState: new Map(),
+    declared: new Set(),
+    screenKeys: shared.screenKeys,
+    selectsName: '',
+    textFieldsName: '',
+    tabsName: '',
+  };
+  findSwitching(root);
+  ctx.dropdown = walkIR(root).some((n) => n.type === 'Select' && renderable(n));
+
+  // The handles of the program API (code names of this screen).
+  const inScreen = new Set(
+    walkIR(root)
+      .filter(renderable)
+      .map((n) => n.id)
+  );
+  const handles = allHandles.filter((h) => inScreen.has(h.node.id));
+  for (const h of handles) {
+    ctx.tagged.set(h.node.id, { handle: h, sv: '' });
+  }
+
+  // Names of state variables first (radio groups need the setters of their siblings).
+  for (const n of walkIR(root).filter((n) => renderable(n))) {
+    const t = ctx.tagged.get(n.id);
+    if (!t && switching.has(n.id)) {
+      const value = unique(ctx, recase(n.ident, 'camel') + 'Index');
+      ctx.navState.set(n.id, { value, set: unique(ctx, 'set' + recase(value, 'pascal')) });
+    }
+    if (t) t.sv = unique(ctx, recase(n.ident, 'camel') + 'S');
+    else if (STATEFUL.has(n.type)) {
+      const value = unique(ctx, recase(n.ident, 'camel'));
+      const set = unique(ctx, 'set' + recase(value, 'pascal'));
+      ctx.state.set(n.id, { value, set });
+    }
+  }
+
+  const jsx = new CodeWriter('  ', 4);
+  emit(ctx, jsx, root, null);
+  // (the sets are named after the body is emitted: a design with one screen keeps the plain names)
+  ctx.selectsName = unique(ctx, 'SELECTS');
+  ctx.textFieldsName = unique(ctx, 'TEXT_FIELDS');
+  ctx.tabsName = unique(ctx, 'TABS');
+  return { screen, ctx, jsx: jsx.toString().replace(/\n$/, ''), name: 'App', handles };
+}
+
 /** Tab/menu/list elements whose bodies switch at run time (set while one design is generated). */
 let switching: Set<string> = new Set();
 
@@ -251,7 +321,7 @@ function findSwitching(root: IRNode): void {
       (n.type === 'Tabs' || n.type === 'Menu' || n.type === 'List') &&
       all.some((b) => b.showWhen?.nav === n.id)
   );
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const nav of navs) {
       if (switching.has(nav.id) || !renderable(nav)) continue;
@@ -289,11 +359,17 @@ function renderableChildren(node: IRNode): IRNode[] {
 function writeFile(
   w: CodeWriter,
   ctx: Ctx,
-  jsx: string,
-  screenIdent: string,
-  handles: ApiHandleModel[]
+  parts: Part[],
+  multi: boolean,
+  handles: ApiHandleModel[],
+  screenKeys: Map<string, string>
 ): void {
-  w.line(`// OpenTUI (React) app for the screen "${screenIdent}", generated by TUI Studio.`);
+  const screenIdent = parts[0].screen.ident;
+  w.line(
+    multi
+      ? `// OpenTUI (React) app with ${parts.length} screens (first: "${screenIdent}"), generated by TUI Studio.`
+      : `// OpenTUI (React) app for the screen "${screenIdent}", generated by TUI Studio.`
+  );
   w.line(
     `// Targets @opentui/core and @opentui/react ${OPENTUI_VERSION} (React ${REACT_VERSION}); needs Bun.`
   );
@@ -330,7 +406,9 @@ function writeFile(
   ].filter(Boolean);
   if (core.length) w.line(`import { ${core.join(', ')} } from "@opentui/core";`);
   w.line('import { useKeyboard } from "@opentui/react";');
-  w.line('import { Handle, UiCore, useSlice, type UiHandler, type UiState } from "./ui-runtime";');
+  w.line(
+    `import { Handle, ${multi ? 'ScreenHandle, ' : ''}UiCore, useSlice, type UiHandler, type UiState } from "./ui-runtime";`
+  );
   if (handles.length) w.line('import { Api } from "./api";');
   w.line();
 
@@ -346,7 +424,7 @@ function writeFile(
   for (const c of ctx.consts) w.block(c);
   if (ctx.consts.length) w.line();
 
-  writeFacade(w, ctx, handles);
+  writeFacade(w, ctx, handles, parts, multi, screenKeys);
 
   if (ctx.usesHit) {
     w.line(
@@ -441,19 +519,49 @@ function writeFile(
     w.line();
   }
 
+  for (const p of parts) writeScreen(w, p);
+  if (multi) {
+    w.line('/** Shows the screen that is current (`ui.<screen>.show()` switches). */');
+    w.line('function App({ ui }: { ui: Ui }) {');
+    w.line('  const current = useSlice<{ key: string }>(ui, "$screen").key;');
+    w.line('  switch (current) {');
+    for (const p of parts.slice(1)) {
+      w.line(`    case ${jsStr(screenKeys.get(p.screen.id)!)}:`);
+      w.line(`      return <${p.name} ui={ui} />;`);
+    }
+    w.line('    default:');
+    w.line(`      return <${parts[0].name} ui={ui} />;`);
+    w.line('  }');
+    w.line('}');
+    w.line();
+  }
+  w.line('// Started directly (bun run src/index.tsx): show the UI until it is closed.');
+  w.line('if ((import.meta as { main?: boolean }).main) {');
+  w.line('  const ui = new Ui();');
+  w.line('  await ui.start();');
+  w.line('  await ui.wait();');
+  w.line('  (globalThis as { process?: { exit(code?: number): void } }).process?.exit(0);');
+  w.line('}');
+}
+
+/** The component of one screen: constants, focus handling, keys and the element tree. */
+function writeScreen(w: CodeWriter, p: Part): void {
+  const ctx = p.ctx;
   if (ctx.dropdown) {
     w.line(
-      `const SELECTS = new Set<string>([${ctx.opens
+      `const ${ctx.selectsName} = new Set<string>([${ctx.opens
         .map((c) => c.split('"')[1])
         .map(jsStr)
         .join(', ')}]);`
     );
   }
-  w.line(`const TEXT_FIELDS = new Set<string>([${ctx.textFields.map(jsStr).join(', ')}]);`);
+  w.line(
+    `const ${ctx.textFieldsName} = new Set<string>([${ctx.textFields.map(jsStr).join(', ')}]);`
+  );
   if (ctx.tabMoves.length)
-    w.line(`const TABS = new Set<string>([${ctx.tabIds.map(jsStr).join(', ')}]);`);
+    w.line(`const ${ctx.tabsName} = new Set<string>([${ctx.tabIds.map(jsStr).join(', ')}]);`);
   w.line();
-  w.line('function App({ ui }: { ui: Ui }) {');
+  w.line(`function ${p.name}({ ui }: { ui: Ui }) {`);
   w.indent();
   w.line('const sys = useSlice<{ dialog: unknown[]; scroll: number }>(ui, "$ui");');
   if (ctx.dropdown) {
@@ -575,15 +683,17 @@ function writeFile(
     );
     w.line('    return;');
     w.line('  }');
-    w.line('  if (key.name === "down" && SELECTS.has(focusId)) return openDropdown(focusId);');
+    w.line(
+      `  if (key.name === "down" && ${ctx.selectsName}.has(focusId)) return openDropdown(focusId);`
+    );
   }
   w.line('  if (ui.handleKey(key)) return;');
   if (ctx.tabMoves.length)
     w.line(
-      '  if ((key.name === "left" || key.name === "right") && TABS.has(focusId)) return moveTab(focusId, key.name === "left" ? -1 : 1);'
+      `  if ((key.name === "left" || key.name === "right") && ${ctx.tabsName}.has(focusId)) return moveTab(focusId, key.name === "left" ? -1 : 1);`
     );
   w.line('  if (key.name === "tab") return move(key.shift ? -1 : 1);');
-  w.line('  if (TEXT_FIELDS.has(focusId)) return;');
+  w.line(`  if (${ctx.textFieldsName}.has(focusId)) return;`);
   w.line('  if (key.name === "q") return ui.stop();');
   w.line(
     '  if (key.name === "return" || key.name === "space" || key.name === " ") activate(focusId);'
@@ -591,18 +701,11 @@ function writeFile(
   w.line('});');
   w.line();
   w.line('return (');
-  w.block(jsx);
+  w.block(p.jsx);
   w.line(');');
   w.dedent();
   w.line('}');
   w.line();
-  w.line('// Started directly (bun run src/index.tsx): show the UI until it is closed.');
-  w.line('if ((import.meta as { main?: boolean }).main) {');
-  w.line('  const ui = new Ui();');
-  w.line('  await ui.start();');
-  w.line('  await ui.wait();');
-  w.line('  (globalThis as { process?: { exit(code?: number): void } }).process?.exit(0);');
-  w.line('}');
 }
 
 // ── Program API facade ────────────────────────────────────────────────────────
@@ -664,7 +767,14 @@ function opentuiMembers(handles: ApiHandleModel[]): Map<ApiHandleModel, string> 
   return names;
 }
 
-function writeFacade(w: CodeWriter, ctx: Ctx, handles: ApiHandleModel[]): void {
+function writeFacade(
+  w: CodeWriter,
+  ctx: Ctx,
+  handles: ApiHandleModel[],
+  parts: Part[],
+  multi: boolean,
+  screenKeys: Map<string, string>
+): void {
   const classNames = new Map<ApiHandleModel, string>();
   const members = opentuiMembers(handles);
   for (const h of handles) {
@@ -719,11 +829,27 @@ function writeFacade(w: CodeWriter, ctx: Ctx, handles: ApiHandleModel[]): void {
   w.line('export class Ui extends UiCore {');
   w.indent();
   for (const h of handles) w.line(`readonly ${members.get(h)}: ${classNames.get(h)};`);
+  // Screens with a code name: ui.<screen>.show() switches to them.
+  const screenMembers: [string, string][] = [];
+  if (multi) {
+    const taken = new Set([...CORE_MEMBERS, ...members.values()]);
+    for (const p of parts) {
+      if (!p.screen.tag) continue;
+      let m = safeIdent(apiName(p.screen.tag, 'camel'), 'ts');
+      while (taken.has(m)) m += '_';
+      taken.add(m);
+      screenMembers.push([m, screenKeys.get(p.screen.id)!]);
+      w.line(`readonly ${m}: ScreenHandle;`);
+    }
+  }
   if (handles.length)
     w.line('/** Flat methods over the components (see api.ts). */').line('readonly api: Api;');
   w.line('constructor() {');
   w.indent();
   w.line('super();');
+  if (multi) w.line(`this.screen = ${jsStr(screenKeys.get(parts[0].screen.id)!)};`);
+  for (const [m, key] of screenMembers)
+    w.line(`this.${m} = new ScreenHandle(this, ${jsStr(key)});`);
   for (const h of handles) {
     const init = Object.entries({ state: h.initialState, ...initialValues(h) })
       .map(([k, v]) => `${/^[A-Za-z_]\w*$/.test(k) ? k : jsStr(k)}: ${lit(v)}`)
@@ -769,6 +895,22 @@ function handlers(ctx: Ctx, node: IRNode, pattern?: RegExp): string[] {
     if ((!pattern || pattern.test(event)) && !out.includes(fn)) out.push(fn);
   }
   return out;
+}
+
+/** Statement that opens the screen a button links to (none when it links nowhere). */
+function openScreen(ctx: Ctx, id: string | undefined): string {
+  const key = id ? ctx.screenKeys.get(id) : undefined;
+  return key ? `ui.showScreen(${jsStr(key)});` : '';
+}
+
+/** Statement that opens the screen of the chosen menu/list item (none when no item links). */
+function itemLinks(ctx: Ctx, node: IRNode, index: string): string {
+  const targets = node.items.flatMap((item, i) => {
+    const key = item.screen ? ctx.screenKeys.get(item.screen) : undefined;
+    return key ? [`${i}: ${jsStr(key)}`] : [];
+  });
+  if (!targets.length) return '';
+  return `const target = ({ ${targets.join(', ')} } as Record<number, string>)[${index}]; if (target) ui.showScreen(target);`;
 }
 
 /** `ui.emit(tag, name, value, [stubs])` as a statement. */
@@ -1308,8 +1450,9 @@ function button(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): v
   if (!node.disabled) {
     focusable(ctx, node);
     const guardLine = t ? `if (!ui.isActive(${jsStr(t.handle.tag)})) break;\n` : '';
+    const link = openScreen(ctx, node.opensScreen);
     ctx.cases.push(
-      `case ${jsStr(node.ident)}:\n  ${guardLine}${emitCall(node, ctx, 'click', 'null', fns)}\n  break;`
+      `case ${jsStr(node.ident)}:\n  ${guardLine}${emitCall(node, ctx, 'click', 'null', fns)}${link ? `\n  ${link}` : ''}\n  break;`
     );
   }
   const props = [...posSize(ctx, node, parent), ...borderProps(node)];
@@ -1399,20 +1542,18 @@ function optionsConst(ctx: Ctx, node: IRNode, labels: string[]): string {
 }
 
 /** Selection of a List/Menu without a code name: uncontrolled, or a state when it has bodies. */
-function untaggedSelection(
-  ctx: Ctx,
-  node: IRNode,
-  props: (string | null)[],
-  fns: string[]
-): void {
+function untaggedSelection(ctx: Ctx, node: IRNode, props: (string | null)[], fns: string[]): void {
   const st = ctx.navState.get(node.id);
   if (st) {
     const init = Math.max(0, Math.min(node.selected, Math.max(0, node.items.length - 1)));
     ctx.hooks.push(`const [${st.value}, ${st.set}] = useState(${init});`);
     props.push(`selectedIndex={${st.value}}`, `onChange={(index: number) => ${st.set}(index)}`);
   } else if (node.selected > 0) props.push(`selectedIndex={${node.selected}}`);
-  if (fns.length)
-    props.push(`onSelect={(index: number) => { ${emitCall(node, ctx, 'select', 'index', fns)} }}`);
+  const to = itemLinks(ctx, node, 'index');
+  if (fns.length || to)
+    props.push(
+      `onSelect={(index: number) => { ${emitCall(node, ctx, 'select', 'index', fns)}${to ? ' ' + to : ''} }}`
+    );
 }
 
 function selectList(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): void {
@@ -1472,7 +1613,7 @@ function selectList(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null
         `onChange={(index: number) => { ${userGuard} if (ui.store.get(${tag}).selected !== index) ui.store.patch(${tag}, { selected: index }); }}`
       );
       props.push(
-        `onSelect={(index: number) => { ${userGuard} ui.store.patch(${tag}, { selected: index }); ${emitCall(node, ctx, 'select', 'index', fns)} }}`
+        `onSelect={(index: number) => { ${userGuard} ui.store.patch(${tag}, { selected: index }); ${emitCall(node, ctx, 'select', 'index', fns)}${itemLinks(ctx, node, 'index') ? ' ' + itemLinks(ctx, node, 'index') : ''} }}`
       );
     } else {
       props.push(
@@ -1499,7 +1640,7 @@ function selectList(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null
         `onChange={(index: number) => { ${userGuard} if (ui.store.get(${tag}).selected !== index) ui.store.patch(${tag}, { selected: index }); }}`
       );
       props.push(
-        `onSelect={(index: number) => { ${userGuard} ui.store.patch(${tag}, { selected: index }); ${emitCall(node, ctx, 'select', 'index', fns)} }}`
+        `onSelect={(index: number) => { ${userGuard} ui.store.patch(${tag}, { selected: index }); ${emitCall(node, ctx, 'select', 'index', fns)}${itemLinks(ctx, node, 'index') ? ' ' + itemLinks(ctx, node, 'index') : ''} }}`
       );
     } else {
       untaggedSelection(ctx, node, props, fns);
@@ -1685,6 +1826,8 @@ function mouseSelect(ctx: Ctx, node: IRNode, tag: string, id: string): string {
   } else {
     if (t) body = ` ui.store.patch(${tag}, { selected: i }); `;
     body += emitCall(node, ctx, 'select', 'i', fns);
+    const to = itemLinks(ctx, node, 'i');
+    if (to) body += ' ' + to;
   }
   return `onMouseDown={(event: MouseAt) => { ${head}${body} }}`;
 }
