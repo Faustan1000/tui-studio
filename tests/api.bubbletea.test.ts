@@ -11,6 +11,7 @@ import { exportToFiles } from '../src/utils/export/codeExporter';
 import { BUBBLETEA_RESERVED_UI } from '../src/utils/export/exporters/bubbletea';
 import { GO_RUNTIME_SOURCE } from '../src/utils/export/api/go/runtime';
 import { apiDesign } from './fixtures/apiDesign';
+import { mk } from './fixtures/build';
 import { allComponents, layouts, multiScreen } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 import { findGo, runGo, writeProject } from './helpers/go';
@@ -95,5 +96,48 @@ suite('bubbletea tab/menu bodies (real Go)', () => {
     const test = runGo(['test', '-count=1', '-run', 'TestNavBodies', '-v', './...'], dir);
     expect(test.ok, test.output).toBe(true);
     expect(test.output).toMatch(/--- PASS: TestNavBodies/);
+  }, 600_000);
+});
+
+suite('bubbletea several screens (real Go)', () => {
+  it('shows the first screen, switches with Show() and with links', () => {
+    const roots = multiScreen();
+    const screens = roots.map((root) => ({ id: root.tag ?? 'about', root }));
+    const files = exportToFiles(roots[0], 'bubbletea', screens);
+    const test = readFileSync(join(__dirname, 'apitests', 'bubbletea', 'screens_test.go'), 'utf8');
+    const dir = prepare([...files, { path: 'screens_test.go', content: test }]);
+    const vet = runGo(['vet', './...'], dir);
+    expect(vet.output, 'go vet').toBe('');
+    const run = runGo(['test', '-count=1', '-run', 'TestScreens', '-v', './...'], dir);
+    expect(run.ok, run.output).toBe(true);
+    expect(run.output).toMatch(/--- PASS: TestScreens/);
+  }, 600_000);
+
+  it('vets and builds every screen of the multi-screen design', () => {
+    const roots = multiScreen();
+    // Menu and list items that open a screen; controls of the same kind on every screen.
+    const menu = roots[0].children.find((c) => c.tag === 'side')!;
+    menu.props = {
+      ...menu.props,
+      items: [
+        { label: 'One', screen: 'settings' },
+        { label: 'Two', screen: 'about' },
+      ],
+    };
+    roots[1].children.push(
+      mk('Select', { tag: 'color' }),
+      mk('Spinner', { tag: 'busy' }),
+      mk('List', { tag: 'files', props: { items: [{ label: 'Home', screen: 'home' }] } }),
+      mk('Modal', { tag: 'confirm' }, [mk('Button', { tag: 'ok_btn' })])
+    );
+    roots[2].children.push(mk('TextInput'), mk('Select'), mk('Modal', {}, [mk('Text')]));
+    const screens = roots.map((root) => ({ id: root.tag ?? 'about', root }));
+    const files = exportToFiles(roots[0], 'bubbletea', screens);
+    expect(files.find((f) => f.path === 'main.go')!.content).toContain(
+      'm.ui.ShowScreen("about_us")'
+    );
+    const dir = prepare(files);
+    expect(runGo(['vet', './...'], dir).output, 'go vet').toBe('');
+    expect(runGo(['build', './...'], dir).output, 'go build').toBe('');
   }, 600_000);
 });

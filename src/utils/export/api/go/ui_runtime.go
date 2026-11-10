@@ -91,6 +91,8 @@ type Core struct {
 	seen     int
 	logs     []ErrorEntry
 	logOn    bool
+	screen   string
+	screenFn map[string][]func(Event)
 
 	// screenKey is the screen that is shown (empty for a design with one screen).
 	screenKey   string
@@ -486,6 +488,81 @@ func (c *Core) CatchPanics(fn func()) {
 		}
 	}()
 	fn()
+}
+
+// ── Screens ───────────────────────────────────────────────────────────────────
+
+// Screen is the key (code name) of the screen that is shown ("" for a design with one screen).
+func (c *Core) Screen() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.screen
+}
+
+// SetScreen sets the current screen without any effect (the adapter's startup).
+func (c *Core) SetScreen(key string) {
+	c.mu.Lock()
+	c.screen = key
+	c.mu.Unlock()
+}
+
+// ShowScreen switches to another screen: open modals close and the OnShow handlers of the
+// screen run (on the handler goroutine). The adapter scrolls the new screen to the top.
+func (c *Core) ShowScreen(key string) {
+	c.mu.Lock()
+	if c.screen == key || c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.screen = key
+	for _, comp := range c.comps {
+		if comp.public && comp.props["open"] == true {
+			comp.props["open"] = false
+			comp.ver++
+		}
+	}
+	ev := Event{Tag: key, Name: "show", Time: time.Now()}
+	hs := append([]func(Event){}, c.screenFn[key]...)
+	if len(hs) > 0 {
+		c.jobs = append(c.jobs, func() {
+			for _, h := range hs {
+				c.callHandler(h, ev)
+			}
+		})
+		c.cond.Signal()
+	}
+	c.mu.Unlock()
+	c.refresh()
+}
+
+// ScreenHandle is one screen of the UI: ui.Settings.Show() switches to it.
+type ScreenHandle struct {
+	core *Core
+	key  string
+}
+
+func NewScreenHandle(c *Core, key string) *ScreenHandle { return &ScreenHandle{c, key} }
+
+// Tag is the code name of the screen.
+func (h *ScreenHandle) Tag() string { return h.key }
+
+// IsActive reports whether the screen is shown.
+func (h *ScreenHandle) IsActive() bool { return h.core.Screen() == h.key }
+
+// Show switches to this screen.
+func (h *ScreenHandle) Show() { h.core.ShowScreen(h.key) }
+
+// OnShow registers a handler that runs every time the screen has been shown.
+func (h *ScreenHandle) OnShow(fn func(Event)) {
+	if fn == nil {
+		return
+	}
+	h.core.mu.Lock()
+	if h.core.screenFn == nil {
+		h.core.screenFn = map[string][]func(Event){}
+	}
+	h.core.screenFn[h.key] = append(h.core.screenFn[h.key], fn)
+	h.core.mu.Unlock()
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────

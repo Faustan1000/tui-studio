@@ -181,14 +181,21 @@ describe('bubbletea adapter', () => {
       id: 'bubbletea',
       label: 'Bubble Tea (Go)',
       language: 'go',
-      multiScreen: false,
+      multiScreen: true,
       verification: 'run',
     });
   });
 
   it('writes main.go, ui.go, ui_runtime.go and a go.mod with pinned versions', () => {
     const files = run(allComponents());
-    expect(files.map((f) => f.path)).toEqual(['main.go', 'ui.go', 'api.go', 'ui_runtime.go', 'go.mod', 'API.md']);
+    expect(files.map((f) => f.path)).toEqual([
+      'main.go',
+      'ui.go',
+      'api.go',
+      'ui_runtime.go',
+      'go.mod',
+      'API.md',
+    ]);
     const mod = goModOf(files);
     expect(mod.module).toBe('tuistudio/main');
     expect(mod.go).toBe(BUBBLETEA_VERSIONS.go);
@@ -775,13 +782,30 @@ describe('bubbletea adapter', () => {
     });
   });
 
-  it('exports only the first screen (single-screen adapter)', () => {
-    const screens = multiScreen().map((root) => ({ id: root.id, root }));
-    const files = run(screens[0].root, screens);
-    const out = files.map((f) => f.content).join('\n');
+  it('exports every screen and switches between them (multi-screen adapter)', () => {
+    const roots = multiScreen();
+    const screens = roots.map((root) => ({ id: root.tag ?? 'about', root }));
+    const files = run(roots[0], screens);
+    for (const f of files) if (f.path.endsWith('.go')) checkGo(f.content);
+    const main = files.find((f) => f.path === 'main.go')!.content;
+    const ui = files.find((f) => f.path === 'ui.go')!.content;
+    const out = files.map((f) => f.content).join(String.fromCharCode(10));
     expect(out).toContain('"Ready"');
-    expect(out).not.toContain('Settings screen');
+    expect(out).toContain('"Settings screen"');
+    expect(out).toContain('"About"');
     expect(out).toContain('Agent content'); // tab bodies switch at run time
-    expect(out).toContain('// This button opens another screen');
+    expect(main).toContain('m.ui.ShowScreen("settings")'); // the button of the home screen
+    expect(main).toContain('m.ui.ShowScreen("home")'); // the Back button
+    expect(ui).toContain('core.SetScreen("home")');
+    expect(ui).toMatch(/Home\s+\*ScreenHandle/);
+    expect(ui).toContain('ui.Settings = NewScreenHandle(core, "settings")');
+    expect(ui).not.toContain('about_us'); // a screen without a code name has no handle
+  });
+
+  it('a single screen is exported as before (no screen switching)', () => {
+    const src = mainGo(allComponents());
+    expect(src).not.toContain('syncScreen');
+    expect(src).not.toContain('ShowScreen');
+    expect(uiGo(allComponents())).not.toContain('ScreenHandle');
   });
 });
