@@ -33,11 +33,11 @@ import { renderFacade } from '../api/facade';
 import { apiName, buildApiModel, type ApiHandleModel } from '../api/model';
 import type { ApiValueType } from '../api/spec';
 import {
+  cellWidth,
   inlineText,
   itemText,
   progressText,
   recase,
-  treeLines,
   liveChildren,
   navOf,
   visibleChildren,
@@ -285,24 +285,6 @@ const BORDER_RUNES: Record<BorderKind, string[]> = {
   rounded: ['─', '│', '╭', '╮', '╰', '╯'],
   bold: ['━', '┃', '┏', '┓', '┗', '┛'],
 };
-
-/** Terminal cells a string needs (wide characters count twice). */
-function cellWidth(s: string): number {
-  let n = 0;
-  for (const ch of s) {
-    const c = ch.codePointAt(0)!;
-    n +=
-      (c >= 0x1100 && c <= 0x115f) ||
-      (c >= 0x2e80 && c <= 0xa4cf) ||
-      (c >= 0xac00 && c <= 0xd7a3) ||
-      (c >= 0xf900 && c <= 0xfaff) ||
-      (c >= 0xff00 && c <= 0xff60) ||
-      (c >= 0x1f300 && c <= 0x1faff)
-        ? 2
-        : 1;
-  }
-  return n;
-}
 
 const esc = (s: string) => `tview.Escape(${goStr(s)})`;
 const color = (hex: string) => `tcell.GetColor(${goStr(hex)})`;
@@ -1111,59 +1093,38 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
 
   /** Content size of a widget without its border. */
   private contentSize(node: IRNode): { w: number; h: number } {
-    const lines = (t: string) => t.split('\n');
-    const widest = (xs: string[]) => Math.max(0, ...xs.map(cellWidth));
+    const m = node.intrinsic;
     switch (node.type) {
-      case 'Text': {
-        const ls = lines(node.text);
-        return { w: widest(ls), h: ls.length };
-      }
+      case 'Text':
+        return { w: m.width, h: m.height };
       case 'Button':
         // a bordered button is at least 16 cells wide (the Textual reference)
-        return {
-          w: node.style.border
-            ? Math.max(16 - 2, cellWidth(inlineText(node)) + 4)
-            : cellWidth(inlineText(node)) + 4,
-          h: 1,
-        };
+        return { w: node.style.border ? Math.max(16 - 2, m.width + 4) : m.width + 4, h: 1 };
       case 'Checkbox':
         return { w: cellWidth(node.text) + 4, h: 1 };
       case 'Radio':
       case 'Toggle':
         return { w: cellWidth(node.text) + 2, h: 1 };
       case 'Select':
-        return { w: widest(node.options) + 4, h: 1 };
+        return { w: m.width + 4, h: 1 };
       case 'TextInput':
-        return { w: Math.max(10, cellWidth(node.value || node.placeholder) + 2), h: 1 };
+        return { w: Math.max(10, m.width + 2), h: 1 };
       case 'ProgressBar':
         return { w: 20, h: 1 };
       case 'Spinner':
         return { w: cellWidth(node.text || 'Loading...') + 2, h: 1 };
       case 'Breadcrumb':
-        return { w: cellWidth(inlineText(node)), h: 1 };
-      case 'Table': {
-        const cols = Math.max(node.columns.length, ...node.rows.map((r) => r.length), 0);
-        let w = 0;
+        return { w: m.width, h: 1 };
+      case 'Table':
         // every cell has one cell of padding on each side
-        for (let c = 0; c < cols; c++)
-          w +=
-            Math.max(
-              cellWidth(node.columns[c] ?? ''),
-              ...node.rows.map((r) => cellWidth(r[c] ?? ''))
-            ) + 2;
-        return { w, h: node.rows.length + (node.columns.length ? 1 : 0) };
-      }
+        return { w: m.width + 2 * m.cols.length, h: m.height };
       case 'List':
-        return { w: widest(node.items.map((i) => i.label)) + 2, h: node.items.length };
       case 'Menu':
-        return { w: widest(node.items.map((i) => itemText(i))) + 2, h: node.items.length };
-      case 'Tree': {
-        const ls = treeLines(node.items);
-        return { w: widest(ls.map((l) => l.text)) + 2, h: ls.length };
-      }
+      case 'Tree':
+        return { w: m.width + 2, h: m.height };
       case 'Tabs':
         // the labels and an underline row
-        return { w: node.items.reduce((a, i) => a + cellWidth(tabText(i)) + 2, 0), h: 2 };
+        return { w: m.width + 2 * m.cols.length, h: 2 };
       default:
         return { w: 1, h: 1 };
     }

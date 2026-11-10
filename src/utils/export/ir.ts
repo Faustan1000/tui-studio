@@ -86,6 +86,12 @@ export interface IRItem {
   children: IRItem[];
 }
 
+export interface IRIntrinsic {
+  width: number;
+  height: number;
+  cols: number[];
+}
+
 export interface IRNode {
   id: string;
   type: ComponentType;
@@ -152,6 +158,13 @@ export interface IRNode {
   /** Button decoration. */
   iconLeft: string;
   iconRight: string;
+
+  /**
+   * Size of the content in terminal cells, measured once for every framework (no border, padding
+   * or widget chrome: each framework adds its own). `cols` are the widths of the table columns or
+   * of the tab labels.
+   */
+  intrinsic: IRIntrinsic;
 
   /** Original props, for anything not normalised above. */
   props: Record<string, unknown>;
@@ -297,7 +310,10 @@ function layoutLatentBodies(ir: IRNode, root: ComponentNode, width: number, heig
       const copy = structuredClone(root);
       const navCopy = flattenTree(copy).get(nav.id);
       if (!navCopy) continue;
-      navCopy.props = { ...navCopy.props, [nav.type === 'Tabs' ? 'activeTab' : 'selectedIndex']: item };
+      navCopy.props = {
+        ...navCopy.props,
+        [nav.type === 'Tabs' ? 'activeTab' : 'selectedIndex']: item,
+      };
       const engine = new LayoutEngine();
       engine.calculateLayout(copy, width, height, false);
       const mark = (node: IRNode) => {
@@ -395,7 +411,9 @@ function buildNode(
     iconLeft: p.iconLeftEnabled && typeof p.iconLeft === 'string' ? p.iconLeft : '',
     iconRight: p.iconRightEnabled && typeof p.iconRight === 'string' ? p.iconRight : '',
     props: { ...p },
+    intrinsic: { width: 0, height: 0, cols: [] },
   };
+  ir.intrinsic = measureContent(ir);
   if (node.type === 'Tabs') ir.selected = navActiveIndex(node);
   ir.children = node.children.map((c) => buildNode(c, ir, visible, ctx));
   return ir;
@@ -696,6 +714,85 @@ export function inlineText(node: IRNode): string {
       return node.value || node.placeholder;
     default:
       return node.text;
+  }
+}
+
+/** Terminal cells of a string (CJK and emoji are two cells wide, combining marks none). */
+export function cellWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    if (cp === 0x200d || cp === 0xfe0f || (cp >= 0x300 && cp <= 0x36f)) continue;
+    const wide =
+      (cp >= 0x1100 && cp <= 0x115f) ||
+      (cp >= 0x2e80 && cp <= 0xa4cf) ||
+      (cp >= 0xac00 && cp <= 0xd7a3) ||
+      (cp >= 0xf900 && cp <= 0xfaff) ||
+      (cp >= 0xfe30 && cp <= 0xfe6f) ||
+      (cp >= 0xff00 && cp <= 0xff60) ||
+      (cp >= 0xffe0 && cp <= 0xffe6) ||
+      (cp >= 0x1f300 && cp <= 0x1faff);
+    w += wide ? 2 : 1;
+  }
+  return w;
+}
+
+/** The text of a tab: icon, label, status dot and hotkey (the same in every framework). */
+export function tabLabel(i: IRItem): string {
+  const one = (s: string) => s.replace(/[\r\n]+/g, ' ');
+  return `${i.icon ? `${i.icon} ` : ''}${one(i.label) || 'Tab'}${i.status ? ' ●' : ''}${i.hotkey ? ` ${one(i.hotkey)}` : ''}`;
+}
+
+/** Content size of a widget in cells; containers and unknown kinds measure 0. */
+function measureContent(n: IRNode): IRIntrinsic {
+  const widest = (xs: string[]) => xs.reduce((m, x) => Math.max(m, cellWidth(x)), 0);
+  const one = (s: string) => s.replace(/[\r\n]+/g, ' ');
+  const none: IRIntrinsic = { width: 0, height: 0, cols: [] };
+  switch (n.type) {
+    case 'Text': {
+      const lines = n.text.split('\n');
+      return { width: widest(lines), height: lines.length, cols: [] };
+    }
+    case 'Button':
+    case 'Checkbox':
+    case 'Radio':
+    case 'Toggle':
+    case 'Breadcrumb':
+    case 'Spinner':
+      return { width: cellWidth(one(inlineText(n))), height: 1, cols: [] };
+    case 'Select':
+      return { width: widest([...n.options, n.value]), height: 1, cols: [] };
+    case 'TextInput':
+      return { width: cellWidth(one(n.value || n.placeholder)), height: 1, cols: [] };
+    case 'Table': {
+      const ncols = Math.max(n.columns.length, ...n.rows.map((r) => r.length), 0);
+      const cols = Array.from({ length: ncols }, (_, c) =>
+        Math.max(1, widest([one(n.columns[c] ?? ''), ...n.rows.map((r) => one(r[c] ?? ''))]))
+      );
+      return {
+        width: cols.reduce((a, b) => a + b, 0),
+        height: n.rows.length + (n.columns.length ? 1 : 0),
+        cols,
+      };
+    }
+    case 'List':
+      return { width: widest(n.items.map((i) => one(i.label))), height: n.items.length, cols: [] };
+    case 'Menu':
+      return {
+        width: widest(n.items.map((i) => one(itemText(i)))),
+        height: n.items.length,
+        cols: [],
+      };
+    case 'Tree': {
+      const lines = treeLines(n.items).map((l) => one(l.text));
+      return { width: widest(lines), height: lines.length, cols: [] };
+    }
+    case 'Tabs': {
+      const cols = n.items.map((i) => cellWidth(tabLabel(i)));
+      return { width: cols.reduce((a, b) => a + b, 0), height: 1, cols };
+    }
+    default:
+      return none;
   }
 }
 

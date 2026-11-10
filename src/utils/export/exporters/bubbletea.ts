@@ -26,11 +26,11 @@ import { GO_RUNTIME_FILENAME, GO_RUNTIME_SOURCE } from '../api/go/runtime';
 import { CodeWriter, goStr } from '../lang';
 import {
   itemText,
+  cellWidth,
   inlineText,
   liveChildren,
   navOf,
   recase,
-  treeLines,
   type IRItem,
   type IRNode,
   type IRProject,
@@ -168,28 +168,9 @@ interface Info {
 
 // ── Sizes ─────────────────────────────────────────────────────────────────────
 
-/** Terminal cells of a string (CJK and emoji are two cells wide, combining marks none). */
-export function cellWidth(s: string): number {
-  let w = 0;
-  for (const ch of s) {
-    const cp = ch.codePointAt(0)!;
-    if (cp === 0x200d || cp === 0xfe0f || (cp >= 0x300 && cp <= 0x36f)) continue;
-    const wide =
-      (cp >= 0x1100 && cp <= 0x115f) ||
-      (cp >= 0x2e80 && cp <= 0xa4cf) ||
-      (cp >= 0xac00 && cp <= 0xd7a3) ||
-      (cp >= 0xf900 && cp <= 0xfaff) ||
-      (cp >= 0xfe30 && cp <= 0xfe6f) ||
-      (cp >= 0xff00 && cp <= 0xff60) ||
-      (cp >= 0xffe0 && cp <= 0xffe6) ||
-      (cp >= 0x1f300 && cp <= 0x1faff);
-    w += wide ? 2 : 1;
-  }
-  return w;
-}
+export { cellWidth };
 
 const oneLine = (s: string) => s.replace(/[\r\n]+/g, ' ');
-const maxW = (lines: string[]) => lines.reduce((m, l) => Math.max(m, cellWidth(l)), 0);
 const clampSize = (n: number) => Math.min(500, Math.max(1, Math.round(Number.isFinite(n) ? n : 1)));
 
 function borderCells(n: IRNode) {
@@ -207,35 +188,19 @@ function tabLabel(i: IRItem): string {
   return `${i.icon ? `${i.icon} ` : ''}${oneLine(i.label)}${i.status ? ' ●' : ''}${i.hotkey ? ` ${oneLine(i.hotkey)}` : ''}`;
 }
 
-/** Widths of the table columns for the initial content (the runtime recomputes them). */
-function tableData(n: IRNode) {
-  // The declared columns decide; without any, the widest row does.
-  const ncols = n.columns.length || Math.max(0, ...n.rows.map((r) => r.length));
-  const titles = Array.from({ length: ncols }, (_, i) => oneLine(n.columns[i] ?? ''));
-  const rows = n.rows.map((r) => Array.from({ length: ncols }, (_, i) => oneLine(r[i] ?? '')));
-  const widths = titles.map((t, i) =>
-    Math.max(1, cellWidth(t), ...rows.map((r) => cellWidth(r[i])))
-  );
-  return { titles, rows, widths };
-}
-
 /** Content size of a widget, used when the editor's layout collapsed an auto-sized node. */
 function natural(n: IRNode): { w: number; h: number } | undefined {
   const b = borderCells(n);
   const bw = b.left + b.right;
   const bh = b.top + b.bottom;
+  const m = n.intrinsic;
   switch (n.type) {
-    case 'Text': {
-      const lines = n.text.split('\n');
-      return { w: maxW(lines), h: lines.length };
-    }
+    case 'Text':
+      return { w: m.width, h: m.height };
     case 'Button':
+      // Buttons are at least 16 cells wide (as in the reference).
       return {
-        // Buttons are at least 16 cells wide (as in the reference).
-        w: Math.max(
-          16,
-          cellWidth(oneLine(inlineText(n))) + n.layout.padding.left + n.layout.padding.right + bw
-        ),
+        w: Math.max(16, m.width + n.layout.padding.left + n.layout.padding.right + bw),
         h: 1 + bh,
       };
     case 'Checkbox':
@@ -243,26 +208,24 @@ function natural(n: IRNode): { w: number; h: number } | undefined {
     case 'Toggle':
     case 'Breadcrumb':
     case 'Spinner':
-      return { w: cellWidth(oneLine(inlineText(n))) + bw, h: 1 + bh };
+      return { w: m.width + bw, h: 1 + bh };
     case 'Select':
-      return { w: maxW([...n.options, n.value]) + 6 + bw, h: 1 + bh };
+      return { w: m.width + 6 + bw, h: 1 + bh };
     case 'TextInput':
-      return { w: Math.max(10, cellWidth(oneLine(n.value || n.placeholder)) + 1) + bw, h: 1 + bh };
+      return { w: Math.max(10, m.width + 1) + bw, h: 1 + bh };
     case 'ProgressBar':
       return { w: 20 + bw, h: 1 + bh };
     case 'Table': {
-      const t = tableData(n);
-      return { w: t.widths.reduce((s, x) => s + x + 2, 0) + bw, h: 1 + t.rows.length + bh };
+      // The declared columns decide; without any, the widest row does.
+      const cols = m.cols.slice(0, n.columns.length || m.cols.length);
+      return { w: cols.reduce((s, x) => s + x + 2, 0) + bw, h: 1 + n.rows.length + bh };
     }
     case 'List':
     case 'Menu':
-      return { w: maxW(n.items.map((i) => oneLine(itemText(i)))) + bw, h: n.items.length + bh };
-    case 'Tree': {
-      const lines = treeLines(n.items).map((l) => oneLine(l.text));
-      return { w: maxW(lines) + bw, h: lines.length + bh };
-    }
+    case 'Tree':
+      return { w: m.width + bw, h: m.height + bh };
     case 'Tabs':
-      return { w: n.items.reduce((s, i) => s + cellWidth(tabLabel(i)) + 2, 0), h: 2 };
+      return { w: m.width + 2 * m.cols.length, h: 2 };
     default:
       return undefined;
   }

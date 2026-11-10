@@ -8,6 +8,10 @@ All notable changes to TUIStudio are documented here.
 
 - **Tab/menu/list bodies switch at run time in every framework (Ink, OpenTUI, Blessed, Bubble Tea, tview, Ratatui)** — every body is exported and shown only while its item is selected (also when the selection is set through the program API). Adapters declare this with `navBodies`.
 
+### Changed
+
+- **Content sizes are measured once** — `IRNode.intrinsic` and a shared `cellWidth` in `ir.ts` replace the text measuring that Blessed, Bubble Tea, tview and Ratatui each did on their own; the frameworks only add their own widget chrome.
+
 ## [1.0.0] - 2026-10-26
 
 ### Added

@@ -23,7 +23,7 @@ import {
 } from '../api/model';
 import runtimeSource from '../api/rust/ui_runtime.rs?raw';
 import type { IRBorder, IRNode, IRStyle } from '../ir';
-import { inlineText, itemText, liveChildren, navOf, treeLines, walkIR } from '../ir';
+import { cellWidth, inlineText, itemText, liveChildren, navOf, treeLines, walkIR } from '../ir';
 import { CodeWriter, rustStr } from '../lang';
 
 export const RATATUI_VERSION = '0.29.0';
@@ -162,16 +162,6 @@ function needsBlock(node: IRNode): boolean {
   return !!node.style.border || !!node.style.bg || p.top + p.right + p.bottom + p.left > 0;
 }
 
-/** Display width of a string in cells (wide characters count twice). */
-function cells(text: string): number {
-  let n = 0;
-  for (const ch of text) {
-    const cp = ch.codePointAt(0)!;
-    n += cp >= 0x2e80 || (cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x1f300 && cp <= 0x1faff) ? 2 : 1;
-  }
-  return n;
-}
-
 /**
  * Width a node needs for its content. The editor's box of an auto-width widget can be narrower
  * (a one-cell text box), so the exporter measures the text itself.
@@ -186,37 +176,35 @@ const FILLS_WIDTH = new Set(['Select', 'List', 'Menu', 'Tree', 'Tabs']);
 
 function intrinsicWidth(node: IRNode): number {
   const border = node.style.border ? 2 : 0;
-  const longest = (lines: string[]) => Math.max(0, ...lines.map(cells));
+  const w = node.intrinsic.width;
   switch (node.type) {
     case 'Text':
-      return longest(node.text.split('\n')) + border;
-    case 'Button': {
-      // Like Textual: a bordered button is at least 16 cells wide and keeps 2 cells of padding.
-      const w = longest(inlineText(node).split('\n'));
-      return node.style.border ? Math.max(16, w + 6) : w;
-    }
     case 'Checkbox':
     case 'Radio':
     case 'Toggle':
-    case 'Select':
     case 'Spinner':
     case 'Breadcrumb':
-      return longest(inlineText(node).split('\n')) + border;
     case 'List':
-      return longest(node.items.map((i) => i.label)) + border;
+      return w + border;
+    case 'Button':
+      // Like Textual: a bordered button is at least 16 cells wide and keeps 2 cells of padding.
+      return node.style.border ? Math.max(16, w + 6) : w;
+    case 'Select':
+      return cellWidth(inlineText(node)) + border;
     case 'Menu':
-      return longest(node.items.map((i) => itemText(i))) + 2 + border;
     case 'Tree':
-      return longest(treeLines(node.items).map((l) => l.text)) + 2 + border;
+      return w + 2 + border;
     case 'Tabs':
-      return node.items.reduce((sum, i) => sum + cells(tabText(i)) + 2, 0) + border;
+      return w + 2 * node.items.length + border;
     case 'Table': {
-      const n = Math.max(node.columns.length, ...node.rows.map((r) => r.length));
-      let total = Math.max(0, n - 1) * 2;
-      for (let c = 0; c < n; c++) {
-        total += Math.max(3, longest([node.columns[c] ?? '', ...node.rows.map((r) => r[c] ?? '')]));
-      }
-      return total + 2 + border; // one cell of padding on both sides, like Textual
+      // one cell of padding on both sides, like Textual
+      const cols = node.intrinsic.cols;
+      return (
+        cols.reduce((sum, c) => sum + Math.max(3, c), 0) +
+        Math.max(0, cols.length - 1) * 2 +
+        2 +
+        border
+      );
     }
     default:
       return 0;

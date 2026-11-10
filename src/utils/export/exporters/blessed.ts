@@ -153,29 +153,23 @@ function intrinsicWidth(node: IRNode): number {
   const border = node.style.border ? 2 : 0;
   switch (node.type) {
     case 'Text':
-      return node.wrapText ? 0 : longest(node.text.split(String.fromCharCode(10))) + border;
+      return node.wrapText ? 0 : node.intrinsic.width + border;
     case 'Checkbox':
     case 'Radio':
     case 'Toggle':
     case 'Breadcrumb':
     case 'Spinner':
     case 'Button':
-      return longest([inlineText(node)]) + border;
+      return node.intrinsic.width + border;
     case 'List':
     case 'Menu':
       return longest(node.items.map((i) => itemText(i, node.type === 'Menu'))) + 1 + border;
     case 'Tree':
-      return longest(treeLines(node.items).map((l) => l.text)) + 1 + border;
+      return node.intrinsic.width + 1 + border;
     case 'Select':
       return longest(node.options.length ? node.options : ['']) + 2 + border;
-    case 'Table': {
-      const cols = Math.max(node.columns.length, ...node.rows.map((r) => r.length));
-      let total = 0;
-      for (let c = 0; c < cols; c++) {
-        total += longest([node.columns[c] ?? '', ...node.rows.map((r) => r[c] ?? '')]) + 2;
-      }
-      return total + border;
-    }
+    case 'Table':
+      return node.intrinsic.width + 2 * node.intrinsic.cols.length + border;
     default:
       return 0;
   }
@@ -197,7 +191,7 @@ function intrinsicHeight(node: IRNode): number {
     case 'Menu':
       return node.items.length + border;
     case 'Tree':
-      return treeLines(node.items).length + border;
+      return node.intrinsic.height + border;
     case 'Table':
       return node.rows.length + 1 + border;
     default:
@@ -269,15 +263,15 @@ let FLOW = new WeakMap<IRNode, FlowBox>();
 /** Children in the flow: shown at startup, or inside a body of another item (the bodies themselves sit in a slot). */
 const flowKids = (n: IRNode) =>
   n.children.filter(
-    (k) =>
-      (k.visible || (k.latent && !k.showWhen)) && k.type !== 'Spacer' && k.type !== 'Modal'
+    (k) => (k.visible || (k.latent && !k.showWhen)) && k.type !== 'Spacer' && k.type !== 'Modal'
   );
 
 /** Containers whose children are stacked top to bottom at their natural height. */
 function isFlowContainer(n: IRNode): boolean {
   if (n.type !== 'Screen' && n.type !== 'Box') return false;
   const l = n.layout;
-  if (l.mode !== 'flex' || l.direction !== 'column' || l.wrap || l.justify !== 'start') return false;
+  if (l.mode !== 'flex' || l.direction !== 'column' || l.wrap || l.justify !== 'start')
+    return false;
   if (l.align !== 'start' && l.align !== 'stretch') return false;
   return flowKids(n).every((k) => k.height === 'auto' || typeof k.height === 'number');
 }
@@ -286,7 +280,13 @@ function isFlowContainer(n: IRNode): boolean {
 function flowFrame(n: IRNode): { b: number; l: number; t: number; h: number; v: number } {
   const b = n.style.border ? 1 : 0;
   const p = n.layout.padding;
-  return { b, l: b + p.left, t: b + p.top, h: 2 * b + p.left + p.right, v: 2 * b + p.top + p.bottom };
+  return {
+    b,
+    l: b + p.left,
+    t: b + p.top,
+    h: 2 * b + p.left + p.right,
+    v: 2 * b + p.top + p.bottom,
+  };
 }
 
 /** The content area of a container with children laid out by the flow. */
@@ -295,18 +295,16 @@ export function hasFlow(n: IRNode): boolean {
 }
 
 function tableWidth(n: IRNode): number {
-  const cols = Math.max(n.columns.length, ...n.rows.map((r) => r.length));
-  let total = 0;
-  for (let c = 0; c < cols; c++) {
-    total += longest([n.columns[c] ?? '', ...n.rows.map((r) => r[c] ?? '')]);
-  }
-  return total + 2 * Math.max(0, cols - 1) + 2;
+  return n.intrinsic.width + 2 * Math.max(0, n.intrinsic.cols.length - 1) + 2;
 }
 
 /** Label of a tab: icon, label, status dot and hotkey, as in the reference. */
 export function tabLabel(t: IRItem): string {
   return (
-    (t.icon ? `${t.icon} ` : '') + t.label + (t.status ? ' ●' : '') + (t.hotkey ? ` ${t.hotkey}` : '')
+    (t.icon ? `${t.icon} ` : '') +
+    t.label +
+    (t.status ? ' ●' : '') +
+    (t.hotkey ? ` ${t.hotkey}` : '')
   );
 }
 
@@ -338,9 +336,8 @@ function measure(n: IRNode, avail: number): { w: number; h: number; fill: boolea
       }
       break;
     case 'Text': {
-      const lines = n.text.split(String.fromCharCode(10));
-      w = longest(lines) + border;
-      h = lines.length + border;
+      w = n.intrinsic.width + border;
+      h = n.intrinsic.height + border;
       break;
     }
     case 'TextInput':
@@ -348,7 +345,7 @@ function measure(n: IRNode, avail: number): { w: number; h: number; fill: boolea
       h = border ? 3 : 1;
       break;
     case 'Button':
-      w = longest([inlineText(n)]) + 2 + border;
+      w = n.intrinsic.width + 2 + border;
       if (border) w = Math.max(16, w);
       break;
     case 'Select':
@@ -370,7 +367,7 @@ function measure(n: IRNode, avail: number): { w: number; h: number; fill: boolea
       break;
     case 'Tree':
       stretch();
-      h = treeLines(n.items).length + border;
+      h = n.intrinsic.height + border;
       break;
     case 'Tabs':
       stretch();
@@ -403,7 +400,13 @@ function computeFlow(n: IRNode, avail: number): void {
   // A body of an item that is not selected sits where the selected body of the same tab bar is.
   for (const k of n.children.filter((c) => c.latent && c.showWhen && c.type !== 'Spacer')) {
     const m = measure(k, inner);
-    FLOW.set(k, { x: 0, y: slots.get(k.showWhen!.nav) ?? y, width: m.w, height: m.h, fill: m.fill });
+    FLOW.set(k, {
+      x: 0,
+      y: slots.get(k.showWhen!.nav) ?? y,
+      width: m.w,
+      height: m.h,
+      fill: m.fill,
+    });
     if (isFlowContainer(k)) computeFlow(k, m.fill ? inner : m.w);
   }
 }
@@ -632,7 +635,7 @@ function generateTypes(model: ApiModel): string {
   const out = new CodeWriter('  ', 0);
   out.line("import { Handle, StudioUi, UiEvent } from './ui-runtime';");
   out.line("export * from './ui-runtime';");
-  if (model.handles.length) out.line("import { Api } from './api';").line("export { Api };");
+  if (model.handles.length) out.line("import { Api } from './api';").line('export { Api };');
   out.line();
   out.line('type Listener = (event: UiEvent) => unknown;').line();
   out.line('export declare class Ui extends StudioUi {').indent();
@@ -648,7 +651,8 @@ function generateTypes(model: ApiModel): string {
     out.line(`/** ${h.type}: ${oneLine(h.node.name || h.type).replace(/\*\//g, '* /')} */`);
     out.line(`readonly ${facade.get(h.tag)}: Handle${extra};`);
   }
-  if (model.handles.length) out.line('/** Flat methods over the components (see api.js). */').line('readonly api: Api;');
+  if (model.handles.length)
+    out.line('/** Flat methods over the components (see api.js). */').line('readonly api: Api;');
   out.dedent().line('}');
   return out.toString();
 }
@@ -720,7 +724,11 @@ function emitBodies(root: IRNode, ctx: Ctx): void {
       const v = ctx.vars.get(b);
       if (b.showWhen?.nav !== nav.id || !(b.visible || b.latent) || !v) continue;
       const inner = ctx.inners.get(b);
-      groups.set(b.showWhen.item, [...(groups.get(b.showWhen.item) ?? []), v, ...(inner ? [inner] : [])]);
+      groups.set(b.showWhen.item, [
+        ...(groups.get(b.showWhen.item) ?? []),
+        v,
+        ...(inner ? [inner] : []),
+      ]);
     }
     const navVar = ctx.vars.get(nav);
     if (!groups.size || !navVar) continue;

@@ -47,9 +47,6 @@ OpenTUI's `import.meta.main` entry.
 - **Real terminal runs** in CI (pty), not only headless drivers.
 - **CI** (GitHub Actions): `npm test` with Node, Bun, Go, Rust and Python + Textual installed so the
   whole matrix runs on every push. `npm run test:setup` installs the Node/Bun packages.
-- **Intrinsic sizes in the IR.** The editor's layout engine reports width 1 for content-sized
-  widgets (text, checkbox, select, ...). Blessed, Bubble Tea, tview and Ratatui each work around it
-  with their own measuring helper; this belongs in `ir.ts` once.
 
 ## Known differences between the program APIs
 
