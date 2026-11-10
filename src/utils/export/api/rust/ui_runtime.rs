@@ -206,6 +206,8 @@ pub struct Store {
     errors: Vec<ErrorEntry>,
     log: Vec<LogEntry>,
     log_visible: bool,
+    /// Key of the screen that is shown (empty for a design with one screen).
+    screen: String,
 }
 
 impl Store {
@@ -294,11 +296,21 @@ impl Store {
     pub fn log_visible(&self) -> bool {
         self.log_visible
     }
+
+    /// Key of the screen that is shown.
+    pub fn screen(&self) -> &str {
+        &self.screen
+    }
 }
 
 // ── Runtime ───────────────────────────────────────────────────────────────────
 
 pub type Handler = Arc<dyn Fn(&Event) + Send + Sync>;
+
+/// Tag the handlers of a screen are registered under (cannot clash with a code name).
+fn screen_tag(key: &str) -> String {
+    format!("screen:{key}")
+}
 
 #[derive(Default)]
 struct Life {
@@ -410,6 +422,44 @@ impl Runtime {
     /// The store, locked. Hold it briefly (one frame) and never call other runtime methods.
     pub fn lock(&self) -> MutexGuard<'_, Store> {
         self.inner.store.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    // -- screens ---------------------------------------------------------------
+
+    /// The screen that is shown first (no callbacks, nothing to close).
+    pub fn init_screen(&self, key: &str) {
+        self.lock().screen = key.to_string();
+        self.touch();
+    }
+
+    /// Key of the screen that is shown.
+    pub fn screen(&self) -> String {
+        self.lock().screen.clone()
+    }
+
+    /// Switch to another screen: open modals are closed and the `show` handlers of the screen
+    /// run on the event thread. The UI scrolls the new screen to the top.
+    pub fn show_screen(&self, key: &str) {
+        {
+            let mut st = self.lock();
+            if st.screen == key {
+                return;
+            }
+            st.screen = key.to_string();
+            for entry in st.entries.values_mut() {
+                if matches!(entry.props.get("open"), Some(Value::Bool(true))) {
+                    entry.props.insert("open".to_string(), Value::Bool(false));
+                }
+            }
+        }
+        self.touch();
+        // Handlers only: a screen being shown is not an event of a component.
+        let _ = self.inner.dispatch.send(Event {
+            tag: screen_tag(key),
+            name: "show".to_string(),
+            value: Value::None,
+            time: now(),
+        });
     }
 
     // -- redraw wake-up --------------------------------------------------------
@@ -1100,5 +1150,42 @@ impl ModalHandle {
 
     pub fn is_open(&self) -> bool {
         self.h.get_bool("open")
+    }
+}
+
+/// One screen of the UI: `ui.settings.show()` switches to it.
+#[derive(Clone)]
+pub struct ScreenHandle {
+    rt: Runtime,
+    key: String,
+}
+
+impl ScreenHandle {
+    pub fn new(rt: &Runtime, key: &str) -> ScreenHandle {
+        ScreenHandle {
+            rt: rt.clone(),
+            key: key.to_string(),
+        }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// Show this screen (closes open modals, scrolls to the top, runs the `on_show` handlers).
+    pub fn show(&self) {
+        self.rt.show_screen(&self.key);
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.rt.screen() == self.key
+    }
+
+    /// Called (on its own thread, not inside a draw) every time this screen has been shown.
+    pub fn on_show<F>(&self, f: F)
+    where
+        F: Fn(&Event) + Send + Sync + 'static,
+    {
+        self.rt.on(&screen_tag(&self.key), "show", Arc::new(f));
     }
 }

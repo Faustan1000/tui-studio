@@ -504,7 +504,9 @@ describe('ratatui escaping', () => {
   it('keeps user text out of format strings', () => {
     // `{}` inside user labels must only ever be an argument, never part of the template.
     for (const m of out.matchAll(/format!\("([^"]*)"/g))
-      expect(m[1]).toMatch(/^([[(]?\{\}[\])]? ?(\{\})?( ▾)?|\{:>7\} \{\}| {2}\{\}| {2}\{\}\{\}▼ {2})$/);
+      expect(m[1]).toMatch(
+        /^([[(]?\{\}[\])]? ?(\{\})?( ▾)?|\{:>7\} \{\}| {2}\{\}| {2}\{\}\{\}▼ {2})$/
+      );
   });
 
   it('survives every nasty string in every component', () => {
@@ -699,5 +701,32 @@ describe('ratatui select, scrolling and table', () => {
       ])
     );
     expect(o).toContain('Constraint::Length(6)');
+  });
+});
+
+describe('ratatui several screens', () => {
+  const screens = () => multiScreen().map((root) => ({ id: root.tag ?? 'about', root }));
+  const get = (path: string) =>
+    ratatuiAdapter
+      .generate({ ir: buildIR(screens()), source: screens() })
+      .find((f) => f.path === path)!.content;
+
+  it('is declared multi-screen and every file is well formed', () => {
+    expect(ratatuiAdapter.multiScreen).toBe(true);
+    expect(lexicalProblems(get('src/main.rs'), true)).toEqual([]);
+    expect(lexicalProblems(get('src/ui.rs'))).toEqual([]);
+  });
+
+  it('draws and handles every screen, with handles for screens with a code name', () => {
+    const main = get('src/main.rs');
+    const ui = get('src/ui.rs');
+    expect(ui).toContain('Settings screen');
+    expect(main).toContain('SCREENS: [&str; 3] = ["home", "settings", "about_us"]');
+    expect(main).toContain('self.rt.show_screen("settings");');
+    expect(main).toContain('self.rt.show_screen("home");');
+    expect(ui).toContain('pub settings: ScreenHandle,');
+    expect(ui).toContain('rt.init_screen("home");');
+    // the untagged screen has no handle
+    expect(ui).not.toContain('about: ScreenHandle');
   });
 });
