@@ -149,6 +149,7 @@ const GO_RESERVED = [
   'err',
   'scrolls',
   'scroller',
+  'sc',
   'blocking',
   'others',
   'slot',
@@ -318,16 +319,44 @@ const EVENT_OF_KEY: Record<string, string> = {
 const focusLiteral = (f: FocusEntry) =>
   `{p: ${f.v}, tag: ${goStr(f.tag)}, anc: []string{${f.anc.map((a) => goStr(a)).join(', ')}}${f.off ? `, off: func() bool { return ${f.off} }` : ''}}`;
 
+/** What all screens of a project share: Go identifiers (handlers are package level) and links. */
+interface TviewShared {
+  names: Set<string>;
+  handlerNames: Map<string, string>;
+  /** Screen id -> key used by `core.ShowScreen` (empty for a project with one screen). */
+  screenKeys: Map<string, string>;
+  multi: boolean;
+  /** The border kind most nodes of the whole project use. */
+  dominant: BorderKind | null;
+}
+
+function newShared(screens: IRScreen[]): TviewShared {
+  const counts = new Map<BorderKind, number>();
+  const visit = (n: IRNode) => {
+    if (n.style.border) counts.set(n.style.border.kind, (counts.get(n.style.border.kind) ?? 0) + 1);
+    visibleChildren(n).forEach(visit);
+  };
+  for (const s of screens) visit(s.root);
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  return {
+    names: new Set<string>(GO_RESERVED),
+    handlerNames: new Map(),
+    screenKeys: new Map(screens.length > 1 ? screens.map((s) => [s.id, s.tag ?? s.ident]) : []),
+    multi: screens.length > 1,
+    dominant: top ? top[0] : null,
+  };
+}
+
 class TviewGen {
   /** Body of `newTviewUi`. */
   private w = new CodeWriter('\t', 1);
   /** Lines inside `syncAll`. */
   private sw = new CodeWriter('\t', 2);
   private decls: string[] = [];
-  private names = new Set<string>(GO_RESERVED);
+  private readonly names: Set<string>;
   private vars = new Map<IRNode, string>();
   private compVars = new Map<IRNode, string>();
-  private handlerNames = new Map<string, string>();
+  private readonly handlerNames: Map<string, string>;
   private modalQueue: IRNode[] = [];
   private focusScopes: FocusEntry[][] = [[]];
   private ancTags: string[] = [];
@@ -340,16 +369,13 @@ class TviewGen {
   /** The border kind most nodes use: it is the global tview.Borders, the others are drawn by decor. */
   readonly dominant: BorderKind | null;
 
-  constructor(private readonly screen: IRScreen) {
-    const counts = new Map<BorderKind, number>();
-    const visit = (n: IRNode) => {
-      if (n.style.border)
-        counts.set(n.style.border.kind, (counts.get(n.style.border.kind) ?? 0) + 1);
-      visibleChildren(n).forEach(visit);
-    };
-    visit(screen.root);
-    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-    this.dominant = top ? top[0] : null;
+  constructor(
+    private readonly screen: IRScreen,
+    private readonly shared: TviewShared
+  ) {
+    this.names = shared.names;
+    this.handlerNames = shared.handlerNames;
+    this.dominant = shared.dominant;
   }
 
   // ── Names ───────────────────────────────────────────────────────────────────
@@ -482,6 +508,21 @@ class TviewGen {
     return stubs.map((s) => `core.Defer(${s})`);
   }
 
+  /** Statement that opens the screen a button or an item links to (none when it links nowhere). */
+  private openScreen(id: string | undefined): string[] {
+    const key = id ? this.shared.screenKeys.get(id) : undefined;
+    return key ? [`core.ShowScreen(${goStr(key)})`] : [];
+  }
+
+  /** `switch index` over the items that open a screen. */
+  private itemLinks(node: IRNode): string[] {
+    const cases = node.items.flatMap((item, i) => {
+      const open = this.openScreen(item.screen);
+      return open.length ? [`case ${i}:`, `\t${open[0]}`] : [];
+    });
+    return cases.length ? ['switch index {', ...cases, '}'] : [];
+  }
+
   private emit(lines: string[]): void {
     for (const l of lines) this.w.line(l);
   }
@@ -514,6 +555,9 @@ class TviewGen {
 
   /** The body of `newTviewUi` (after the application is created) up to the end of the function. */
   generate(): string {
+    const key = this.shared.multi ? (this.shared.screenKeys.get(this.screen.id) ?? '') : '';
+    this.w.line(`sc := &tviewScreen{key: ${goStr(key)}}`);
+    this.w.line('syncing := false');
     this.w.line('scrolls := []scrollable{}');
     this.scrollReg = true;
     const rootVar = this.place(this.screen.root);
@@ -689,14 +733,14 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
       '\t\t\treturn',
       '\t\t}',
       '\t\tsyncing = true',
-      '\t\tt.relayout()',
+      '\t\tt.relayout(sc)',
       this.sw.toString().replace(/\n$/, ''),
       '\t\tsyncing = false',
       '\t}',
-      '\tt.sync = syncAll',
-      '\tcore.Attach(t)',
-      '\treturn t',
-      '}',
+      '\tsc.sync = syncAll',
+      '\tsc.pages = pages',
+      '\tsc.focusFirst = focusFirst',
+      '\tt.screens = append(t.screens, sc)',
     ].join('\n');
     return w.toString() + tail + '\n';
   }
@@ -872,7 +916,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
       this.scrollReg = false;
       this.w.line(`scroller := newScrollView(${out}, ${contentH})`);
       this.w.line('scroller.scrollables = scrolls');
-      this.w.line('t.scroller = scroller');
+      this.w.line('sc.scroller = scroller');
       this.w.line(`${frame}.AddItem(scroller, 0, 1, false)`);
       out = frame;
     }
@@ -925,7 +969,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
     });
     const key = `hiddenKey(core, []string{${tags.join(', ')}})${sels.map((e) => ` + fmt.Sprint(${e})`).join('')}`;
     this.w.line(
-      `t.dyn = append(t.dyn, dynLayout{key: func() string { return ${key} }, fill: ${fill}})`
+      `sc.dyn = append(sc.dyn, dynLayout{key: func() string { return ${key} }, fill: ${fill}})`
     );
     return v;
   }
@@ -1445,7 +1489,13 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
         w.line(`${v}.SetActivatedStyle(${this.styleOf(node, '.Reverse(true)')})`);
         if (node.disabled && !api) w.line(`${v}.SetDisabled(true)`);
         gate();
-        this.callback(v, 'SetSelectedFunc', '', this.fire(node, 'click', 'nil'), false);
+        this.callback(
+          v,
+          'SetSelectedFunc',
+          '',
+          [...this.fire(node, 'click', 'nil'), ...this.openScreen(node.opensScreen)],
+          false
+        );
         if (api) {
           const label = this.cache(v, 'Label', goStr(node.text));
           this.sync([
@@ -1646,18 +1696,19 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
         w.line(`${v}.SetSelectedStyle(tcell.StyleDefault.Reverse(true))`);
         if (fg) w.line(`${v}.SetMainTextColor(${color(fg)})`);
         const stubs = this.stubs(node, 'select');
-        const cb = !api && stubs.length === 1 ? stubs[0] : 'nil';
+        const links = this.itemLinks(node);
+        const cb = !api && !links.length && stubs.length === 1 ? stubs[0] : 'nil';
         node.items.forEach((item) => {
           const short = [...item.hotkey].length === 1 ? `rune(${item.hotkey.codePointAt(0)})` : '0';
           const text = node.type === 'List' ? item.label : itemText(item, short === '0');
           w.line(`${v}.AddItem(${esc(text)}, "", ${node.type === 'List' ? '0' : short}, ${cb})`);
         });
-        if (!api && stubs.length > 1) {
+        if (!api && links.length + stubs.length > 0 && (stubs.length > 1 || links.length)) {
           this.callback(
             v,
             'SetSelectedFunc',
             'index int, mainText string, secondaryText string, shortcut rune',
-            stubs.map((s) => `core.Defer(${s})`),
+            [...stubs.map((s) => `core.Defer(${s})`), ...links],
             false
           );
         }
@@ -1690,6 +1741,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
                     ...this.fire(node, 'select', 'label'),
                   ]
                 : this.fire(node, 'select', 'mainText')),
+              ...links,
             ],
             false
           );
@@ -1897,7 +1949,7 @@ cycleFocus := func(step int) {
 		}
 	}
 }
-app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+sc.capture = func(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyCtrlC:
 		app.Stop()
@@ -1950,8 +2002,7 @@ app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 	return event
-})
-app.SetRoot(pages, true)`;
+}`;
 
 /** Everything of ui_tview.go that does not depend on the design (after the imports). */
 const TVIEW_HELPERS_GO = `// testScreen replaces the terminal when it is set (tests run the UI on a tcell simulation screen).
@@ -2537,16 +2588,51 @@ func (b *tabBar) MouseHandler() func(action tview.MouseAction, event *tcell.Even
 	})
 }
 
+// tviewScreen is one screen of the design: its own root (the pages of the screen, its modals and
+// the error dialog), key handling and bindings. Only the current screen is shown, focused and synced.
+type tviewScreen struct {
+	key        string
+	pages      *tview.Pages
+	sync       func()
+	dyn        []dynLayout
+	scroller   *scrollView
+	capture    func(event *tcell.EventKey) *tcell.EventKey
+	focusFirst func()
+}
+
 // tviewUi is the tview side of the UI: it draws the store and writes user input back to it.
 type tviewUi struct {
 	core     *Core
 	app      *tview.Application
 	sync     func()
-	dyn      []dynLayout
-	scroller *scrollView
+	screens  []*tviewScreen
+	cur      *tviewScreen
 	starters []func()
 	pending  atomic.Bool
 	running  atomic.Bool
+}
+
+// syncCurrent shows the screen the store says is current (scrolled to the top, focus on its first
+// control) and applies the store to it. Screens that are not shown are not touched.
+func (t *tviewUi) syncCurrent() {
+	switched := false
+	if key := t.core.CurrentScreen(); t.cur == nil || t.cur.key != key {
+		for _, sc := range t.screens {
+			if sc.key == key {
+				t.cur = sc
+				t.app.SetRoot(sc.pages, true)
+				if sc.scroller != nil {
+					sc.scroller.offset = 0
+				}
+				switched = true
+				break
+			}
+		}
+	}
+	t.cur.sync()
+	if switched {
+		t.cur.focusFirst()
+	}
 }
 
 // Refresh redraws from the store soon (Renderer). It never blocks and coalesces calls.
@@ -2570,9 +2656,9 @@ func (t *tviewUi) Stop() {
 }
 
 // relayout refills the containers whose code-named children were hidden or shown.
-func (t *tviewUi) relayout() {
-	for i := range t.dyn {
-		d := &t.dyn[i]
+func (t *tviewUi) relayout(sc *tviewScreen) {
+	for i := range sc.dyn {
+		d := &sc.dyn[i]
 		if key := d.key(); key != d.last {
 			d.last = key
 			d.fill()
@@ -2646,9 +2732,12 @@ function goValue(v: unknown, type: ApiValueType): string {
 const statesVar = (n: number) =>
   n >= 4 ? 'StatesAll' : n === 3 ? 'StatesNoReadonly' : 'StatesHideOnly';
 
+/** Members that `Core` adds for screens (promoted into `Ui`). */
+const SCREEN_RESERVED = ['SetStartScreen', 'CurrentScreen', 'OnScreenShow', 'ShowScreen'];
+
 /** Field of `Ui` per handle: PascalCase, made unique against the runtime's names. */
 function tviewFields(handles: ApiHandleModel[]) {
-  const used = new Set<string>([...BUBBLETEA_RESERVED_UI, 'Ui', 't', 'Api']);
+  const used = new Set<string>([...BUBBLETEA_RESERVED_UI, ...SCREEN_RESERVED, 'Ui', 't', 'Api']);
   return handles.map((h) => {
     let name = apiName(h.tag, 'pascal');
     if (!/^[A-Z]/.test(name)) name = `X${name}`;
@@ -2659,8 +2748,30 @@ function tviewFields(handles: ApiHandleModel[]) {
   });
 }
 
+/** `ui.<ScreenTag>` per screen with a code name (`_` is appended on a clash with another member). */
+function tviewScreenFields(handles: ApiHandleModel[], screens: IRScreen[], shared: TviewShared) {
+  const used = new Set<string>([
+    ...BUBBLETEA_RESERVED_UI,
+    ...SCREEN_RESERVED,
+    'Ui',
+    't',
+    'Api',
+    ...tviewFields(handles).map((f) => f.field),
+  ]);
+  const out: { field: string; key: string }[] = [];
+  for (const sc of screens) {
+    if (!sc.tag) continue;
+    let name = apiName(sc.tag, 'pascal');
+    if (!/^[A-Z]/.test(name)) name = `X${name}`;
+    while (used.has(name)) name += '_';
+    used.add(name);
+    out.push({ field: name, key: shared.screenKeys.get(sc.id) ?? sc.tag });
+  }
+  return out;
+}
+
 /** ui.go: the typed facade (same surface as every Go export). */
-function uiGo(handles: ApiHandleModel[]): string {
+function uiGo(handles: ApiHandleModel[], screens: IRScreen[], shared: TviewShared): string {
   const w = new CodeWriter('\t');
   w.block(`// The typed program API of this UI (see ui_runtime.go for what the handles can do).
 //
@@ -2684,6 +2795,7 @@ function uiGo(handles: ApiHandleModel[]): string {
   w.line();
 
   const fields = tviewFields(handles);
+  const screenFields = shared.multi ? tviewScreenFields(handles, screens, shared) : [];
 
   w.line('// Ui is the facade of the UI: one typed handle per code name.');
   w.line('type Ui struct {');
@@ -2692,6 +2804,7 @@ function uiGo(handles: ApiHandleModel[]): string {
   w.line('t *tviewUi');
   if (fields.length) w.line('// Api: flat methods over the components (api.go).').line('Api *Api');
   for (const f of fields) w.line(`${f.field} *${HANDLE_TYPE[f.h.type]}Handle // ${f.h.type}`);
+  for (const f of screenFields) w.line(`${f.field} *ScreenHandle // screen`);
   w.dedent().line('}');
   w.line();
   w.line('// NewUi creates the UI and its handles.');
@@ -2699,6 +2812,9 @@ function uiGo(handles: ApiHandleModel[]): string {
   w.indent();
   w.line('core := NewCore()');
   w.line('ui := &Ui{Core: core}');
+  if (shared.multi)
+    w.line(`core.SetStartScreen(${goStr(shared.screenKeys.get(screens[0].id) ?? '')})`);
+  for (const f of screenFields) w.line(`ui.${f.field} = NewScreenHandle(core, ${goStr(f.key)})`);
   for (const { h, field } of fields) {
     const entries = h.properties.map((p) => `${goStr(p.name)}: ${goValue(p.initial, p.type)},`);
     if (h.type === 'Modal') entries.push('"open": false,');
@@ -2760,15 +2876,21 @@ func (u *Ui) Run(fn func(*Ui)) error {
 
 function generateTview(ir: IRProject): ExportFile[] {
   const screen = ir.start;
-  const own = new Set(walkIR(screen.root));
+  // Every screen is exported (the first one is shown at startup).
+  const screens = ir.screens;
+  const own = new Set(screens.flatMap((sc) => [...walkIR(sc.root)]));
   // Components that are not shown at startup (hidden, inactive tab bodies) are not exported, so they have no handle.
   const handles = buildApiModel(ir).handles.filter(
     (h) => own.has(h.node) && (h.node.visible || h.node.latent)
   );
-  const gen = new TviewGen(screen);
-  const body = gen.generate();
+  const shared = newShared(screens);
+  const gens = screens.map((sc) => new TviewGen(sc, shared));
+  const bodies = gens.map((g) => g.generate());
+  const body = shared.multi
+    ? bodies.map((b) => `\t{\n${b.replace(/^(?=.)/gm, '\t')}\t}\n`).join('')
+    : bodies[0];
 
-  const kind: BorderKind | null = gen.dominant;
+  const kind: BorderKind | null = shared.dominant;
 
   const w = new CodeWriter('\t');
   w.block(`// ${screen.name || screen.ident}: the tview side of the UI (generated by TUI Studio).
@@ -2784,7 +2906,7 @@ function generateTview(ir: IRProject): ExportFile[] {
   w.indent();
   w.line('"fmt"');
   w.line('"sync/atomic"');
-  if (gen.usesTime) w.line('"time"');
+  if (gens.some((g) => g.usesTime)) w.line('"time"');
   w.line();
   w.line('"github.com/gdamore/tcell/v2"');
   w.line('"github.com/rivo/tview"');
@@ -2828,11 +2950,20 @@ function generateTview(ir: IRProject): ExportFile[] {
   w.line('app := tview.NewApplication()');
   w.line('t.app = app');
   w.line('app.SetAfterDrawFunc(drawPopups)');
-  w.line('syncing := false');
-  const uiTview = `${w.toString()}${body}`;
+  const tail = `	// The first screen is shown first; the input of the current screen is handled by that screen.
+	t.cur = t.screens[0]
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		return t.cur.capture(event)
+	})
+	app.SetRoot(t.cur.pages, true)
+	t.sync = t.syncCurrent
+	core.Attach(t)
+	return t
+}
+`;
+  const uiTview = `${w.toString()}${body}${tail}`;
 
-  const stubs = gen
-    .handlerStubs()
+  const stubs = [...shared.handlerNames.values()]
     .map(
       (n) =>
         `\n// ${n} is called by the design; fill in what should happen.\nfunc ${n}() {\n\t// TODO\n}\n`
@@ -2872,7 +3003,7 @@ ${stubs}`;
   const goMod = `module ${screen.ident}\n\ngo 1.23\n\nrequire (\n\tgithub.com/gdamore/tcell/v2 ${TCELL_VERSION}\n\tgithub.com/rivo/tview ${TVIEW_VERSION}\n)\n`;
   return [
     { path: 'main.go', content: main },
-    { path: 'ui.go', content: uiGo(handles) },
+    { path: 'ui.go', content: uiGo(handles, screens, shared) },
     { path: 'ui_tview.go', content: uiTview },
     { path: GO_RUNTIME_FILENAME, content: GO_RUNTIME_SOURCE },
     { path: 'go.mod', content: goMod },
@@ -2897,7 +3028,7 @@ export const tviewAdapter: ExportAdapter = {
   language: 'go',
   verification: 'run',
   percentSizes: 'fixed',
-  multiScreen: false,
+  multiScreen: true,
   navBodies: true,
   generate: ({ ir }) => generateTview(ir),
 };
