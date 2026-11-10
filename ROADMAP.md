@@ -30,10 +30,6 @@ OpenTUI's `import.meta.main` entry.
 
 ## Next: parity with Textual
 
-- **Scrolling for designs taller than the terminal.** Every framework now fills the terminal and
-  cuts what does not fit; only OpenTUI scrolls (wheel, PageUp/PageDown). Add scrolling (or a
-  scroll container) to Ink, Blessed, Bubble Tea, tview and Ratatui, and scroll focused widgets
-  into view.
 - **Mouse in the classic Windows console.** Node (Ink, Blessed) and probably Bun (OpenTUI) get no
   mouse input in conhost; Windows Terminal and VS Code work. Keyboard operation works everywhere.
 - **Clicks in real terminals.** All frameworks handle mouse clicks (buttons, checkboxes, radios,
