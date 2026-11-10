@@ -10,14 +10,13 @@ real framework in this repository's tests (see `docs/EXPORT_ADAPTERS.md`).
 | ------------------ | -------- | ----------------- | ----------- | ----------- | ------- | ---------------------- |
 | Textual (Python)   | **run**  | native + snapshot | yes         | **yes**     | **yes** | **yes**                |
 | Ink (React)        | **run**  | native            | yes         | **yes**     | **yes** | **yes**                |
-| OpenTUI (React)    | **run**  | native            | yes         | **yes**     | first   | **yes** (type-checked) |
-| Blessed (Node.js)  | **run**  | snapshot          | yes         | **yes**     | first   | **yes**                |
-| Bubble Tea (Go)    | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
-| tview (Go)         | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
-| Ratatui (Rust)     | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
+| OpenTUI (React)    | **run**  | native            | yes         | **yes**     | **yes** | **yes** (type-checked) |
+| Blessed (Node.js)  | **run**  | snapshot          | yes         | **yes**     | **yes** | **yes**                |
+| Bubble Tea (Go)    | **run**  | native + snapshot | yes         | **yes**     | **yes** | **yes**                |
+| tview (Go)         | **run**  | native + snapshot | yes         | **yes**     | **yes** | **yes**                |
+| Ratatui (Rust)     | **run**  | native + snapshot | yes         | **yes**     | **yes** | **yes**                |
 | HTML / ANSI / text | -        | editor renderer   | -           | -           | active  | -                      |
 
-"first" = only the first screen of a project is exported.
 Tab/menu/list bodies (components with `showWhen`) are all exported and shown only while their item is
 selected, also when the selection is set through the program API; every framework except OpenTUI
 (type-checked only, no Bun in this check) is verified against the real library.
@@ -38,8 +37,7 @@ OpenTUI's `import.meta.main` entry.
   Ratatui. Still to confirm on real terminals: Ink and OpenTUI under Windows (does the terminal
   deliver mouse reports to Node/Bun?), Windows Terminal and ConPTY, tview List/Table/Tree.
 
-- **Screens and screen links** in all frameworks except Textual (`opensScreen`, menu/list item
-  links are ignored or left as a comment; `ui.<screen>.show()` does not exist there).
+- **Screen links on tab items** (Textual links buttons and menu/list items; tabs have no link in any framework yet).
 - **Real terminal runs** in CI (pty), not only headless drivers.
 - **CI** (GitHub Actions): `npm test` with Node, Bun, Go, Rust and Python + Textual installed so the
   whole matrix runs on every push. `npm run test:setup` installs the Node/Bun packages.

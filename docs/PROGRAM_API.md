@@ -123,8 +123,11 @@ Boxes and grids support `hide()/show()`. A **Modal** has `open()`, `close()`, `i
 
 ## Screens
 
-Several screens (`ui.<screen code name>.show()`, links between screens) exist for Textual only
-so far; the other frameworks export the first screen. See `ROADMAP.md`.
+Every screen of a project is exported; the first one is shown at startup. A screen with a code name
+has a handle: `ui.<screen>.show()` switches to it (Go `Show()`, Rust `show()`), `isActive` tells
+whether it is shown and `onShow(fn)` runs `fn` (off the UI thread) every time it has been shown.
+Switching closes open dialogs and scrolls to the top. Buttons and menu/list items that open a
+screen in the editor switch to it in the export too.
 
 ## Testing the API
 

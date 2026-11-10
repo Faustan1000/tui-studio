@@ -94,9 +94,6 @@ type Core struct {
 	screen   string
 	screenFn map[string][]func(Event)
 
-	// screenKey is the screen that is shown (empty for a design with one screen).
-	screenKey   string
-	screenHooks map[string][]func()
 
 	// Log writes to the log panel (Ctrl+L).
 	Log *LogApi
@@ -856,75 +853,3 @@ func (h *ModalHandle) Hide() error {
 	h.Close()
 	return nil
 }
-
-// ── Screens ───────────────────────────────────────────────────────────────────
-
-// SetStartScreen sets the screen that is shown first (before the UI starts).
-func (c *Core) SetStartScreen(key string) {
-	c.mu.Lock()
-	c.screenKey = key
-	c.mu.Unlock()
-}
-
-// CurrentScreen is the key of the screen that is shown (empty for a design with one screen).
-func (c *Core) CurrentScreen() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.screenKey
-}
-
-// OnScreenShow registers fn to run (on the handler goroutine) every time the screen is shown.
-func (c *Core) OnScreenShow(key string, fn func()) {
-	if fn == nil {
-		return
-	}
-	c.mu.Lock()
-	if c.screenHooks == nil {
-		c.screenHooks = map[string][]func(){}
-	}
-	c.screenHooks[key] = append(c.screenHooks[key], fn)
-	c.mu.Unlock()
-}
-
-// ShowScreen switches to another screen: open dialogs are closed, the adapter shows the screen
-// from the top and the OnScreenShow callbacks run.
-func (c *Core) ShowScreen(key string) {
-	c.mu.Lock()
-	if c.closed || c.screenKey == key {
-		c.mu.Unlock()
-		return
-	}
-	c.screenKey = key
-	for _, comp := range c.comps {
-		if open, ok := comp.props["open"].(bool); ok && open {
-			comp.props["open"] = false
-			comp.ver++
-		}
-	}
-	hooks := append([]func(){}, c.screenHooks[key]...)
-	c.mu.Unlock()
-	c.refresh()
-	for _, fn := range hooks {
-		c.Defer(fn)
-	}
-}
-
-// ScreenHandle is one screen of the UI: ui.Settings.Show() switches to it.
-type ScreenHandle struct {
-	core *Core
-	key  string
-}
-
-func NewScreenHandle(core *Core, key string) *ScreenHandle { return &ScreenHandle{core, key} }
-
-// Key is the code name of the screen.
-func (h *ScreenHandle) Key() string { return h.key }
-
-// IsActive reports whether the screen is shown.
-func (h *ScreenHandle) IsActive() bool { return h.core.CurrentScreen() == h.key }
-
-// Show switches to the screen.
-func (h *ScreenHandle) Show() { h.core.ShowScreen(h.key) }
-
-// OnShow registers fn to run every time the screen has been shown.
-func (h *ScreenHandle) OnShow(fn func()) { h.core.OnScreenShow(h.key, fn) }

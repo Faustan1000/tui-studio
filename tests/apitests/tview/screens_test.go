@@ -17,7 +17,7 @@ func TestScreens(t *testing.T) {
 	testScreen = sim
 	ui := NewUi()
 	shown := make(chan string, 4)
-	ui.Settings.OnShow(func() { shown <- "settings" })
+	ui.Settings.OnShow(func(Event) { shown <- "settings" })
 	if err := ui.Start(); err != nil {
 		t.Fatal(err)
 	}

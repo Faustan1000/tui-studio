@@ -2616,7 +2616,7 @@ type tviewUi struct {
 // control) and applies the store to it. Screens that are not shown are not touched.
 func (t *tviewUi) syncCurrent() {
 	switched := false
-	if key := t.core.CurrentScreen(); t.cur == nil || t.cur.key != key {
+	if key := t.core.Screen(); t.cur == nil || t.cur.key != key {
 		for _, sc := range t.screens {
 			if sc.key == key {
 				t.cur = sc
@@ -2733,7 +2733,7 @@ const statesVar = (n: number) =>
   n >= 4 ? 'StatesAll' : n === 3 ? 'StatesNoReadonly' : 'StatesHideOnly';
 
 /** Members that `Core` adds for screens (promoted into `Ui`). */
-const SCREEN_RESERVED = ['SetStartScreen', 'CurrentScreen', 'OnScreenShow', 'ShowScreen'];
+const SCREEN_RESERVED = ['Screen', 'SetScreen', 'ShowScreen'];
 
 /** Field of `Ui` per handle: PascalCase, made unique against the runtime's names. */
 function tviewFields(handles: ApiHandleModel[]) {
@@ -2812,8 +2812,7 @@ function uiGo(handles: ApiHandleModel[], screens: IRScreen[], shared: TviewShare
   w.indent();
   w.line('core := NewCore()');
   w.line('ui := &Ui{Core: core}');
-  if (shared.multi)
-    w.line(`core.SetStartScreen(${goStr(shared.screenKeys.get(screens[0].id) ?? '')})`);
+  if (shared.multi) w.line(`core.SetScreen(${goStr(shared.screenKeys.get(screens[0].id) ?? '')})`);
   for (const f of screenFields) w.line(`ui.${f.field} = NewScreenHandle(core, ${goStr(f.key)})`);
   for (const { h, field } of fields) {
     const entries = h.properties.map((p) => `${goStr(p.name)}: ${goValue(p.initial, p.type)},`);
