@@ -13,7 +13,7 @@ import type { ComponentNode } from '../src/types';
 import { ratatuiAdapter } from '../src/utils/export/exporters/ratatui';
 import { buildIR } from '../src/utils/export/ir';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents, layouts } from './fixtures/designs';
+import { allComponents, layouts, multiScreen } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 
 const home = process.env.USERPROFILE ?? process.env.HOME ?? '';
@@ -38,7 +38,7 @@ afterAll(() => {
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
-function project(root: ComponentNode, withScenario = false): string {
+function project(root: ComponentNode, withScenario = false, extra: string[] = []): string {
   const dir = mkdtempSync(join(tmpdir(), 'tuistudio-ratatui-'));
   dirs.push(dir);
   const files = ratatuiAdapter.generate({
@@ -49,13 +49,23 @@ function project(root: ComponentNode, withScenario = false): string {
     const path = join(dir, f.path);
     mkdirSync(dirname(path), { recursive: true });
     let content = f.content;
-    if (withScenario && f.path === 'src/main.rs') content += '\n#[cfg(test)]\nmod scenario_test;\n';
+    if (f.path === 'src/main.rs') {
+      if (withScenario) content += '\n#[cfg(test)]\nmod scenario_test;\n';
+      for (const m of extra) content += `\n#[cfg(test)]\nmod ${m};\n`;
+    }
     writeFileSync(path, content, 'utf8');
   }
   if (withScenario) {
     writeFileSync(
       join(dir, 'src', 'scenario_test.rs'),
       readFileSync(resolve(__dirname, 'apitests', 'ratatui', 'scenario_test.rs'), 'utf8'),
+      'utf8'
+    );
+  }
+  for (const m of extra) {
+    writeFileSync(
+      join(dir, 'src', `${m}.rs`),
+      readFileSync(resolve(__dirname, 'apitests', 'ratatui', `${m}.rs`), 'utf8'),
       'utf8'
     );
   }
@@ -100,6 +110,16 @@ describe.skipIf(!hasCargo)('generated Ratatui project against cargo', () => {
     expect(r.ok, out).toBe(true);
     const passed = out.match(/test result: ok\. (\d+) passed; 0 failed/);
     expect(Number(passed?.[1] ?? 0), out).toBeGreaterThanOrEqual(16);
+  }, 540_000);
+
+  it('cargo test: tab/menu bodies switch at run time', () => {
+    const r = cargo(project(multiScreen()[0], false, ['nav_test']), [
+      'test',
+      '--quiet',
+      'nav_bodies',
+    ]);
+    expect(r.ok, r.output).toBe(true);
+    expect(r.output).toMatch(/test result: ok\. 1 passed/);
   }, 540_000);
 });
 

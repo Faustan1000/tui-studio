@@ -14,10 +14,13 @@ real framework in this repository's tests (see `docs/EXPORT_ADAPTERS.md`).
 | Blessed (Node.js)  | **run**  | snapshot          | yes         | **yes**     | first   | **yes**                |
 | Bubble Tea (Go)    | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
 | tview (Go)         | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
-| Ratatui (Rust)     | **run**  | native + snapshot | yes         | **yes**     | first   | no                     |
+| Ratatui (Rust)     | **run**  | native + snapshot | yes         | **yes**     | first   | **yes**                |
 | HTML / ANSI / text | -        | editor renderer   | -           | -           | active  | -                      |
 
 "first" = only the first screen of a project is exported.
+Tab/menu/list bodies (components with `showWhen`) are all exported and shown only while their item is
+selected, also when the selection is set through the program API; every framework except OpenTUI
+(type-checked only, no Bun in this check) is verified against the real library.
 The program API (`docs/PROGRAM_API.md`) passes the same 14-step scenario (`docs/API_SCENARIO.md`)
 in every framework: states, properties without echo, events, error dialog, log panel, lifecycle,
 headless against the real library (Textual, Ink, OpenTUI under Bun, blessed, Bubble Tea, tview,
@@ -41,10 +44,6 @@ OpenTUI's `import.meta.main` entry.
 
 - **Screens and screen links** in all frameworks except Textual (`opensScreen`, menu/list item
   links are ignored or left as a comment; `ui.<screen>.show()` does not exist there).
-- **Tab and menu bodies that switch at run time** in Ratatui; today
-  only the initially active body is exported and components with a code name inside an inactive body
-  get no handle. Textual, Ink, Blessed, Bubble Tea and tview switch (checked against the real library); OpenTUI switches too but
-  is only type-checked here (no Bun).
 - **Real terminal runs** in CI (pty), not only headless drivers.
 - **CI** (GitHub Actions): `npm test` with Node, Bun, Go, Rust and Python + Textual installed so the
   whole matrix runs on every push. `npm run test:setup` installs the Node/Bun packages.

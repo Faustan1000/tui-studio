@@ -382,10 +382,11 @@ describe('ratatui components', () => {
     expect(o).not.toContain('spacer_area');
   });
 
-  it('skips tab bodies that are not active', () => {
+  it('draws every tab body behind a check of the selected tab', () => {
     const o = rs(multiScreen()[0]);
     expect(o).toContain('Dashboard content');
-    expect(o).not.toContain('Agent content');
+    expect(o).toContain('Agent content');
+    expect(o).toMatch(/if st\.int\("pages", "active_tab"\) == 1 \{/);
   });
 });
 

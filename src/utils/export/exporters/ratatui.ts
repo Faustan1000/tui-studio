@@ -14,10 +14,16 @@
 import type { ExportAdapter } from '../adapter';
 import { API_SPEC } from '../api/spec';
 import { renderFacade } from '../api/facade';
-import { apiEventMethod, apiName, safeIdent, buildApiModel, type ApiHandleModel } from '../api/model';
+import {
+  apiEventMethod,
+  apiName,
+  safeIdent,
+  buildApiModel,
+  type ApiHandleModel,
+} from '../api/model';
 import runtimeSource from '../api/rust/ui_runtime.rs?raw';
 import type { IRBorder, IRNode, IRStyle } from '../ir';
-import { inlineText, itemText, treeLines, visibleChildren, walkIR } from '../ir';
+import { inlineText, itemText, liveChildren, navOf, treeLines, walkIR } from '../ir';
 import { CodeWriter, rustStr } from '../lang';
 
 export const RATATUI_VERSION = '0.29.0';
@@ -124,9 +130,22 @@ const FOCUSABLE = new Set([
   'Table',
 ]);
 
+/** Part of the exported UI: shown at startup, or a body that appears when its item is selected. */
+function live(node: IRNode): boolean {
+  return node.visible || (!!node.latent && (!node.showWhen || !!navOf(node)));
+}
+
+/** Rust condition (on `st`) that is true while a body's item is selected; null for other nodes. */
+function bodyCond(node: IRNode): string | null {
+  const nav = navOf(node);
+  if (!nav || !node.showWhen) return null;
+  const prop = nav.type === 'Tabs' ? 'active_tab' : 'selected';
+  return `st.int(${rustStr(keyOf(nav))}, ${rustStr(prop)}) == ${node.showWhen.item}`;
+}
+
 /** Whether a node draws anything (Spacers and empty plain containers do not). */
 function renders(node: IRNode): boolean {
-  if (!node.visible || node.type === 'Spacer') return false;
+  if (!live(node) || node.type === 'Spacer') return false;
   if (node.type === 'Modal') return true;
   if (node.type === 'Screen' || node.type === 'Box' || node.type === 'Grid') {
     return needsBlock(node) || contentKids(node).some(renders);
@@ -135,7 +154,7 @@ function renders(node: IRNode): boolean {
 }
 
 function contentKids(node: IRNode): IRNode[] {
-  return visibleChildren(node).filter((k) => k.type !== 'Modal');
+  return liveChildren(node).filter((k) => k.type !== 'Modal');
 }
 
 function needsBlock(node: IRNode): boolean {
@@ -296,19 +315,18 @@ function valueExpr(node: IRNode, prop: string): string {
 
 function seedCode(node: IRNode): string {
   const spec = API_SPEC[node.type];
-  const state = !node.visible ? 'State::Hidden' : node.disabled ? 'State::Muted' : 'State::Active';
+  const state = !live(node) ? 'State::Hidden' : node.disabled ? 'State::Muted' : 'State::Active';
   const props = spec.properties.map(
-    (p) =>
-      `.prop(${rustStr(p.name)}, ${node.visible ? valueExpr(node, p.name) : zeroValue(p.type)})`
+    (p) => `.prop(${rustStr(p.name)}, ${live(node) ? valueExpr(node, p.name) : zeroValue(p.type)})`
   );
-  if (node.type === 'Modal') props.push(`.prop("open", Value::Bool(${node.visible && !node.tag}))`);
+  if (node.type === 'Modal') props.push(`.prop("open", Value::Bool(${live(node) && !node.tag}))`);
   const head = `Seed::new(${rustStr(keyOf(node))}, ${state})`;
   return props.length ? [head, ...props.map((p) => `    ${p}`)].join('\n') : head;
 }
 
 function needsSeed(node: IRNode): boolean {
   if (node.tag) return true;
-  if (!node.visible) return false;
+  if (!live(node)) return false;
   return (
     API_SPEC[node.type].properties.length > 0 ||
     FOCUSABLE.has(node.type) ||
@@ -372,7 +390,7 @@ class Gen {
   }
 
   private collect(node: IRNode, modal?: IRNode): void {
-    if (!node.visible) return;
+    if (!live(node)) return;
     if (node.type === 'Modal' && node !== modal) return;
     this.register(node, modal);
     node.children.forEach((c) => this.collect(c, modal));
@@ -391,7 +409,8 @@ class Gen {
       this.focusOf.set(node.id, f);
     }
     const T = node.style.border?.top ? 1 : 0;
-    const L = (node.style.border?.left ? 1 : 0) + (node.type === 'TextInput' && node.style.border ? 2 : 0);
+    const L =
+      (node.style.border?.left ? 1 : 0) + (node.type === 'TextInput' && node.style.border ? 2 : 0);
     const click = (lines: string[]) => {
       if (f)
         this.clicks.push(
@@ -437,7 +456,7 @@ class Gen {
         break;
       case 'Radio': {
         const group = (node.parent?.children ?? []).filter(
-          (x) => x !== node && x.type === 'Radio' && x.visible
+          (x) => x !== node && x.type === 'Radio' && live(x)
         );
         click([
           `if !self.rt.get_bool(${K}, "checked")`,
@@ -583,7 +602,7 @@ class Gen {
         break;
       case 'Radio': {
         const group = (node.parent?.children ?? []).filter(
-          (s) => s !== node && s.type === 'Radio' && s.visible
+          (s) => s !== node && s.type === 'Radio' && live(s)
         );
         arm([
           'match key.code {',
@@ -836,7 +855,9 @@ class Gen {
     const blk = this.blockExpr(node, { focus: node.style.border ? f : undefined });
     if (blk) {
       // A table keeps one cell of padding inside its border, like Textual's.
-      parts.push(`.block(${blk}${node.type === 'Table' ? '.padding(Padding::horizontal(1))' : ''})`);
+      parts.push(
+        `.block(${blk}${node.type === 'Table' ? '.padding(Padding::horizontal(1))' : ''})`
+      );
     }
     this.render(parts, a, stateField);
   }
@@ -947,7 +968,9 @@ class Gen {
         // `████░░░░  50%`: filled blocks in the bar colour, the rest dim, the percentage in 5 cells.
         const border = node.style.border ? 2 : 0;
         w.line(`let ${id}_room = (${a}.width as usize).saturating_sub(${border + 5}).max(1);`);
-        w.line(`let ${id}_filled = ((${id}_ratio * ${id}_room as f64).round() as usize).min(${id}_room);`);
+        w.line(
+          `let ${id}_filled = ((${id}_ratio * ${id}_room as f64).round() as usize).min(${id}_room);`
+        );
         w.line(`let ${id}_pct = format!("{}%", (${id}_ratio * 100.0).round() as u32);`);
         const parts = [
           'Paragraph::new(Line::from(vec![',
@@ -1027,7 +1050,9 @@ class Gen {
         );
         if (underline) {
           w.line(`if ${a}.height > 1 {`).indent();
-          w.line(`let ${id}_active = (st.int(${K}, "active_tab").max(0) as usize).min(${up}_TABS.len().saturating_sub(1));`);
+          w.line(
+            `let ${id}_active = (st.int(${K}, "active_tab").max(0) as usize).min(${up}_TABS.len().saturating_sub(1));`
+          );
           w.line(
             `let ${id}_before: usize = ${up}_TABS.iter().take(${id}_active).map(|t| t.chars().count() + 2).sum();`
           );
@@ -1103,7 +1128,9 @@ class Gen {
     if (!renders(node)) return;
     const w = this.w;
     const hideable = !!node.tag && node !== this.root && node.type !== 'Modal';
-    if (hideable) w.line(`if st.shown(${this.key(node)}) {`).indent();
+    const body = bodyCond(node);
+    const conds = [...(hideable ? [`st.shown(${this.key(node)})`] : []), ...(body ? [body] : [])];
+    if (conds.length) w.line(`if ${conds.join(' && ')} {`).indent();
     const a = `${node.ident}_area`;
     w.line(`let ${a} = ${expr};`);
     const focusable = this.focusOf.get(node.id);
@@ -1120,7 +1147,7 @@ class Gen {
     ) {
       this.container(node, a);
     } else this.leaf(node, a);
-    if (hideable) w.dedent().line('}');
+    if (conds.length) w.dedent().line('}');
   }
 
   private container(node: IRNode, a: string): void {
@@ -1228,7 +1255,7 @@ class Gen {
       'space-around': 'SpaceAround',
     }[l.justify];
     // Children with a code name can be hidden by the program: their space is given back.
-    const dynamic = kids.some((k) => k.tag && renders(k));
+    const dynamic = kids.some((k) => (k.tag || bodyCond(k)) && renders(k));
     this.strategies.push(
       `${id}: native ${vertical ? 'column' : 'row'} (Layout, Flex::${flex}${l.gap ? `, spacing ${l.gap}` : ''}${dynamic ? ', hideable children' : ''})`
     );
@@ -1240,7 +1267,13 @@ class Gen {
     ];
     if (l.gap > 0) parts.push(`.spacing(${u16(l.gap)})`);
     if (dynamic) {
-      const shown = kids.map((k) => (k.tag ? `st.shown(${this.key(k)})` : 'true'));
+      const shown = kids.map((k) => {
+        const c = [
+          ...(k.tag ? [`st.shown(${this.key(k)})`] : []),
+          ...(bodyCond(k) ? [bodyCond(k)!] : []),
+        ];
+        return c.length ? c.join(' && ') : 'true';
+      });
       this.w.line(`let ${id}_show = [${shown.join(', ')}];`);
       this.w.line(`let ${id}_slot = slots(&${id}_show);`);
       this.w.line(`let ${id}_cs: Vec<Constraint> = [${constraints.join(', ')}]`).indent();
@@ -1310,11 +1343,18 @@ class Gen {
         !this.dynamicWidth(k);
       // Lists, selects and tabs fill the width of their parent (as in Textual).
       const fills =
-        cross === 'auto' && FILLS_WIDTH.has(k.type) && (l.align === 'start' || l.align === 'stretch');
+        cross === 'auto' &&
+        FILLS_WIDTH.has(k.type) &&
+        (l.align === 'start' || l.align === 'stretch');
       const dyn = vertical && cross === 'auto' && l.align === 'start' ? this.dynamicWidth(k) : null;
       if (dyn) {
         expr = `aligned(${cell}, ${dyn}, u16::MAX, ${ax}, 0)`;
-      } else if (!(cross === 'fill' || open || fills || (cross === 'auto' && l.align === 'stretch'))) {
+      } else if (!(
+        cross === 'fill' ||
+        open ||
+        fills ||
+        (cross === 'auto' && l.align === 'stretch')
+      )) {
         const size =
           typeof cross === 'number'
             ? cross
@@ -1440,7 +1480,8 @@ class Gen {
     out.line('#[derive(Clone)]');
     out.line('pub struct Ui {').indent();
     out.line('_runtime: Runtime,');
-    if (this.apiHandles.length) out.line('/// Flat methods over the components (see api.rs).').line('pub api: Api,');
+    if (this.apiHandles.length)
+      out.line('/// Flat methods over the components (see api.rs).').line('pub api: Api,');
     for (const h of this.handles) out.line(`pub ${h.field}: ${HANDLE_TYPE[h.node.type]},`);
     out.dedent().line('}').line();
     out.line('impl Ui {').indent();
@@ -1966,7 +2007,11 @@ fn click_dropdown(&mut self, m: MouseEvent) {
       out.line('match id {').indent();
       for (const f of this.focus) {
         const conds = [`st.focusable(${rustStr(keyOf(f.node))})`];
+        const own = bodyCond(f.node);
+        if (own) conds.push(own);
         for (let p = f.node.parent; p; p = p.parent) {
+          const pb = bodyCond(p);
+          if (pb) conds.push(pb);
           if (p.type === 'Modal') conds.push(`st.modal_open(${rustStr(keyOf(p))})`);
           else if (p.tag && p.parent) conds.push(`st.shown(${rustStr(p.tag)})`);
         }
@@ -2553,7 +2598,7 @@ export const ratatuiAdapter: ExportAdapter = {
   verification: 'run',
   percentSizes: 'fixed',
   multiScreen: false,
-  navBodies: false,
+  navBodies: true,
   generate: ({ ir }) => {
     const screen = ir.start;
     const gen = new Gen(screen.ident, screen.root, screen.modals);
