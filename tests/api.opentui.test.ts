@@ -140,5 +140,47 @@ describe.skipIf(!modules)('opentui tab/menu bodies', () => {
     expect(app).toContain('Agent content');
     expect(app).toMatch(/\.active_tab === 1 && \(/);
     expect(app).toMatch(/\.selected === 0 && \(/);
-  });
+  }, 180_000);
+});
+
+describe.skipIf(!bun || !modules)('opentui screens in real OpenTUI (Bun)', () => {
+  it('shows one screen at a time, switches with show() and through a button link', () => {
+    const screens = multiScreen().map((root) => ({ id: root.tag ?? 'about', root }));
+    const dir = writeProject('screens', screens[0].root, screens);
+    expect(typecheck(dir) ?? '').toBe('');
+    writeFileSync(
+      join(dir, 'screens.ts'),
+      [
+        "import { createTestRenderer } from '@opentui/core/testing';",
+        "import { Ui } from './src/index';",
+        'const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));',
+        'const setup = await createTestRenderer({ width: 100, height: 40, exitOnCtrlC: false });',
+        'const ui = new Ui();',
+        'await ui.start({ renderer: setup.renderer });',
+        'const frame = async () => { await sleep(150); await setup.renderOnce(); return setup.captureCharFrame(); };',
+        'const first = await frame();',
+        'ui.settings.show();',
+        'const second = await frame();',
+        'const active = ui.settings.isActive;',
+        // the first control (the text field) has the focus: Tab to the Back button, press Enter
+        'setup.mockInput.pressTab();',
+        'await sleep(100);',
+        'setup.mockInput.pressEnter();',
+        'const third = await frame();',
+        "console.log('SCREENS ' + JSON.stringify({ first, second, third, active }));",
+        'ui.stop();',
+        'process.exit(0);',
+      ].join(NL)
+    );
+    const r = spawnSync(bun!, ['screens.ts'], { cwd: dir, encoding: 'utf8', timeout: 120_000 });
+    const line = (r.stdout ?? '').split(NL).find((l) => l.startsWith('SCREENS '));
+    expect(line, `${r.stdout}${NL}${r.stderr}`).toBeTruthy();
+    const { first, second, third, active } = JSON.parse(line!.slice(8)) as Record<string, any>;
+    expect(first).toContain('Ready');
+    expect(first).not.toContain('Settings screen');
+    expect(second).toContain('Settings screen');
+    expect(second).not.toContain('Ready');
+    expect(active).toBe(true);
+    expect(third, `back button: ${third}`).toContain('Ready');
+  }, 180_000);
 });
