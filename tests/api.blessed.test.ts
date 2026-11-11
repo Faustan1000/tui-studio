@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { mk, resetIds, screen } from './fixtures/build';
-import { allComponents, multiScreen } from './fixtures/designs';
+import { allComponents, multiScreen, screenLinks } from './fixtures/designs';
 import { apiDesign } from './fixtures/apiDesign';
 import {
   HAS_BLESSED,
@@ -904,6 +904,100 @@ describe.skipIf(!HAS_BLESSED)('blessed screens in real blessed', () => {
       await click(term, lines2[y2].indexOf('Back') + 1, y2);
       expect(seen()).toContain('Ready');
       expect(seen()).not.toContain('Settings screen');
+    } finally {
+      ui.stop?.();
+    }
+  });
+});
+
+describe.skipIf(!HAS_BLESSED)('blessed screen links in real blessed', () => {
+  it('tab, menu and list items open screens; modals belong to their screen', async () => {
+    const roots = screenLinks();
+    const { mod } = loadProject(
+      roots[0],
+      'screen-links',
+      roots.map((root) => ({ id: root.tag!, root }))
+    );
+    const term = makeTerm(80, 40);
+    const ui = new mod.Ui(term.options);
+    await ui.start();
+    await tick(80);
+    const NL = String.fromCharCode(10);
+    const RIGHT = String.fromCharCode(27) + '[C';
+    try {
+      const seen = () => frame(ui.screen);
+      const cell = (text: string) => {
+        const lines = seen().split(NL);
+        const y = lines.findIndex((l) => l.includes(text));
+        return { y, x: y < 0 ? -1 : lines[y].indexOf(text) };
+      };
+      const toHome = async () => {
+        ui.home.show();
+        await tick(60);
+        expect(seen()).toContain('Home screen');
+      };
+      expect(seen()).toContain('Home screen');
+
+      // The program setting the active tab does not switch screens.
+      ui.navTabs.activeTab = 1;
+      await tick(60);
+      expect(seen()).toContain('Home screen');
+      expect(seen()).not.toContain('Settings screen');
+      ui.navTabs.activeTab = 0;
+      await tick(60);
+
+      // The user: focus the tab bar, Right selects 'Prefs'.
+      ui.navTabs._views[0].widget.focus();
+      await term.type(RIGHT);
+      await tick(60);
+      // Right only moves the highlight (blessed); Enter chooses the tab.
+      expect(seen()).toContain('Home screen');
+      await term.type(ENTER);
+      await tick(60);
+      expect(seen()).toContain('Settings screen');
+      expect(seen()).not.toContain('Home screen');
+
+      // Back button returns.
+      ui.backBtn._views[0].widget.focus();
+      await term.type(ENTER);
+      await tick(60);
+      expect(seen()).toContain('Home screen');
+
+      // Click on the tab.
+      const prefs = cell('Prefs');
+      await click(term, prefs.x + 1, prefs.y);
+      expect(seen()).toContain('Settings screen');
+      await toHome();
+
+      // Menu: Enter on the first item, then a click.
+      ui.navMenu._views[0].widget.focus();
+      await term.type(ENTER);
+      await tick(60);
+      expect(seen()).toContain('About screen');
+      await toHome();
+      const open = cell('Open about');
+      await click(term, open.x + 1, open.y);
+      expect(seen()).toContain('About screen');
+      await toHome();
+
+      // List item.
+      ui.navList._views[0].widget.focus();
+      await term.type(ENTER);
+      await tick(60);
+      expect(seen()).toContain('Settings screen');
+      await toHome();
+
+      // A modal of another screen draws nothing over this one.
+      ui.confirm.open();
+      await tick(60);
+      expect(seen()).not.toContain('Modal body');
+      expect(seen()).toContain('Home screen');
+      ui.confirm.close();
+      ui.settings.show();
+      await tick(60);
+      ui.confirm.open();
+      await tick(60);
+      expect(seen()).toContain('Modal body');
     } finally {
       ui.stop?.();
     }

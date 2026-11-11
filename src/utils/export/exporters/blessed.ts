@@ -1176,6 +1176,13 @@ function emitWidget(
         w.line(`${v}.select(${node.selected});`);
       }
       wire = [`tabs: ${strArray(tabs)}`, focusable];
+      {
+        const links = node.items.flatMap((item, i) => {
+          const key = item.screen ? ctx.screenKeys.get(item.screen) : undefined;
+          return key ? [`${i}: ${jsStr(key)}`] : [];
+        });
+        if (links.length) afterWire = `ui.links(${v}, { ${links.join(', ')} });`;
+      }
       if (flow) wire.push('underline: true');
       if (names.length) {
         wire.push(`onChange: (index) => { ${names.map((n) => `${n}(${v}, index);`).join(' ')} }`);
