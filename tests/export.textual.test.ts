@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exportToFiles } from '../src/utils/export/codeExporter';
-import { allComponents, multiScreen } from './fixtures/designs';
+import { allComponents, multiScreen, screenLinks } from './fixtures/designs';
 
 describe('textual export', () => {
   it('ships ui.py and the runtime', () => {
@@ -19,5 +19,13 @@ describe('textual export', () => {
     const screens = multiScreen().map((root) => ({ id: root.id, root }));
     const ui = exportToFiles(screens[0].root, 'textual', screens)[0].content;
     expect(ui).toContain('settings');
+  });
+
+  it('links tab items to screens, for the user only', () => {
+    const screens = screenLinks().map((root) => ({ id: root.tag!, root }));
+    const ui = exportToFiles(screens[0].root, 'textual', screens)[0].content;
+    expect(ui).toContain('@on(Tabs.TabActivated');
+    expect(ui).toContain('user = self.ui._emit("nav_tabs", "change"');
+    expect(ui).toMatch(/if user:\n\s+target = \{1: "settings"\}\.get\(/);
   });
 });

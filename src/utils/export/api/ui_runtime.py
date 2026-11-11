@@ -732,6 +732,7 @@ class MenuHandle(Handle):
 class TabsHandle(_ValueHandle):
     def __init__(self, ui: "StudioUi", tag: str, *, active: int = 0, **kw: Any) -> None:
         super().__init__(ui, tag, value=active, **kw)
+        self._initial = active  # the tab the generated widget starts on
 
     @property
     def active_tab(self) -> int:
@@ -745,6 +746,11 @@ class TabsHandle(_ValueHandle):
 
     def _push(self) -> None:
         index = self._value
+        if index != self._initial:
+            # A fresh widget first reports the tab it starts on, then the one we move it to;
+            # neither is the user's doing.
+            self._expect(self._initial)
+            self._expect(index)
         self._do(lambda w: setattr(w, "active", f"{self.tag}__{index}"))
 
     def on_change(self, fn: Optional[Callable] = None):
@@ -784,6 +790,8 @@ class ModalHandle(Handle):
         def push() -> None:
             if self._screen is not None:
                 return
+            if self._owner is not None and self._owner not in self._ui._mounted:
+                return  # the dialog belongs to a screen that is not on display
             screen = self._screen_factory()
             self._screen = screen
             self._ui._app.push_screen(screen, lambda _result: setattr(self, "_screen", None))
@@ -1316,11 +1324,14 @@ class StudioUi:
     def _add_callback(self, tag: str, name: str, fn: Callable) -> None:
         self._callbacks[(tag, name)].append(fn)
 
-    def _emit(self, tag: str, name: str, value: Any = None) -> None:
-        """Called by the generated app (UI thread) when the user interacts with `tag`."""
+    def _emit(self, tag: str, name: str, value: Any = None) -> bool:
+        """Called by the generated app (UI thread) when the user interacts with `tag`.
+
+        Returns False when the interaction was only an echo of a change the program made.
+        """
         handle = self._handles.get(tag)
         if handle is not None and not handle._on_event(name, value):
-            return
+            return False
         event = Event(tag, name, value, time.time())
         try:
             self.events.put_nowait(event)
@@ -1335,6 +1346,7 @@ class StudioUi:
                 self._executor.submit(self._run_callback, callback, event)
             except RuntimeError:  # executor shut down while closing
                 break
+        return True
 
     def _run_callback(self, callback: Callable, event: Event) -> None:
         try:

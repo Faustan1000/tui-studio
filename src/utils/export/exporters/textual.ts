@@ -222,7 +222,8 @@ function addHandler(
   rawName: unknown,
   fallback: string,
   bodies?: string | null,
-  after: string[] = []
+  after: string[] = [],
+  userOnly = false
 ) {
   const name = methodName(typeof rawName === 'string' && rawName ? rawName : fallback, ctx);
   const api = EVENT_API[message];
@@ -230,13 +231,15 @@ function addHandler(
   if (bodies && NAV_INDEX[message]) {
     lines.push(`self.show_bodies(${bodies}, ${NAV_INDEX[message]})`);
   }
+  // `userOnly`: the links run only for changes made by the user, not for the program's own.
+  const guarded = userOnly && Boolean(node.tag && api) && after.length > 0;
   if (node.tag && api) {
-    lines.push(
-      `self.ui._emit(${pyStr(node.tag)}, ${pyStr(api.name)}${api.value ? ', ' + api.value : ''})`
-    );
+    const call = `self.ui._emit(${pyStr(node.tag)}, ${pyStr(api.name)}${api.value ? ', ' + api.value : ''})`;
+    lines.push(guarded ? `user = ${call}` : call);
   }
   // Screen links run last, so the program hears about the interaction before the switch.
-  lines.push(...after);
+  if (guarded) lines.push('if user:', ...after.map((l) => IND + l));
+  else lines.push(...after);
   if (lines.length === 0) lines.push('pass');
   ctx.handlers.push(
     `${IND}@on(${message}, "#${widgetId(node)}")\n` +
@@ -256,8 +259,12 @@ function buttonLink(node: ComponentNode, ctx: Ctx): string[] {
  * Statements for the items of a Menu/List that open a screen, picked by the index of the
  * chosen item (none when no item links anywhere).
  */
-function itemLinks(node: ComponentNode, ctx: Ctx, indexExpr: string): string[] {
-  const items = Array.isArray(node.props.items) ? node.props.items : [];
+function itemLinks(
+  node: ComponentNode,
+  ctx: Ctx,
+  indexExpr: string,
+  items: unknown[] = Array.isArray(node.props.items) ? node.props.items : []
+): string[] {
   const targets: string[] = [];
   items.forEach((item, i) => {
     const screen = item && typeof item === 'object' ? (item as { screen?: string }).screen : '';
@@ -1248,7 +1255,8 @@ const emitTabs: Emitter = (node, indent, ctx) => {
   const p = node.props;
   const sp = IND.repeat(indent);
   const id = widgetId(node);
-  const tabs = (Array.isArray(p.tabs) ? p.tabs : []).map((t) => {
+  const rawTabs: unknown[] = Array.isArray(p.tabs) ? p.tabs : [];
+  const tabs = rawTabs.map((t) => {
     const it = toItem(t);
     const status = Boolean(t && typeof t === 'object' && (t as Record<string, unknown>).status);
     return { it, status };
@@ -1274,8 +1282,32 @@ const emitTabs: Emitter = (node, indent, ctx) => {
   }
   args.push(`id=${pyStr(id)}`);
   const tabBodies = bodyGroups(node, ctx);
-  if (node.events.onChange || node.tag || tabBodies) {
-    addHandler(ctx, node, 'Tabs.TabActivated', node.events.onChange, 'on_tab_activated', tabBodies);
+  const tabIndex = NAV_INDEX['Tabs.TabActivated'];
+  let tabLinks = itemLinks(node, ctx, tabIndex, tabs.length ? rawTabs : []);
+  if (tabLinks.length && !node.tag) {
+    // Nothing tells the user's selection from the initial activation, so only a change of
+    // the selected tab counts (the program has no handle to set an unnamed tab).
+    const initial = tabs.length ? Math.min(Math.max(active, 0), tabs.length - 1) : 0;
+    tabLinks = [
+      'last = self.__dict__.setdefault("_tab_last", {})',
+      `index = ${tabIndex}`,
+      `changed = last.get(${pyStr(id)}, ${initial}) != index`,
+      `last[${pyStr(id)}] = index`,
+      'if changed:',
+      ...tabLinks.map((l) => IND + l),
+    ];
+  }
+  if (node.events.onChange || node.tag || tabBodies || tabLinks.length) {
+    addHandler(
+      ctx,
+      node,
+      'Tabs.TabActivated',
+      node.events.onChange,
+      'on_tab_activated',
+      tabBodies,
+      tabLinks,
+      true
+    );
   }
   return `${sp}yield Tabs(\n${rows.join('')}${sp}${IND}${args.join(', ')},\n${sp})\n`;
 };
