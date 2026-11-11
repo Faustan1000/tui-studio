@@ -443,6 +443,21 @@ class Gen {
     return key ? `self.rt.show_screen(${rustStr(key)});` : null;
   }
 
+  /** Lines (a `match` on the tab `index`) that open the screen of a tab the user chose. */
+  private tabLinkLines(node: IRNode, index: string, pad: string): string[] {
+    const links = node.items.flatMap((item, i) => {
+      const call = this.screenCall(item.screen);
+      return call ? [`${i} => ${call.replace(/;$/, '')},`] : [];
+    });
+    if (!links.length) return [];
+    return [
+      `${pad}match ${index} {`,
+      ...links.map((l) => `${pad}    ${l}`),
+      `${pad}    _ => {}`,
+      `${pad}}`,
+    ];
+  }
+
   /** Emit "select" for the chosen item; items that open a screen switch to it when accepted. */
   private selectLines(node: IRNode, index: string, pad: string): string[] {
     const K = rustStr(keyOf(node));
@@ -586,6 +601,14 @@ class Gen {
           `        if self.rt.get_int(${K}, "active_tab") != i as i64 {`,
           `            self.rt.user_set(${K}, "active_tab", Value::Int(i as i64), Some("change"));`,
           '        }',
+          // Clicking the tab that is already active still opens its screen (it is how you come back).
+          ...(this.tabLinkLines(node, 'i', '').length
+            ? [
+                `        if self.rt.accepts(${K}) {`,
+                ...this.tabLinkLines(node, 'i', '            '),
+                '        }',
+              ]
+            : []),
           '        break;',
           '    }',
           '    x += width;',
@@ -792,7 +815,9 @@ class Gen {
           `        let last = (${tabs}.len() as i64 - 1).max(0);`,
           '        let next = (cur + step).clamp(0, last);',
           '        if next != cur {',
-          `            self.rt.user_set(${K}, "active_tab", Value::Int(next), Some("change"));`,
+          `            if self.rt.user_set(${K}, "active_tab", Value::Int(next), Some("change")) {`,
+          ...this.tabLinkLines(node, 'next', '                '),
+          '            }',
           '        }',
           '    }',
           '    _ => {}',

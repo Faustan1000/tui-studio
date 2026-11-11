@@ -13,7 +13,7 @@ import type { ComponentNode } from '../src/types';
 import { ratatuiAdapter } from '../src/utils/export/exporters/ratatui';
 import { buildIR } from '../src/utils/export/ir';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents, layouts, multiScreen } from './fixtures/designs';
+import { allComponents, layouts, multiScreen, screenLinks } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 
 const home = process.env.USERPROFILE ?? process.env.HOME ?? '';
@@ -136,6 +136,18 @@ describe.skipIf(!hasCargo)('generated Ratatui project against cargo', () => {
     ]);
     expect(r.ok, r.output).toBe(true);
     expect(r.output).toMatch(/test result: ok\. 1 passed/);
+  }, 540_000);
+
+  it('cargo test: item links to screens and screen-bound modals', () => {
+    const screens = screenLinks().map((root) => ({ id: root.tag!, root }));
+    const r = cargo(project(screens[0].root, false, ['links_test'], screens), [
+      'test',
+      '--quiet',
+      '--',
+      '--test-threads=4',
+    ]);
+    expect(r.ok, r.output).toBe(true);
+    expect(r.output).toMatch(/test result: ok\. 4 passed/);
   }, 540_000);
 });
 
