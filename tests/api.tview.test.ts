@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { exportToFiles } from '../src/utils/export/codeExporter';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents, layouts, multiScreen } from './fixtures/designs';
+import { allComponents, layouts, multiScreen, screenLinks } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 
 const GO = process.env.TUISTUDIO_GO || 'go';
@@ -183,5 +183,26 @@ describe.skipIf(!hasGo)('tview screens against real tview', () => {
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).toMatch(/--- PASS: TestScreens/);
+  }, 300_000);
+
+  it('opens screens from tab, menu and list links; modals belong to their screen', () => {
+    const screens = screenLinks().map((root) => ({ id: root.tag!, root }));
+    const dir = generate('links', screens[0].root, screens);
+    for (const n of ['helpers_test.go', 'links_test.go'])
+      copyFileSync(join(GO_TESTS, n), join(dir, n));
+    const vet = run(['vet', './...'], dir);
+    expect(vet.status, `go vet\n${vet.stdout}\n${vet.stderr}`).toBe(0);
+    const r = run(['test', '-count=1', '-timeout', '120s', '-v', './...'], dir);
+    const out = `${r.stdout}\n${r.stderr}`;
+    expect(r.status, out).toBe(0);
+    for (const n of [
+      'TestTabLinkKey',
+      'TestTabLinkClick',
+      'TestTabProgramDoesNotSwitch',
+      'TestMenuLink',
+      'TestListLink',
+      'TestModalOfOtherScreen',
+    ])
+      expect(out).toMatch(new RegExp(`--- PASS: ${n}`));
   }, 300_000);
 });
