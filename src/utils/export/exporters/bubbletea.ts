@@ -1449,7 +1449,7 @@ func (r *teaRenderer) pump() {
     return key && this.multi ? [`m.ui.ShowScreen(${goStr(key)})`] : [];
   }
 
-  /** Statements that open the screen of the chosen menu/list item. */
+  /** Statements that open the screen of the item the user chose (menu/list row, tab). */
   private itemLinks(n: IRNode, index: string): string[] {
     if (!this.multi) return [];
     const cases = n.items.flatMap((item, i) => {
@@ -1578,6 +1578,7 @@ func (r *teaRenderer) pump() {
         w.line('c.UserSet("active_tab", next)');
         w.line('c.Emit("change", next)');
         emit(this.calls(n, 'change', 'select'));
+        emit(this.itemLinks(n, 'next'));
         w.dedent();
         w.line('}');
         break;
@@ -1938,6 +1939,7 @@ func (r *teaRenderer) pump() {
             w.line('c.UserSet("active_tab", i)');
             w.line('c.Emit("change", i)');
             this.calls(n, 'change', 'select').forEach((l) => w.line(l));
+            this.itemLinks(n, 'i').forEach((l) => w.line(l));
             w.dedent();
             w.line('}');
             w.line('return cmd');
