@@ -753,7 +753,10 @@ function emitLeaf(n: IRNode, w: CodeWriter, ctx: Ctx): void {
           n.type === 'Tabs'
             ? arrow(
                 'i: number',
-                guarded(`core.user(${T}, ${jsStr(prop)}, i, "change")`, calls(ctx, n))
+                guarded(`core.user(${T}, ${jsStr(prop)}, i, "change")`, [
+                  ...calls(ctx, n),
+                  ...itemLinks(ctx, n, 'i'),
+                ])
               )
             : arrow('i: number', [`core.user(${T}, ${jsStr(prop)}, i);`]);
         activate =
@@ -773,7 +776,9 @@ function emitLeaf(n: IRNode, w: CodeWriter, ctx: Ctx): void {
         if (!pre) ctx.states.push(`const [${s.state}, ${s.setter}] = useState(${init});`);
         selected = s.state;
         select =
-          n.type === 'Tabs' ? arrow('i: number', [`${s.setter}(i);`, ...calls(ctx, n)]) : s.setter;
+          n.type === 'Tabs'
+            ? arrow('i: number', [`${s.setter}(i);`, ...calls(ctx, n), ...itemLinks(ctx, n, 'i')])
+            : s.setter;
         const c = [...calls(ctx, n), ...itemLinks(ctx, n, h ? 'i' : selected)];
         activate =
           n.type === 'Tabs'

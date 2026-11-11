@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { exportToFiles } from '../src/utils/export/codeExporter';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents, layouts, multiScreen } from './fixtures/designs';
+import { allComponents, layouts, multiScreen, screenLinks } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 
 const RUNTIME = resolve(__dirname, 'runtime');
@@ -341,5 +341,94 @@ describe.skipIf(!installed)('ink screens in real Ink', () => {
     expect(second).not.toContain('Ready');
     expect(active).toBe(true);
     expect(third, `back button: ${third}`).toContain('Ready');
+  }, 120_000);
+});
+
+describe.skipIf(!installed)('ink item links and screen-bound modals in real Ink', () => {
+  const run = (script: string[]) => {
+    const screens = screenLinks().map((root) => ({ id: root.tag!, root }));
+    const dir = generate('links', screens[0].root, screens);
+    writeFileSync(
+      join(dir, 'links.mjs'),
+      [
+        "import { render } from 'ink-testing-library';",
+        "import { Ui } from './src/app';",
+        'let app;',
+        'const ui = new Ui({ render: (el) => (app = render(el)) });',
+        'await ui.start();',
+        'const frame = () => app.lastFrame();',
+        'const tick = (ms = 150) => new Promise((r) => setTimeout(r, ms));',
+        'const key = async (k) => { app.stdin.write(k); await tick(); };',
+        'const out = {};',
+        ...script,
+        "console.log('LINKS ' + JSON.stringify(out));",
+        'process.exit(0);',
+      ].join('\n')
+    );
+    const r = node([TSX, 'links.mjs'], dir);
+    const line = (r.stdout ?? '').split('\n').find((l) => l.startsWith('LINKS '));
+    expect(line, `${r.stdout}\n${r.stderr}`).toBeTruthy();
+    return JSON.parse(line!.slice(6)) as Record<string, string>;
+  };
+
+  it('a tab item opens its screen when the user selects it, not when the program does', () => {
+    const o = run([
+      'out.home = frame();',
+      'ui.navTabs.activeTab = 1;',
+      'await tick();',
+      'out.program = frame();',
+      'ui.navTabs.activeTab = 0;',
+      'await tick();',
+      "await key('\\t');",
+      "await key('\\u001b[C');",
+      'out.tab = frame();',
+      "await key('\\t');",
+      "await key('\\r');",
+      'out.back = frame();',
+    ]);
+    expect(o.home).toContain('Home screen');
+    expect(o.program, o.program).toContain('Home screen');
+    expect(o.program).not.toContain('Settings screen');
+    expect(o.tab, o.tab).toContain('Settings screen');
+    expect(o.back, o.back).toContain('Home screen');
+  }, 120_000);
+
+  it('menu and list items open their screens', () => {
+    const o = run([
+      "await key('\\t');",
+      "await key('\\t');",
+      "await key('\\r');",
+      'out.menu = frame();',
+      "await key('\\t');",
+      "await key('\\r');",
+      'out.home = frame();',
+      "await key('\\t');",
+      "await key('\\t');",
+      "await key('\\t');",
+      "await key('\\r');",
+      'out.list = frame();',
+    ]);
+    expect(o.menu, o.menu).toContain('About screen');
+    expect(o.home, o.home).toContain('Home screen');
+    expect(o.list, o.list).toContain('Settings screen');
+  }, 120_000);
+
+  it('a modal of another screen is never drawn over the current one', () => {
+    const o = run([
+      'ui.confirm.open();',
+      'await tick();',
+      'out.home = frame();',
+      'ui.settings.show();',
+      'await tick();',
+      'out.shown = frame();',
+      'ui.confirm.open();',
+      'await tick();',
+      'out.open = frame();',
+    ]);
+    expect(o.home).toContain('Home screen');
+    expect(o.home).not.toContain('Modal body');
+    expect(o.shown).toContain('Settings screen');
+    expect(o.shown).not.toContain('Modal body');
+    expect(o.open, o.open).toContain('Modal body');
   }, 120_000);
 });
