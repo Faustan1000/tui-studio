@@ -1858,10 +1858,15 @@ function tabs(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): voi
   // Index of the active tab, and how to change it.
   let current: string;
   let setIndex: (expr: string) => string;
+  // Items that link to a screen: only a change the user makes (click, arrow) switches it.
+  const link = (e: string) => {
+    const to = itemLinks(ctx, node, e);
+    return to ? ' ' + to : '';
+  };
   if (t) {
     current = `${t.sv}.active_tab`;
     setIndex = (e) =>
-      `if (${current} === ${e}) return; ui.store.patch(${tag}, { active_tab: ${e} }); ${emitCall(node, ctx, 'change', e, fns)}`;
+      `if (${current} === ${e}) return; ui.store.patch(${tag}, { active_tab: ${e} }); ${emitCall(node, ctx, 'change', e, fns)}${link(e)}`;
   } else {
     const pre = ctx.navState.get(node.id);
     const idx = pre?.value ?? unique(ctx, recase(node.ident, 'camel') + 'Index');
@@ -1871,7 +1876,7 @@ function tabs(ctx: Ctx, w: CodeWriter, node: IRNode, parent: IRNode | null): voi
     );
     current = idx;
     setIndex = (e) =>
-      `if (${idx} === ${e}) return; ${set}(${e}); ${emitCall(node, ctx, 'change', e, fns)}`;
+      `if (${idx} === ${e}) return; ${set}(${e}); ${emitCall(node, ctx, 'change', e, fns)}${link(e)}`;
   }
   if (focusableNode) {
     ctx.tabIds.push(node.ident);
