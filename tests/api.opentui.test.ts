@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ComponentNode } from '../src/types';
 import { apiDesign } from './fixtures/apiDesign';
-import { allComponents, multiScreen } from './fixtures/designs';
+import { allComponents, multiScreen, screenLinks } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 import { findBun, hasRuntimeModules, typecheck, writeProject } from './helpers/opentuiProject';
 
@@ -182,5 +182,73 @@ describe.skipIf(!bun || !modules)('opentui screens in real OpenTUI (Bun)', () =>
     expect(second).not.toContain('Ready');
     expect(active).toBe(true);
     expect(third, `back button: ${third}`).toContain('Ready');
+  }, 180_000);
+  it('tab, menu and list items open their screens; modals stay on their own screen', () => {
+    const screens = screenLinks().map((root) => ({ id: root.tag!, root }));
+    const dir = writeProject('screen-links', screens[0].root, screens);
+    expect(typecheck(dir) ?? '').toBe('');
+    writeFileSync(
+      join(dir, 'links.ts'),
+      [
+        "import { createTestRenderer } from '@opentui/core/testing';",
+        "import { Ui } from './src/index';",
+        'const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));',
+        'const setup = await createTestRenderer({ width: 100, height: 40, exitOnCtrlC: false });',
+        'const ui: any = new Ui();',
+        'await ui.start({ renderer: setup.renderer });',
+        'const frame = async () => { await sleep(150); await setup.renderOnce(); return setup.captureCharFrame(); };',
+        'const key = async (fn: () => void) => { fn(); await sleep(100); };',
+        'const out: Record<string, string> = {};',
+        'out.home = await frame();',
+        // the program sets the tab: no screen change
+        'ui.navTabs.activeTab = 1;',
+        'out.program = await frame();',
+        'ui.navTabs.activeTab = 0;',
+        'await frame();',
+        // the user selects the tab: first control (the tab bar) has the focus
+        'await key(() => setup.mockInput.pressArrow("right"));',
+        'out.tabKey = await frame();',
+        'await key(() => setup.mockInput.pressTab());',
+        'await key(() => setup.mockInput.pressEnter());',
+        'out.back = await frame();',
+        // menu: next control after the tabs
+        'await key(() => setup.mockInput.pressTab());',
+        'await key(() => setup.mockInput.pressEnter());',
+        'out.menu = await frame();',
+        'await key(() => setup.mockInput.pressTab());',
+        'await key(() => setup.mockInput.pressEnter());',
+        'out.menuBack = await frame();',
+        // list: the third control of the home screen (its focus starts on the tabs again)
+        'await key(() => setup.mockInput.pressTab());',
+        'await key(() => setup.mockInput.pressTab());',
+        'await key(() => setup.mockInput.pressEnter());',
+        'out.list = await frame();',
+        'ui.home.show();',
+        'await frame();',
+        // modal of the settings screen while the home screen is shown
+        'ui.confirm.open();',
+        'out.modalAway = await frame();',
+        'ui.settings.show();',
+        'await frame();',
+        'ui.confirm.open();',
+        'out.modalHere = await frame();',
+        "console.log('LINKS ' + JSON.stringify(out));",
+        'ui.stop();',
+        'process.exit(0);',
+      ].join(NL)
+    );
+    const r = spawnSync(bun!, ['links.ts'], { cwd: dir, encoding: 'utf8', timeout: 120_000 });
+    const line = (r.stdout ?? '').split(NL).find((l) => l.startsWith('LINKS '));
+    expect(line, `${r.stdout}${NL}${r.stderr}`).toBeTruthy();
+    const o = JSON.parse(line!.slice(6)) as Record<string, string>;
+    expect(o.home).toContain('Home screen');
+    expect(o.program, 'program sets the tab').toContain('Home screen');
+    expect(o.tabKey, 'tab chosen with the arrow key').toContain('Settings screen');
+    expect(o.back, 'Back button').toContain('Home screen');
+    expect(o.menu, 'menu item').toContain('About screen');
+    expect(o.menuBack, 'About back').toContain('Home screen');
+    expect(o.list, 'list item').toContain('Settings screen');
+    expect(o.modalAway).not.toContain('Modal body');
+    expect(o.modalHere).toContain('Modal body');
   }, 180_000);
 });
