@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { exportToFiles } from '../src/utils/export/codeExporter';
+import { screenLinks } from './fixtures/designs';
 import {
   linksProject,
   parityProject,
@@ -63,6 +64,19 @@ describe.skipIf(!hasTextual)('exported Textual app against real Textual', () => 
     ],
     ['screens, tab bodies and menu bodies', 'real_multi.py', () => generate(tabsProject())],
     ['buttons, menu and list items open screens', 'real_links.py', () => generate(linksProject())],
+    [
+      'tab, menu and list items open screens; program-set tabs and foreign modals do not',
+      'real_screenlinks.py',
+      () => {
+        const screens = screenLinks().map((root) => ({ id: root.tag!, root }));
+        const dir = mkdtempSync(join(tmpdir(), 'tuistudio-textual-'));
+        dirs.push(dir);
+        for (const f of exportToFiles(screens[0].root, 'textual', screens)) {
+          writeFileSync(join(dir, f.path), f.content, 'utf8');
+        }
+        return dir;
+      },
+    ],
     [
       'layout matches the editor (flex, grid, absolute, wrap, alignment)',
       'parity.py',
