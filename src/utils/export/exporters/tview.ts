@@ -1872,6 +1872,7 @@ shell.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (t
       ...(c ? [`${c}.UserSet("active_tab", index)`] : []),
       ...follow,
       ...this.fire(node, 'change', 'index'),
+      ...this.itemLinks(node),
     ];
     if (c) w.line(`gate(${c}, ${v})`);
     if (change.length) {
