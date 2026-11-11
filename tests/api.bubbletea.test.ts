@@ -12,7 +12,7 @@ import { BUBBLETEA_RESERVED_UI } from '../src/utils/export/exporters/bubbletea';
 import { GO_RUNTIME_SOURCE } from '../src/utils/export/api/go/runtime';
 import { apiDesign } from './fixtures/apiDesign';
 import { mk } from './fixtures/build';
-import { allComponents, layouts, multiScreen } from './fixtures/designs';
+import { allComponents, layouts, multiScreen, screenLinks } from './fixtures/designs';
 import { nastyDesign } from './fixtures/nasty';
 import { findGo, runGo, writeProject } from './helpers/go';
 
@@ -111,6 +111,19 @@ suite('bubbletea several screens (real Go)', () => {
     const run = runGo(['test', '-count=1', '-run', 'TestScreens', '-v', './...'], dir);
     expect(run.ok, run.output).toBe(true);
     expect(run.output).toMatch(/--- PASS: TestScreens/);
+  }, 600_000);
+
+  it('follows tab, menu and list links only for the user; modals stay on their screen', () => {
+    const roots = screenLinks();
+    const screens = roots.map((root) => ({ id: root.tag!, root }));
+    const files = exportToFiles(roots[0], 'bubbletea', screens);
+    const test = readFileSync(join(__dirname, 'apitests', 'bubbletea', 'links_test.go'), 'utf8');
+    const dir = prepare([...files, { path: 'links_test.go', content: test }]);
+    const vet = runGo(['vet', './...'], dir);
+    expect(vet.output, 'go vet').toBe('');
+    const run = runGo(['test', '-count=1', '-run', 'TestLinks', '-v', './...'], dir);
+    expect(run.ok, run.output).toBe(true);
+    expect(run.output).toMatch(/--- PASS: TestLinks/);
   }, 600_000);
 
   it('vets and builds every screen of the multi-screen design', () => {
