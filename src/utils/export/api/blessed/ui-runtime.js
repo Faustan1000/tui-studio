@@ -774,6 +774,9 @@ class ModalView extends View {
   constructor(ui, widget, opts, handle) {
     super(ui, widget, opts, handle);
     this.open = !widget.hidden;
+    // The screen this modal belongs to (null with a single screen): it shows only while that
+    // screen is current.
+    this.screenKey = ui._building ? ui._building.key : null;
     ui._modals.push(this);
   }
 
@@ -789,8 +792,10 @@ class ModalView extends View {
 
   sync() {
     const hidden = this.handle && this.handle._state === 'hidden';
+    const cur = this.ui._screenKey;
+    const here = !this.screenKey || !cur || cur === this.screenKey;
     for (const part of this.parts()) {
-      if (this.open && !hidden) part.show();
+      if (this.open && !hidden && here) part.show();
       else part.hide();
     }
   }
@@ -1249,6 +1254,19 @@ class StudioUi {
 
   /** Menu or list: choosing an item opens a screen. `map` is `{ itemIndex: screenKey }`. */
   links(widget, map) {
+    if (widget.commands) {
+      // Tabs: only the user choosing a tab opens the screen (its callback), never the program
+      // setting the active tab.
+      widget.commands.forEach((cmd, i) => {
+        const prev = cmd.callback;
+        cmd.callback = (...args) => {
+          if (prev) prev.apply(cmd, args);
+          const key = map[i];
+          if (key && (!widget._view || widget._view.canEdit())) this.showScreen(key);
+        };
+      });
+      return;
+    }
     widget.on('select', (item, index) => {
       const key = map[index];
       if (key && (!widget._view || widget._view.canEdit())) this.showScreen(key);
