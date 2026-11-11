@@ -117,6 +117,20 @@ describe('screen links', () => {
     const cleaned = withoutScreenLinks(tree, (id) => id === 'target');
     expect(cleaned.children[1]).toBe(tree.children[1]);
   });
+
+  it('handles the links of tab items (props.tabs)', () => {
+    const tabs = mk('Tabs', {
+      id: 't',
+      props: {
+        tabs: [{ label: 'One', screen: 'a' }, { label: 'Two' }, { label: 'Three', screen: 'b' }],
+      },
+    });
+    expect(linkedScreens(tabs)).toEqual(['a', 'b']);
+    const cleaned = withoutScreenLinks(screen('S', undefined, [tabs]), (id) => id === 'a');
+    const left = cleaned.children[0].props.tabs as { screen?: string }[];
+    expect(left.map((t) => t.screen)).toEqual([undefined, undefined, 'b']);
+    expect(tabs.props.tabs).toHaveLength(3);
+  });
 });
 
 describe('tree utilities', () => {

@@ -63,6 +63,45 @@ export function multiScreen(): ComponentNode[] {
   return [home, settings, about];
 }
 
+/**
+ * Three screens that link to each other through tab items, menu items, list items and buttons;
+ * the settings screen also has a modal with a code name.
+ * Screen ids: `home`, `settings`, `about` (use `{ id: root.tag, root }`).
+ */
+export function screenLinks(): ComponentNode[] {
+  resetIds();
+  const home = screen('Home', 'home', [
+    mk('Text', { props: { content: 'Home screen' } }),
+    mk('Tabs', {
+      tag: 'nav_tabs',
+      props: {
+        tabs: [{ label: 'Overview' }, { label: 'Prefs', screen: 'settings' }],
+        activeTab: 0,
+      },
+    }),
+    mk('Menu', {
+      tag: 'nav_menu',
+      props: { items: [{ label: 'Open about', screen: 'about' }, { label: 'Stay here' }] },
+    }),
+    mk('List', {
+      tag: 'nav_list',
+      props: { items: [{ label: 'Go settings', screen: 'settings' }, { label: 'Nothing' }] },
+    }),
+  ]);
+  const settings = screen('Settings', 'settings', [
+    mk('Text', { props: { content: 'Settings screen' } }),
+    mk('Button', { tag: 'back_btn', props: { label: 'Back' }, opensScreen: 'home' }),
+    mk('Modal', { tag: 'confirm', props: { title: 'Sure?' } }, [
+      mk('Text', { props: { content: 'Modal body' } }),
+    ]),
+  ]);
+  const about = screen('About', 'about', [
+    mk('Text', { props: { content: 'About screen' } }),
+    mk('Button', { tag: 'about_back', props: { label: 'Home' }, opensScreen: 'home' }),
+  ]);
+  return [home, settings, about];
+}
+
 /** Layout cases: flex row/column with gap, justify and align, grid, absolute, wrap. */
 export function layouts(): Record<string, ComponentNode> {
   resetIds();

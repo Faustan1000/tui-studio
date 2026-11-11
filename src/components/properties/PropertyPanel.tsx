@@ -22,6 +22,7 @@ import { getDescendants } from '../../utils/treeUtils';
 import { bodiesOf, collectNavElements, isNavElement, navItemLabels } from '../../utils/navBodies';
 import { COMPONENT_LIBRARY } from '../../constants/components';
 import { layoutEngine } from '../../utils/layout';
+import { linkItemsProp } from '../../utils/screenLinks';
 
 // Collapsible Section Component
 function Section({
@@ -255,7 +256,8 @@ function NavBodyField({ component }: { component: ComponentNode }) {
 function ScreenLinkField({ component }: { component: ComponentNode }) {
   const componentStore = useComponentStore();
   const isButton = component.type === 'Button';
-  const isNav = component.type === 'Menu' || component.type === 'List';
+  const itemsProp = linkItemsProp(component);
+  const isNav = itemsProp !== undefined;
   if (!isButton && !isNav) return null;
 
   const targets = componentStore
@@ -300,7 +302,9 @@ function ScreenLinkField({ component }: { component: ComponentNode }) {
     );
   }
 
-  const items: unknown[] = Array.isArray(component.props.items) ? component.props.items : [];
+  const items: unknown[] = Array.isArray(component.props[itemsProp!])
+    ? (component.props[itemsProp!] as unknown[])
+    : [];
   if (items.length === 0) return null;
   const setItemScreen = (index: number, screen: string) => {
     const next = items.map((item, i) => {
@@ -313,7 +317,7 @@ function ScreenLinkField({ component }: { component: ComponentNode }) {
       else delete base.screen;
       return base;
     });
-    componentStore.updateProps(component.id, { items: next });
+    componentStore.updateProps(component.id, { [itemsProp!]: next });
   };
 
   return (

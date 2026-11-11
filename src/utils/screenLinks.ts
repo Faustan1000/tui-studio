@@ -5,9 +5,17 @@ import type { ComponentNode } from '../types';
 
 type Item = Record<string, unknown>;
 
+/** Name of the prop that holds the items that can carry a `screen` link (none: no links). */
+export function linkItemsProp(node: ComponentNode): 'items' | 'tabs' | undefined {
+  if (node.type === 'Menu' || node.type === 'List') return 'items';
+  if (node.type === 'Tabs') return 'tabs';
+  return undefined;
+}
+
 /** Items of a Menu/List/Tabs that can carry a `screen` link. */
 function linkableItems(node: ComponentNode): Item[] {
-  const raw = node.type === 'Menu' || node.type === 'List' ? node.props.items : undefined;
+  const prop = linkItemsProp(node);
+  const raw = prop ? node.props[prop] : undefined;
   return Array.isArray(raw)
     ? raw.filter((i): i is Item => typeof i === 'object' && i !== null)
     : [];
@@ -42,9 +50,10 @@ export function withoutScreenLinks(
     next = { ...next };
     delete next.opensScreen;
   }
-  const items = node.props.items;
+  const prop = linkItemsProp(node);
+  const items = prop ? node.props[prop] : undefined;
   if (
-    (node.type === 'Menu' || node.type === 'List') &&
+    prop &&
     Array.isArray(items) &&
     items.some((i) => typeof i === 'object' && i && drop(String((i as Item).screen ?? '')))
   ) {
@@ -56,7 +65,7 @@ export function withoutScreenLinks(
       }
       return i;
     });
-    next = { ...next, props: { ...next.props, items: cleaned } };
+    next = { ...next, props: { ...next.props, [prop!]: cleaned } };
   }
   const children = node.children.map((c) => withoutScreenLinks(c, drop));
   if (children.some((c, i) => c !== node.children[i])) next = { ...next, children };
