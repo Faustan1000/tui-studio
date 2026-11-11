@@ -10,6 +10,12 @@ All notable changes to TUIStudio are documented here.
 
 - **Several screens in every framework** — Ink, OpenTUI, Blessed, Bubble Tea, tview and Ratatui export every screen of a project (not only the first), with `ui.<screen>.show()`, `isActive`, `onShow` and the links of buttons and menu/list items.
 
+- **Screen links on tab items** — tabs can open a screen like menu and list items (editor, every exporter); only a choice by the user switches, setting the tab from the program does not.
+
+### Fixed
+
+- A modal of a screen that is not shown could be drawn over the current screen (Blessed, Textual); Textual no longer bounces back to a linked tab's screen when the home screen is shown again; Ratatui opens the screen of an already active linked tab on click.
+
 ### Changed
 
 - **Content sizes are measured once** — `IRNode.intrinsic` and a shared `cellWidth` in `ir.ts` replace the text measuring that Blessed, Bubble Tea, tview and Ratatui each did on their own; the frameworks only add their own widget chrome.

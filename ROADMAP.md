@@ -37,7 +37,6 @@ OpenTUI's `import.meta.main` entry.
   Ratatui. Still to confirm on real terminals: Ink and OpenTUI under Windows (does the terminal
   deliver mouse reports to Node/Bun?), Windows Terminal and ConPTY, tview List/Table/Tree.
 
-- **Screen links on tab items** (Textual links buttons and menu/list items; tabs have no link in any framework yet).
 - **Real terminal runs** in CI (pty), not only headless drivers.
 - **CI** (GitHub Actions): `npm test` with Node, Bun, Go, Rust and Python + Textual installed so the
   whole matrix runs on every push. `npm run test:setup` installs the Node/Bun packages.
