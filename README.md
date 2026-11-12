@@ -79,13 +79,18 @@ Open `http://localhost:5173`.
 
 ## File Format
 
-Projects are saved as `.tui` files (JSON):
+Projects are saved as `.tui` files (JSON). Version 2 holds all screens of a project:
 
 ```json
 {
-  "version": "1",
-  "meta": { "name": "My Screen", "theme": "dracula", "savedAt": "..." },
-  "tree": { ... }
+  "version": "2",
+  "meta": {
+    "name": "My Project",
+    "theme": "dracula",
+    "activeScreen": "screen-1",
+    "savedAt": "..."
+  },
+  "screens": [{ "id": "screen-1", "tree": { "type": "Screen", "children": [] } }]
 }
 ```
 
