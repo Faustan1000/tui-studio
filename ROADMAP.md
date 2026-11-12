@@ -37,9 +37,11 @@ OpenTUI's `import.meta.main` entry.
   Ratatui. Still to confirm on real terminals: Ink and OpenTUI under Windows (does the terminal
   deliver mouse reports to Node/Bun?), Windows Terminal and ConPTY, tview List/Table/Tree.
 
-- **Real terminal runs** in CI (pty), not only headless drivers.
-- **CI** (GitHub Actions): `npm test` with Node, Bun, Go, Rust and Python + Textual installed so the
-  whole matrix runs on every push. `npm run test:setup` installs the Node/Bun packages.
+- **Real terminal runs and CI.** A pseudo-terminal driver and a shared scenario (start, mouse,
+  resize, quit, terminal restored) exist for every framework (`docs/TERMINAL_TESTS.md`,
+  `tests/pty.test.ts`) and a GitHub Actions workflow runs the whole matrix on Linux. Both are
+  written but have not run on Linux yet: expect the first runs to show framework differences
+  (quit keys, mouse handling) that need fixing.
 
 ## Known differences between the program APIs
 

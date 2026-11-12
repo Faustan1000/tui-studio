@@ -1,0 +1,3 @@
+# Python packages of the terminal tests (tests/pty.test.ts) and the Textual tests.
+pyte>=0.8.2
+textual>=1.0

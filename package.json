@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:setup": "npm install --prefix tests/runtime",
+    "test:pty": "vitest run tests/pty.test.ts",
     "examples": "node scripts/examples.mjs"
   },
   "dependencies": {
