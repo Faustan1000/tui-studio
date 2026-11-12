@@ -32,7 +32,7 @@ terminal tests as separate steps.
 
 On Windows the tests are off by default. `TUISTUDIO_PTY=1` together with `pip install pywinpty`
 runs them through ConPTY as a local try-out; the classic console (conhost) does not deliver mouse
-reports to Node/Bun, so the mouse steps may fail there. The opt-in
+reports to Node/Bun, so the mouse steps may fail there (ConPTY, as used by Windows Terminal, delivered them: all seven frameworks passed). The opt-in
 `tests/helpers/winconsole.ps1` test of the Ink app stays for the real Windows console.
 
 ## Adding a step
@@ -40,3 +40,9 @@ reports to Node/Bun, so the mouse steps may fail there. The opt-in
 Add it to `scenario.py` (use `term.click_on(text)`, `term.key(name)`, `term.wheel(...)`,
 `term.resize(cols, rows)`, `term.wait_for(text)`) and keep it independent of the framework: every
 framework draws the same design, so the same texts are on screen.
+
+## Findings so far
+
+- Textual quits with `Ctrl+Q` (Textual's default), not `q` or `Ctrl+C`; the scenario passes the quit keys per framework.
+- A click right after a screen switch can arrive before the program has laid the new screen out
+  (tview ignores it), so the scenario waits briefly (`settle`) once a screen is on screen.

@@ -39,9 +39,9 @@ OpenTUI's `import.meta.main` entry.
 
 - **Real terminal runs and CI.** A pseudo-terminal driver and a shared scenario (start, mouse,
   resize, quit, terminal restored) exist for every framework (`docs/TERMINAL_TESTS.md`,
-  `tests/pty.test.ts`) and a GitHub Actions workflow runs the whole matrix on Linux. Both are
-  written but have not run on Linux yet: expect the first runs to show framework differences
-  (quit keys, mouse handling) that need fixing.
+  `tests/pty.test.ts`) and a GitHub Actions workflow runs the whole matrix on Linux. All seven
+  frameworks pass the scenario locally on Windows (ConPTY, `TUISTUDIO_PTY=1`); the workflow itself
+  and the Linux pty path have not run yet, so expect the first runs to show differences.
 
 ## Known differences between the program APIs
 

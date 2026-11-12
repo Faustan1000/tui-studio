@@ -52,6 +52,7 @@ KEYS = {
     "pagedown": "\x1b[6~",
     "space": " ",
     "ctrl+c": "\x03",
+    "ctrl+q": "\x11",
     "ctrl+l": "\x0c",
 }
 
@@ -162,10 +163,13 @@ class Term:
                 return x, y
         return None
 
-    def wait_for(self, needle: str, timeout: float = 10.0) -> bool:
+    def wait_for(self, needle: str, timeout: float = 10.0, settle: float = 0.0) -> bool:
+        """Wait until `needle` is on the screen; `settle` waits a little longer once it is, so
+        that a click does not arrive before the program has laid the new screen out."""
         end = time.time() + timeout
         while time.time() < end:
             if needle in self.text():
+                time.sleep(settle)
                 return True
             time.sleep(0.05)
         return needle in self.text()

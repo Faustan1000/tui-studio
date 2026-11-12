@@ -115,6 +115,7 @@ const targets: Target[] = [
     name: 'textual',
     available: PYTHON !== '' && has(PYTHON, ['-c', 'import textual']),
     prepare: () => [PYTHON, 'ui.py'],
+    quit: 'ctrl+q',
   },
 ];
 

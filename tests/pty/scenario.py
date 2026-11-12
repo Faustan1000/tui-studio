@@ -20,6 +20,7 @@ import time
 from ptydriver import Term
 
 STARTUP = 60.0  # the first start can compile or load a lot
+SETTLE = 0.5  # after a screen has appeared, before the next click
 
 
 def main() -> int:
@@ -45,27 +46,27 @@ def main() -> int:
 
     try:
         term = Term(args.cmd, args.cwd, args.cols, args.rows)
-        if not step("start", term.wait_for("Home screen", STARTUP), "no first frame" + screen_info()):
+        if not step("start", term.wait_for("Home screen", STARTUP, settle=SETTLE), "no first frame" + screen_info()):
             raise SystemExit(finish(term, results, args))
 
         # Mouse: a click on the menu item that links to the About screen, and on the way back.
         term.click_on("Open about")
-        step("mouse: menu item opens a screen", term.wait_for("About screen", 8), screen_info())
+        step("mouse: menu item opens a screen", term.wait_for("About screen", 8, settle=SETTLE), screen_info())
         if "About screen" in term.text():
             term.click_on("Home")
-            step("mouse: button returns", term.wait_for("Home screen", 8), screen_info())
+            step("mouse: button returns", term.wait_for("Home screen", 8, settle=SETTLE), screen_info())
 
         # Mouse on the tab bar.
         if "Home screen" in term.text():
             term.click_on("Prefs")
-            step("mouse: tab opens a screen", term.wait_for("Settings screen", 8), screen_info())
+            step("mouse: tab opens a screen", term.wait_for("Settings screen", 8, settle=SETTLE), screen_info())
             if "Settings screen" in term.text():
                 term.click_on("Back")
-                step("mouse: back from settings", term.wait_for("Home screen", 8), screen_info())
+                step("mouse: back from settings", term.wait_for("Home screen", 8, settle=SETTLE), screen_info())
 
         # A resize reaches the program, which redraws inside the new size.
         term.resize(60, 16)
-        redrawn = term.wait_for("Home screen", 8)
+        redrawn = term.wait_for("Home screen", 8, settle=SETTLE)
         wide = [line for line in term.lines() if len(line) > 60]
         step("resize: redraws inside the new size", redrawn and not wide, screen_info())
         term.resize(args.cols, args.rows)
@@ -80,7 +81,13 @@ def main() -> int:
 def finish(term: Term | None, results: list[dict], args: argparse.Namespace) -> int:
     if term is not None:
         keys = tuple(k for k in args.quit.split(",") if k)
-        exited = term.quit(keys)
+        try:
+            exited = term.quit(keys)
+        except Exception as exc:  # noqa: BLE001 - a bad key name must not hide the other results
+            results.append({"step": "quit", "ok": False, "info": f"{type(exc).__name__}: {exc}"})
+            print(json.dumps(results[-1]), flush=True)
+            term.kill()
+            return 1
         results.append({"step": "quit", "ok": exited, "info": "" if exited else "still running after " + args.quit})
         print(json.dumps(results[-1]), flush=True)
         if exited:
