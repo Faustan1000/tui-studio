@@ -26,7 +26,12 @@ const gen = (root: ComponentNode) => exportToFiles(root, 'bubbletea');
 function prepare(files: { path: string; content: string }[]): string {
   const dir = writeProject(files);
   const tidy = runGo(['mod', 'tidy'], dir);
-  expect(tidy.output, 'go mod tidy').toBe('');
+  expect(tidy.ok, 'go mod tidy: ' + tidy.output).toBe(true);
+  // With an empty module cache `go` reports every download; anything else is a problem.
+  const noise = tidy.output
+    .split(/\r?\n/)
+    .filter((l) => l.trim() && !l.startsWith('go: downloading'));
+  expect(noise, 'go mod tidy').toEqual([]);
   return dir;
 }
 
