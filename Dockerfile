@@ -1,11 +1,10 @@
 # Stage 1: build
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npx vite build
-RUN npm prune --omit=dev && npm cache clean --force
 
 # Stage 2: serve (unprivileged, listens on 8080)
 FROM nginxinc/nginx-unprivileged:alpine

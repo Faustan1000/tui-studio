@@ -1,7 +1,10 @@
 // Modal wrapper for export panel
 
+import { lazy, Suspense } from 'react';
 import { X } from 'lucide-react';
-import { ExportPanel } from './ExportPanel';
+
+// The exporters and their runtimes are large and only needed here: load them when the dialog opens.
+const ExportPanel = lazy(() => import('./ExportPanel').then((m) => ({ default: m.ExportPanel })));
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -28,7 +31,11 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-hidden">
-          <ExportPanel />
+          <Suspense
+            fallback={<div className="p-4 text-sm text-muted-foreground">Loading exporters...</div>}
+          >
+            <ExportPanel />
+          </Suspense>
         </div>
       </div>
     </div>

@@ -1,12 +1,55 @@
 // Component palette with categorized components
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Search } from 'lucide-react';
-import * as LucideIcons from 'lucide-react';
+import {
+  Activity,
+  CheckSquare,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  Grid3x3,
+  List,
+  Loader2,
+  Menu,
+  Network,
+  PanelTop,
+  RectangleHorizontal,
+  Search,
+  Space,
+  Square,
+  SquareDashedBottomCode,
+  Table,
+  ToggleLeft,
+  Type,
+  type LucideIcon,
+} from 'lucide-react';
 import { COMPONENT_LIBRARY, CATEGORIES, getComponentsByCategory } from '../../constants/components';
 import { useComponentStore, useSelectionStore } from '../../stores';
 import type { ComponentNode } from '../../types';
 import { dragStore } from '../../hooks/useDragAndDrop';
+
+// The icons the component library uses, by name. Importing the whole icon set (`import * as`)
+// would put every Lucide icon into the bundle.
+const PALETTE_ICONS: Record<string, LucideIcon> = {
+  Activity,
+  CheckSquare,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  Grid3x3,
+  List,
+  Loader2,
+  Menu,
+  Network,
+  PanelTop,
+  RectangleHorizontal,
+  Space,
+  Square,
+  SquareDashedBottomCode,
+  Table,
+  ToggleLeft,
+  Type,
+};
 
 export function ComponentPalette() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -133,7 +176,7 @@ export function ComponentPalette() {
               {isOpen && (
                 <div className="ml-1 mt-0.5 space-y-0.5">
                   {components.map((component) => {
-                    const IconComponent = (LucideIcons as any)[component.icon];
+                    const IconComponent = PALETTE_ICONS[component.icon];
 
                     return (
                       <button

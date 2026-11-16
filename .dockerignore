@@ -2,7 +2,7 @@
 .gitignore
 .env
 .env.local
-node_modules
+**/node_modules
 dist
 coverage
 .DS_Store
@@ -25,3 +25,11 @@ docs
 scripts
 README.md
 LICENSE
+# not needed to build the app (examples and previews carry their own node_modules/target)
+examples
+preview
+projects
+tests
+.claude
+.github
+ROADMAP.md

@@ -25,9 +25,22 @@ export default defineConfig({
     },
   },
   build: {
+    // The exporters (code generators and the runtimes they write) are one chunk of about 600 kB
+    // that is only loaded when the export dialog opens.
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
+      },
+      output: {
+        // Libraries that change rarely go into their own files, which the browser keeps cached.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id))
+            return 'react';
+          if (id.includes('lucide-react')) return 'icons';
+          return 'vendor';
+        },
       },
     },
   },
