@@ -26,6 +26,19 @@ import pyte
 
 WINDOWS = sys.platform == "win32"
 
+# Variables of the machine that runs the tests, not of a terminal.
+HOST_ONLY_VARS = {
+    "CI",
+    "CONTINUOUS_INTEGRATION",
+    "GITHUB_ACTIONS",
+    "GITHUB_ACTION",
+    "BUILD_NUMBER",
+    "RUN_ID",
+    "COLUMNS",
+    "LINES",
+    "NO_COLOR",
+}
+
 if not WINDOWS:
     import fcntl
     import pty
@@ -74,14 +87,11 @@ class Term:
         self.exit_code: Optional[int] = None
         self._lock = threading.Lock()
         self._closed = False
-        full_env = {
-            **os.environ,
-            "TERM": "xterm-256color",
-            "COLORTERM": "truecolor",
-            "COLUMNS": str(cols),
-            "LINES": str(rows),
-            **(env or {}),
-        }
+        # The program sees what it would see in a person's terminal: no CI variables (Ink then
+        # only prints the last frame) and no COLUMNS/LINES (Rich, and so Textual, read them before
+        # the real size and would not notice a resize). The size comes from the tty.
+        full_env = {k: v for k, v in os.environ.items() if k not in HOST_ONLY_VARS}
+        full_env.update({"TERM": "xterm-256color", "COLORTERM": "truecolor", **(env or {})})
         if WINDOWS:  # pragma: no cover
             self._proc = winpty.PtyProcess.spawn(argv, cwd=cwd, env=full_env, dimensions=(rows, cols))
         else:
