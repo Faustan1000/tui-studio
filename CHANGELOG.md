@@ -2,7 +2,7 @@
 
 All notable changes to TUIStudio are documented here.
 
-## [Unreleased]
+## [1.1.0] - 2026-11-16
 
 ### Added
 
@@ -12,6 +12,10 @@ All notable changes to TUIStudio are documented here.
 
 - **Screen links on tab items** — tabs can open a screen like menu and list items (editor, every exporter); only a choice by the user switches, setting the tab from the program does not.
 
+- **Terminal tests** — every generated program runs on a real pseudo-terminal (start, mouse clicks, resize, quit, terminal restored): `tests/pty/`, `npm run test:pty`, `docs/TERMINAL_TESTS.md`.
+- **CI** — a GitHub Actions workflow runs the type check, the headless tests of every framework and the terminal tests on Linux.
+- **README** — a guide to the export: designing for export, exporting, running each framework, driving the UI from your program.
+
 ### Fixed
 
 - A modal of a screen that is not shown could be drawn over the current screen (Blessed, Textual); Textual no longer bounces back to a linked tab's screen when the home screen is shown again; Ratatui opens the screen of an already active linked tab on click.
@@ -19,6 +23,11 @@ All notable changes to TUIStudio are documented here.
 ### Changed
 
 - **Content sizes are measured once** — `IRNode.intrinsic` and a shared `cellWidth` in `ir.ts` replace the text measuring that Blessed, Bubble Tea, tview and Ratatui each did on their own; the frameworks only add their own widget chrome.
+
+- **Smaller first load** — the exporters load when the export dialog opens and the palette imports only the icons it uses; the main bundle is about 200 kB instead of 1.6 MB.
+- `engines` in `package.json` (Node 22.12+); the Docker image builds with Node 22 and its build context leaves out examples, previews and tests.
+- `npm run lint` ignores generated code (exports, previews, test runs).
+- The old planning documents `docs/TUI_DESIGNER_*.md` are removed.
 
 ## [1.0.0] - 2026-10-26
 
